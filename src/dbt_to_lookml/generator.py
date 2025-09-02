@@ -1,13 +1,12 @@
 """Generator for creating LookML files from semantic models."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 import lkml
 from rich.console import Console
 
-from dbt_to_lookml.mapper import SemanticModelMapper
-from dbt_to_lookml.models import LookMLExplore, LookMLView, SemanticModel
+from dbt_to_lookml.models import SemanticModel
 
 console = Console()
 
@@ -35,10 +34,8 @@ class LookMLGenerator:
             validate_syntax: Whether to validate generated LookML syntax.
             format_output: Whether to format LookML output for readability.
         """
-        self.mapper = SemanticModelMapper(
-            view_prefix=view_prefix,
-            explore_prefix=explore_prefix,
-        )
+        self.view_prefix = view_prefix
+        self.explore_prefix = explore_prefix
         self.validate_syntax = validate_syntax
         self.format_output = format_output
 
@@ -72,12 +69,8 @@ class LookMLGenerator:
             try:
                 console.print(f"  [{i}/{len(semantic_models)}] Processing [cyan]{semantic_model.name}[/cyan]...")
                 
-                # Generate view
-                view = self.mapper.semantic_model_to_view(semantic_model)
-                views.append(view)
-
-                # Generate view content
-                view_content = self._generate_view_lookml(view)
+                # Generate view content directly from semantic model
+                view_content = self._generate_view_lookml(semantic_model)
                 
                 # Validate syntax if enabled
                 if self.validate_syntax:
@@ -85,11 +78,12 @@ class LookMLGenerator:
                         self._validate_lookml_syntax(view_content)
                         console.print(f"    [green]✓[/green] View syntax valid")
                     except LookMLValidationError as e:
-                        validation_errors.append(f"View {view.name}: {e}")
+                        validation_errors.append(f"View {semantic_model.name}: {e}")
                         console.print(f"    [red]✗[/red] View syntax error: {e}")
 
                 # Generate view file with sanitized name
-                clean_view_name = self._sanitize_filename(view.name)
+                view_name = f"{self.view_prefix}{semantic_model.name}"
+                clean_view_name = self._sanitize_filename(view_name)
                 view_file = output_dir / f"{clean_view_name}.view.lkml"
                 generated_files.append(view_file)
                 
@@ -104,9 +98,8 @@ class LookMLGenerator:
                         f.write(view_content)
                     console.print(f"    [green]✓[/green] Created {view_file.name}")
 
-                # Generate explore
-                explore = self.mapper.semantic_model_to_explore(semantic_model)
-                explores.append(explore)
+                # Store semantic model for explore generation
+                explores.append(semantic_model)
 
             except Exception as e:
                 validation_errors.append(f"Model {semantic_model.name}: {e}")
@@ -147,87 +140,25 @@ class LookMLGenerator:
 
         return generated_files, validation_errors
 
-    def _generate_view_lookml(self, view: LookMLView) -> str:
-        """Generate LookML content for a view.
+    def _generate_view_lookml(self, semantic_model: SemanticModel) -> str:
+        """Generate LookML content for a semantic model.
 
         Args:
-            view: The LookML view to generate content for.
+            semantic_model: The semantic model to generate content for.
 
         Returns:
             The LookML content as a string.
         """
-        view_dict: Dict[str, Any] = {
-            'view': {
-                view.name: {
-                    'sql_table_name': view.sql_table_name,
-                }
-            }
-        }
-
-        # Add description if present
-        if view.description:
-            view_dict['view'][view.name]['description'] = view.description
-
-        # Add dimensions
-        if view.dimensions:
-            dimensions: Dict[str, Any] = {}
-            for dim in view.dimensions:
-                dim_dict: Dict[str, Any] = {
-                    'type': dim.type,
-                    'sql': dim.sql,
-                }
-                if dim.description:
-                    dim_dict['description'] = dim.description
-                if dim.label:
-                    dim_dict['label'] = dim.label
-                if dim.hidden:
-                    dim_dict['hidden'] = 'yes'
-                if dim.primary_key:
-                    dim_dict['primary_key'] = 'yes'
-
-                dimensions[dim.name] = dim_dict
-
-            view_dict['view'][view.name]['dimension'] = dimensions
-            
-        # Add dimension_groups
-        if view.dimension_groups:
-            dimension_groups: Dict[str, Any] = {}
-            for dim_group in view.dimension_groups:
-                dim_group_dict: Dict[str, Any] = {
-                    'type': dim_group.type,
-                    'timeframes': dim_group.timeframes,
-                    'sql': dim_group.sql,
-                }
-                if dim_group.description:
-                    dim_group_dict['description'] = dim_group.description
-                if dim_group.label:
-                    dim_group_dict['label'] = dim_group.label
-                if dim_group.hidden:
-                    dim_group_dict['hidden'] = 'yes'
-
-                dimension_groups[dim_group.name] = dim_group_dict
-
-            view_dict['view'][view.name]['dimension_group'] = dimension_groups
-
-        # Add measures
-        if view.measures:
-            measures: Dict[str, Any] = {}
-            for measure in view.measures:
-                measure_dict: Dict[str, Any] = {
-                    'type': measure.type,
-                    'sql': measure.sql,
-                }
-                if measure.description:
-                    measure_dict['description'] = measure.description
-                if measure.label:
-                    measure_dict['label'] = measure.label
-                if measure.hidden:
-                    measure_dict['hidden'] = 'yes'
-
-                measures[measure.name] = measure_dict
-
-            view_dict['view'][view.name]['measure'] = measures
-
+        # Apply view prefix if configured
+        if self.view_prefix:
+            prefixed_model = SemanticModel(
+                name=f"{self.view_prefix}{semantic_model.name}",
+                **{k: v for k, v in semantic_model.model_dump().items() if k != 'name'}
+            )
+            view_dict = prefixed_model.to_lookml_dict()
+        else:
+            view_dict = semantic_model.to_lookml_dict()
+        
         result = lkml.dump(view_dict)
         formatted_result = result if result is not None else ""
         
@@ -236,32 +167,32 @@ class LookMLGenerator:
             
         return formatted_result
 
-    def _generate_explores_lookml(self, explores: List[LookMLExplore]) -> str:
-        """Generate LookML content for explores.
+    def _generate_explores_lookml(self, semantic_models: List[SemanticModel]) -> str:
+        """Generate LookML content for explores from semantic models.
 
         Args:
-            explores: List of LookML explores to generate content for.
+            semantic_models: List of semantic models to create explores for.
 
         Returns:
             The LookML content as a string.
         """
-        explores_dict: Dict[str, Dict[str, Any]] = {'explore': {}}
-
-        for explore in explores:
+        explores = []
+        
+        for model in semantic_models:
+            explore_name = f"{self.explore_prefix}{model.name}"
+            view_name = f"{self.view_prefix}{model.name}"
+            
             explore_dict = {
+                'name': explore_name,
                 'type': 'table',
-                'from': explore.view_name,
+                'from': view_name,
             }
+            if model.description:
+                explore_dict['description'] = model.description
+                
+            explores.append(explore_dict)
 
-            if explore.description:
-                explore_dict['description'] = explore.description
-
-            if explore.hidden:
-                explore_dict['hidden'] = 'yes'
-
-            explores_dict['explore'][explore.name] = explore_dict
-
-        result = lkml.dump(explores_dict)
+        result = lkml.dump({'explores': explores})
         formatted_result = result if result is not None else ""
         
         if self.format_output:
