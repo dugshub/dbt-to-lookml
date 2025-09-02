@@ -1,11 +1,23 @@
 # Makefile for dbt-to-lookml development and testing
 
-.PHONY: help install test test-fast test-full test-unit test-integration test-golden test-cli test-performance test-error test-coverage lint format type-check clean dev-install smoke-test ci-test benchmark test-all-verbose
+.PHONY: help install test test-fast test-full test-unit test-integration test-golden test-cli test-performance test-error test-coverage lint format type-check clean dev-install smoke-test ci-test benchmark test-all-verbose \
+	lookml-generate lookml-preview lookml-validate lookml-validate-strict lookml-demo
+
+# Defaults for LookML generation commands (override via: make <target> INPUT_DIR=... OUTPUT_DIR=...)
+INPUT_DIR ?= semantic_models
+OUTPUT_DIR ?= build/lookml
 
 # Default target
 help:
 	@echo "dbt-to-lookml Development Commands"
 	@echo "=================================="
+	@echo ""
+	@echo "Generation:"
+	@echo "  lookml-preview    Dry-run generation with summary (INPUT_DIR, OUTPUT_DIR)"
+	@echo "  lookml-generate   Generate LookML files (INPUT_DIR, OUTPUT_DIR)"
+	@echo "  lookml-validate   Validate semantic models (-v)"
+	@echo "  lookml-validate-strict  Validate in strict mode (-v, --strict)"
+	@echo "  lookml-demo       Preview using default sample folder 'semantic_models/'"
 	@echo ""
 	@echo "Setup:"
 	@echo "  install          Install project dependencies"
@@ -53,68 +65,68 @@ dev-install:
 # Test targets using comprehensive test runner
 test:
 	@echo "🧪 Running essential test suite..."
-	@python scripts/run-tests.py unit
-	@python scripts/run-tests.py integration
+	@uv run python scripts/run-tests.py unit
+	@uv run python scripts/run-tests.py integration
 
 test-fast:
 	@echo "⚡ Running unit tests (fastest)..."
-	@python scripts/run-tests.py unit
+	@uv run python scripts/run-tests.py unit
 
 test-full:
 	@echo "🎯 Running complete test suite..."
-	@python scripts/run-tests.py all
+	@uv run python scripts/run-tests.py all
 
 test-unit:
 	@echo "🧪 Running unit tests with coverage..."
-	@python scripts/run-tests.py unit
+	@uv run python scripts/run-tests.py unit
 
 test-integration:
 	@echo "🔗 Running integration tests..."
-	@python scripts/run-tests.py integration
+	@uv run python scripts/run-tests.py integration
 
 test-golden:
 	@echo "🏆 Running golden file tests..."
-	@python scripts/run-tests.py golden
+	@uv run python scripts/run-tests.py golden
 
 test-cli:
 	@echo "💻 Running CLI tests..."
-	@python scripts/run-tests.py cli
+	@uv run python scripts/run-tests.py cli
 
 test-performance:
 	@echo "🚀 Running performance tests..."
-	@python scripts/run-tests.py performance
+	@uv run python scripts/run-tests.py performance
 
 test-error:
 	@echo "🚨 Running error handling tests..."
-	@python scripts/run-tests.py error
+	@uv run python scripts/run-tests.py error
 
 test-coverage:
 	@echo "📊 Generating coverage report..."
-	@python -m pytest tests/unit/ --cov=dbt_to_lookml --cov-report=html --cov-report=term-missing --cov-branch --cov-fail-under=95
+	@uv run pytest tests/unit/ --cov=dbt_to_lookml --cov-report=html --cov-report=term-missing --cov-branch --cov-fail-under=95
 	@echo "📊 Coverage report: htmlcov/index.html"
 
 smoke-test:
 	@echo "💨 Running smoke tests..."
-	@python scripts/run-tests.py smoke
+	@uv run python scripts/run-tests.py smoke
 
 test-all-verbose:
 	@echo "🎯 Running all tests with verbose output..."
-	@python scripts/run-tests.py all --verbose
+	@uv run python scripts/run-tests.py all --verbose
 
 # Code quality targets
 lint:
 	@echo "🔍 Running linter..."
-	@python scripts/run-tests.py lint
+	@uv run python scripts/run-tests.py lint
 
 format:
 	@echo "🎨 Formatting code..."
-	@python -m ruff format src/ tests/
-	@python -m ruff check src/ tests/ --fix
+	@uv run ruff format src/ tests/
+	@uv run ruff check src/ tests/ --fix
 	@echo "✅ Code formatted"
 
 type-check:
 	@echo "🔎 Running type checker..."
-	@python scripts/run-tests.py types
+	@uv run python scripts/run-tests.py types
 
 check-all: lint type-check
 	@echo "✅ All code quality checks passed"
@@ -148,7 +160,7 @@ clean-all: clean
 # CI/CD targets
 ci-test:
 	@echo "🚀 Running CI test suite..."
-	@python scripts/run-tests.py all --report test_results.json
+	@uv run python scripts/run-tests.py all --report test_results.json
 	@echo "📄 Test results saved to test_results.json"
 
 # Development workflow
@@ -171,15 +183,36 @@ first-run: dev-setup smoke-test
 
 validate-setup:
 	@echo "🔍 Validating development setup..."
-	@python -c "import dbt_to_lookml; print('✅ Package imports correctly')"
-	@python scripts/run-tests.py smoke
+	@uv run python -c "import dbt_to_lookml; print('✅ Package imports correctly')"
+	@uv run python scripts/run-tests.py smoke
 	@echo "✅ Setup validation complete"
 
 # Performance and benchmarking
 benchmark:
 	@echo "⚡ Running performance benchmarks..."
-	@python scripts/run-tests.py performance --include-slow --verbose
+	@uv run python scripts/run-tests.py performance --include-slow --verbose
 
 test-stress:
 	@echo "💪 Running stress tests..."
-	@python -m pytest tests/test_performance.py::TestPerformance::test_stress_test_many_models -v -s
+	@uv run pytest tests/test_performance.py::TestPerformance::test_stress_test_many_models -v -s
+
+# LookML generation helpers (wrap CLI until a separate tool is built)
+lookml-preview:
+	@echo "👀 Previewing LookML generation (dry run) from $(INPUT_DIR) -> $(OUTPUT_DIR)"
+	@uv run python -m dbt_to_lookml generate -i $(INPUT_DIR) -o $(OUTPUT_DIR) --dry-run --show-summary
+
+lookml-generate:
+	@echo "🧩 Generating LookML files from $(INPUT_DIR) -> $(OUTPUT_DIR)"
+	@uv run python -m dbt_to_lookml generate -i $(INPUT_DIR) -o $(OUTPUT_DIR)
+
+lookml-validate:
+	@echo "🔎 Validating semantic models in $(INPUT_DIR)"
+	@uv run python -m dbt_to_lookml validate -i $(INPUT_DIR) -v
+
+lookml-validate-strict:
+	@echo "🔒 Strict validation of semantic models in $(INPUT_DIR)"
+	@uv run python -m dbt_to_lookml validate -i $(INPUT_DIR) --strict -v
+
+lookml-demo:
+	@echo "🎬 Demo: preview generation using default sample folder (semantic_models/)"
+	@$(MAKE) lookml-preview INPUT_DIR=semantic_models OUTPUT_DIR=$(OUTPUT_DIR)
