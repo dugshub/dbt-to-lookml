@@ -1,0 +1,94 @@
+[project]
+name = "dbt-to-lookml"
+version = "0.1.0"
+description = "Convert dbt semantic models to LookML views and explores"
+readme = "README.md"
+authors = [
+    { name = "DougsHub", email = "douglasgmcfarlane@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.0",
+    "pyyaml",
+    "lkml",
+    "click>=8.0",
+    "rich",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "mypy",
+    "ruff",
+]
+
+[project.scripts]
+dbt-to-lookml = "dbt_to_lookml.__main__:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=dbt_to_lookml",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-branch",
+    "--cov-fail-under=95",
+    "-v",
+    "--tb=short",
+]
+markers = [
+    "unit: marks tests as unit tests (fast, isolated)",
+    "integration: marks tests as integration tests (slower, end-to-end)",
+    "golden: marks tests as golden file comparison tests",
+    "cli: marks tests as CLI interface tests",
+    "performance: marks tests as performance/benchmark tests",
+    "error_handling: marks tests as error handling and robustness tests",
+    "slow: marks tests as slow running (may be skipped in fast runs)",
+    "smoke: marks tests as smoke tests (quick validation)",
+    "stress: marks tests as stress tests (high load/memory)",
+    "memory: marks tests that check for memory leaks",
+    "concurrent: marks tests that test concurrent/parallel execution",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.1",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "pytest-xdist>=3.3.1",  # Parallel test execution
+    "pytest-mock>=3.11.1",  # Enhanced mocking
+    "pytest-benchmark>=4.0.0",  # Performance benchmarking
+    "pytest-clarity>=1.0.1",  # Better assertion output
+    "pytest-testmon>=2.0.1",  # Smart test selection
+    "ruff>=0.12.11",
+    "types-pyyaml>=6.0.12.20250822",
+    "psutil>=5.9.0",  # For memory usage testing
+]
