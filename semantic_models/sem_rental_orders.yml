@@ -55,18 +55,36 @@ semantic_models:
         expr: rental_id
         description: Natural rental identifier for user reference
         label: Rental ID
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Booking
+              subcategory: Booking Details
       
       - name: facility_id
         type: categorical
         expr: facility_id
         description: Natural facility identifier for user reference
         label: Facility ID
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Facility
+              subcategory: Facility Details
       
       - name: renter_id
         type: categorical
         expr: renter_id
         description: Natural renter identifier for user reference
         label: Renter ID
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Renter
+              subcategory: Renter Profile
       
       # Time Dimensions
       - name: rental_created_date
@@ -76,6 +94,12 @@ semantic_models:
         expr: rental_created_date
         description: Date when the rental was created
         label: Created Date
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Time
+              subcategory: Transaction Time
       
       - name: rental_starts_date
         type: time
@@ -84,6 +108,12 @@ semantic_models:
         expr: rental_starts_date
         description: Date when the rental period starts
         label: Start Date
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Time
+              subcategory: Service Time
       
       - name: rental_ends_date
         type: time
@@ -92,6 +122,12 @@ semantic_models:
         expr: rental_ends_date
         description: Date when the rental period ends
         label: End Date
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Time
+              subcategory: Service Time
       
       # Status Dimensions
       - name: reservation_status
@@ -99,18 +135,36 @@ semantic_models:
         expr: rental_reservation_status
         description: Current status of the rental reservation
         label: Reservation Status
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Booking
+              subcategory: Booking Status
       
       - name: payment_status
         type: categorical
         expr: rental_payment_status
         description: Payment status of the rental
         label: Payment Status
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Payment
+              subcategory: Payment Status
       
       - name: event_type
         type: categorical
         expr: rental_event_type
         description: Type of rental event
         label: Event Type
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Booking
+              subcategory: Booking Type
       
       # Booking Type Dimensions
       - name: has_monthly_subscription
@@ -118,18 +172,36 @@ semantic_models:
         expr: case when monthly_subscription_id is not null then 'Yes' else 'No' end
         description: Whether rental is associated with monthly subscription
         label: Has Monthly Subscription
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Booking
+              subcategory: Booking Type
       
       - name: has_event_booking
         type: categorical
         expr: case when event_id is not null then 'Yes' else 'No' end
         description: Whether rental is associated with an event
         label: Has Event Booking
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Booking
+              subcategory: Booking Type
       
       - name: has_partner_booking
         type: categorical
         expr: case when partner_id is not null then 'Yes' else 'No' end
         description: Whether rental came through a partner
         label: Has Partner Booking
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Booking
+              subcategory: Booking Source
       
       # Derived Category Dimensions
       - name: lead_time_category
@@ -144,6 +216,12 @@ semantic_models:
           end
         description: Categorized lead time from booking to rental start
         label: Lead Time Category
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Time
+              subcategory: Lead Time
       
       - name: duration_category
         type: categorical
@@ -158,6 +236,12 @@ semantic_models:
           end
         description: Categorized rental duration
         label: Duration Category
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Time
+              subcategory: Duration
     
     # ========== Measures ==========
     measures:
@@ -168,6 +252,12 @@ semantic_models:
         description: Total number of rental transactions
         label: Rental Count
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Volume
+              subcategory: Transaction Count
       
       - name: active_rental_count
         agg: count
@@ -175,6 +265,12 @@ semantic_models:
         description: Count of active rental transactions
         label: Active Rentals
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Volume
+              subcategory: Transaction Count
       
       - name: completed_rental_count
         agg: count
@@ -182,6 +278,12 @@ semantic_models:
         description: Count of completed rental transactions
         label: Completed Rentals
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Volume
+              subcategory: Transaction Count
       
       - name: canceled_rental_count
         agg: count
@@ -189,6 +291,12 @@ semantic_models:
         description: Count of canceled rental transactions
         label: Canceled Rentals
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Volume
+              subcategory: Transaction Count
       
       # Sum Measures - Revenue
       - name: total_checkout_amount
@@ -197,6 +305,12 @@ semantic_models:
         description: Total checkout amount across all rentals
         label: Total Checkout Amount
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Booking Revenue
       
       - name: total_spothero_net_revenue
         agg: sum
@@ -204,18 +318,36 @@ semantic_models:
         description: Total SpotHero net revenue across all rentals
         label: Total Net Revenue
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Net Revenue
       
       - name: total_operator_remit
         agg: sum
         expr: operator_remit_amount_local
         description: Total amount remitted to parking operators
         label: Total Operator Remit
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Partner Revenue
       
       - name: total_credit_used
         agg: sum
         expr: credit_used_amount_local
         description: Total credits used across all rentals
         label: Total Credits Used
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Discounts
       
       # Average Measures - Financial
       - name: avg_checkout_amount
@@ -224,18 +356,36 @@ semantic_models:
         description: Average checkout amount per rental
         label: Avg Checkout Amount
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Average Booking Value
       
       - name: avg_spothero_net_revenue
         agg: average
         expr: spothero_net_revenue_local
         description: Average SpotHero net revenue per rental
         label: Avg Net Revenue
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Average Booking Value
       
       - name: avg_cost_per_hour
         agg: average
         expr: rental_cost_per_hour_local
         description: Average cost per hour of parking
         label: Avg Cost Per Hour
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Unit Economics
       
       - name: avg_spothero_revenue_per_hour
         agg: average
@@ -243,6 +393,12 @@ semantic_models:
         description: Average SpotHero net revenue per hour
         label: Avg Revenue Per Hour
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Unit Economics
       
       # Average Measures - Time & Duration
       - name: avg_rental_duration_hours
@@ -251,6 +407,12 @@ semantic_models:
         description: Average rental duration in hours
         label: Avg Duration (Hours)
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Operations
+              subcategory: Service Duration
       
       - name: avg_lead_time_days
         agg: average
@@ -258,6 +420,12 @@ semantic_models:
         description: Average lead time from booking to rental start in days
         label: Avg Lead Time (Days)
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Operations
+              subcategory: Lead Time
       
       # Min/Max Measures
       - name: min_checkout_amount
@@ -265,9 +433,21 @@ semantic_models:
         expr: rental_checkout_amount_local
         description: Minimum checkout amount
         label: Min Checkout Amount
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Price Range
       
       - name: max_checkout_amount
         agg: max
         expr: rental_checkout_amount_local
         description: Maximum checkout amount
         label: Max Checkout Amount
+        config:
+          meta:
+            hierarchy:
+              entity: Rental Order
+              category: Revenue
+              subcategory: Price Range

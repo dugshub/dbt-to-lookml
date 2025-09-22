@@ -3,10 +3,26 @@ name = "dbt-to-lookml"
 version = "0.1.0"
 description = "Convert dbt semantic models to LookML views and explores"
 readme = "README.md"
+license = {text = "MIT"}
 authors = [
     { name = "DougsHub", email = "douglasgmcfarlane@gmail.com" }
 ]
+maintainers = [
+    { name = "DougsHub", email = "douglasgmcfarlane@gmail.com" }
+]
 requires-python = ">=3.13"
+keywords = ["dbt", "lookml", "looker", "semantic-layer", "analytics", "data-modeling"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Database",
+]
 dependencies = [
     "pydantic>=2.0",
     "pyyaml",
@@ -21,6 +37,8 @@ dev = [
     "pytest-cov",
     "mypy",
     "ruff",
+    "build",
+    "twine",
 ]
 
 [project.scripts]

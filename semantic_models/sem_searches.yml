@@ -49,6 +49,12 @@ semantic_models:
         expr: search_id
         description: Natural search identifier for user reference
         label: Search ID
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Booking
+              subcategory: Booking Details
       
       # Time Dimensions
       - name: search_date
@@ -58,6 +64,12 @@ semantic_models:
         expr: event_date
         description: Date when search occurred
         label: Search Date
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Temporal
+              subcategory: Booking Time
       
       - name: search_timestamp
         type: time
@@ -66,6 +78,12 @@ semantic_models:
         expr: event_timestamp
         description: Timestamp of search event
         label: Search Time
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Temporal
+              subcategory: Booking Time
       
       # Search Context Dimensions
       - name: search_source
@@ -73,18 +91,36 @@ semantic_models:
         expr: search_source
         description: Source of the search (web, mobile, etc.)
         label: Search Source
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Booking
+              subcategory: Booking Source
       
       - name: device_type
         type: categorical
         expr: device_type
         description: Device type used for search
         label: Device Type
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Platform
+              subcategory: Device Type
       
       - name: city
         type: categorical
         expr: city
         description: City where search was performed
         label: City
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Geographic
+              subcategory: City Market
       
       # Search Criteria Dimensions
       - name: parking_type
@@ -92,12 +128,24 @@ semantic_models:
         expr: parking_type
         description: Type of parking searched for
         label: Parking Type
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Facility
+              subcategory: Facility Type
       
       - name: action_type
         type: categorical
         expr: action_type
         description: Type of search action
         label: Action Type
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Booking
+              subcategory: Booking Details
       
       # Search Behavior Flags
       - name: is_long_search
@@ -105,24 +153,48 @@ semantic_models:
         expr: is_long_search
         description: Flag for searches lasting over 60 seconds
         label: Is Long Search
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Renter
+              subcategory: Renter Behavior
       
       - name: is_high_engagement_search
         type: categorical
         expr: is_high_engagement_search
         description: Flag for searches with multiple actions
         label: Is High Engagement
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Renter
+              subcategory: Renter Behavior
       
       - name: has_nearby_results
         type: categorical
         expr: has_nearby_results
         description: Flag for searches with nearby results
         label: Has Nearby Results
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Geographic
+              subcategory: Proximity
       
       - name: is_filter_applied
         type: categorical
         expr: is_filter_applied
         description: Flag for searches with filters applied
         label: Filter Applied
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Renter
+              subcategory: Renter Behavior
     
     # ========== Measures ==========
     measures:
@@ -133,6 +205,12 @@ semantic_models:
         description: Total number of searches
         label: Search Count
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Volume
+              subcategory: Search Count
       
       - name: unique_searches
         agg: count_distinct
@@ -140,6 +218,12 @@ semantic_models:
         description: Count of unique searches
         label: Unique Searches
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Volume
+              subcategory: Search Count
       
       # User & Session Measures
       - name: unique_searching_users
@@ -148,12 +232,24 @@ semantic_models:
         description: Count of unique users who searched
         label: Searching Users
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Volume
+              subcategory: Renter Count
       
       - name: unique_searching_sessions
         agg: count_distinct
         expr: session_id
         description: Count of unique sessions with searches
         label: Searching Sessions
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Volume
+              subcategory: Search Count
       
       # Duration & Activity Measures
       - name: avg_search_duration_seconds
@@ -162,12 +258,24 @@ semantic_models:
         description: Average search duration in seconds
         label: Avg Search Duration (Sec)
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Operational
+              subcategory: Parking Duration
       
       - name: total_search_actions
         agg: sum
         expr: total_search_actions
         description: Total number of search actions
         label: Total Search Actions
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Volume
+              subcategory: Search Count
       
       # Results Quality Measures
       - name: avg_results_returned
@@ -175,12 +283,24 @@ semantic_models:
         expr: total_results_returned
         description: Average number of results returned per search
         label: Avg Results Returned
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Volume
+              subcategory: Facility Count
       
       - name: avg_nearby_results
         agg: average
         expr: results_under_500m
         description: Average results within 500m
         label: Avg Nearby Results
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Volume
+              subcategory: Facility Count
       
       # Engagement Measures
       - name: high_engagement_searches
@@ -189,9 +309,21 @@ semantic_models:
         description: Count of high engagement searches
         label: High Engagement Searches
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Conversion
+              subcategory: Search To Book
       
       - name: searches_with_filters
         agg: sum
         expr: case when is_filter_applied = true then 1 else 0 end
         description: Count of searches with filters applied
         label: Filtered Searches
+        config:
+          meta:
+            hierarchy:
+              entity: Search
+              category: Volume
+              subcategory: Search Count

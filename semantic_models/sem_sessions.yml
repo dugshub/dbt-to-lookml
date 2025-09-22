@@ -47,6 +47,12 @@ semantic_models:
         expr: session_id
         description: Natural session identifier for user reference
         label: Session ID
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Booking
+              subcategory: Booking Details
       
       # Time Dimensions
       - name: session_start
@@ -56,6 +62,12 @@ semantic_models:
         expr: session_starts_at
         description: Session start date
         label: Session Start
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Temporal
+              subcategory: Booking Time
       
       - name: session_end
         type: time
@@ -64,6 +76,12 @@ semantic_models:
         expr: session_ends_at
         description: Session end date
         label: Session End
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Temporal
+              subcategory: Booking Time
       
       - name: event_date
         type: time
@@ -72,6 +90,12 @@ semantic_models:
         expr: event_date
         description: Date of the session event
         label: Event Date
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Temporal
+              subcategory: Booking Time
       
       # Platform & Device Dimensions
       - name: platform
@@ -79,6 +103,12 @@ semantic_models:
         expr: platform
         description: Platform used for the session
         label: Platform
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Platform
+              subcategory: Device Type
       
       # User State Dimensions
       - name: is_logged_in
@@ -86,12 +116,24 @@ semantic_models:
         expr: is_logged_in
         description: Whether user was logged in during session
         label: Is Logged In
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Renter
+              subcategory: Renter Type
       
       - name: user_session_type
         type: categorical
         expr: user_session_type
         description: Type of user session
         label: User Session Type
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Renter
+              subcategory: Renter Type
       
       # Session Characteristics
       - name: session_length_bucket
@@ -99,6 +141,12 @@ semantic_models:
         expr: session_length_bucket
         description: Categorized session length
         label: Session Length Bucket
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Temporal
+              subcategory: Duration
       
       # Marketing Dimensions
       - name: marketing_channel
@@ -106,24 +154,48 @@ semantic_models:
         expr: marketing_channel
         description: Marketing channel attribution
         label: Marketing Channel
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Partner
+              subcategory: Referral Source
       
       - name: utm_source
         type: categorical
         expr: utm_source
         description: UTM source parameter
         label: UTM Source
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Partner
+              subcategory: Referral Source
       
       - name: utm_medium
         type: categorical
         expr: utm_medium
         description: UTM medium parameter
         label: UTM Medium
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Partner
+              subcategory: Referral Source
       
       - name: utm_campaign
         type: categorical
         expr: utm_campaign
         description: UTM campaign parameter
         label: UTM Campaign
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Partner
+              subcategory: Referral Source
     
     # ========== Measures ==========
     measures:
@@ -134,6 +206,12 @@ semantic_models:
         description: Count of sessions
         label: Session Count
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Volume
+              subcategory: Search Count
       
       - name: unique_sessions
         agg: count_distinct
@@ -141,6 +219,12 @@ semantic_models:
         description: Count of unique sessions
         label: Unique Sessions
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Volume
+              subcategory: Search Count
       
       # User Count Measures
       - name: unique_users
@@ -148,12 +232,24 @@ semantic_models:
         expr: user_id
         description: Count of unique registered users
         label: Unique Users
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Volume
+              subcategory: Renter Count
       
       - name: unique_anonymous_users
         agg: count_distinct
         expr: anonymous_id
         description: Count of unique anonymous users
         label: Unique Anonymous Users
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Volume
+              subcategory: Renter Count
       
       # Session Type Measures
       - name: logged_in_sessions
@@ -162,12 +258,24 @@ semantic_models:
         description: Count of sessions where user was logged in
         label: Logged In Sessions
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Volume
+              subcategory: Search Count
       
       - name: anonymous_sessions
         agg: sum
         expr: case when user_id is null then 1 else 0 end
         description: Count of anonymous sessions
         label: Anonymous Sessions
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Volume
+              subcategory: Search Count
       
       # Duration Measures
       - name: avg_session_length_minutes
@@ -176,9 +284,21 @@ semantic_models:
         description: Average session length in minutes
         label: Avg Session Length (Min)
         create_metric: true
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Operational
+              subcategory: Parking Duration
       
       - name: total_session_time_minutes
         agg: sum
         expr: session_length_minutes
         description: Total session time across all sessions in minutes
         label: Total Session Time (Min)
+        config:
+          meta:
+            hierarchy:
+              entity: Session
+              category: Operational
+              subcategory: Parking Duration

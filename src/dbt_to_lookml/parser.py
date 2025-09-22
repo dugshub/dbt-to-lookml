@@ -15,6 +15,7 @@ from dbt_to_lookml.models import (
     Dimension,
     DimensionType,
     Entity,
+    Hierarchy,
     Measure,
     SemanticModel,
 )
@@ -172,6 +173,30 @@ class SemanticModelParser:
                         # Clean up multiline expressions
                         expr = expr.strip()
                     
+                    # Parse config with hierarchy if present
+                    dim_config = None
+                    if 'config' in dim_data:
+                        config_data = dim_data['config']
+                        config_meta = None
+                        if 'meta' in config_data:
+                            meta_data = config_data['meta']
+                            hierarchy = None
+                            if 'hierarchy' in meta_data:
+                                hierarchy_data = meta_data['hierarchy']
+                                hierarchy = Hierarchy(
+                                    entity=hierarchy_data.get('entity'),
+                                    category=hierarchy_data.get('category'),
+                                    subcategory=hierarchy_data.get('subcategory'),
+                                )
+                            config_meta = ConfigMeta(
+                                domain=meta_data.get('domain'),
+                                owner=meta_data.get('owner'),
+                                contains_pii=meta_data.get('contains_pii'),
+                                update_frequency=meta_data.get('update_frequency'),
+                                hierarchy=hierarchy,
+                            )
+                        dim_config = Config(meta=config_meta)
+                    
                     dimension = Dimension(
                         name=dim_data['name'],
                         type=DimensionType(dim_data['type']),
@@ -179,6 +204,7 @@ class SemanticModelParser:
                         description=dim_data.get('description'),
                         label=dim_data.get('label'),
                         type_params=dim_data.get('type_params'),
+                        config=dim_config,
                     )
                     dimensions.append(dimension)
                 except Exception as e:
@@ -194,6 +220,30 @@ class SemanticModelParser:
                         # Clean up multiline expressions
                         expr = expr.strip()
                     
+                    # Parse config with hierarchy if present
+                    measure_config = None
+                    if 'config' in measure_data:
+                        config_data = measure_data['config']
+                        config_meta = None
+                        if 'meta' in config_data:
+                            meta_data = config_data['meta']
+                            hierarchy = None
+                            if 'hierarchy' in meta_data:
+                                hierarchy_data = meta_data['hierarchy']
+                                hierarchy = Hierarchy(
+                                    entity=hierarchy_data.get('entity'),
+                                    category=hierarchy_data.get('category'),
+                                    subcategory=hierarchy_data.get('subcategory'),
+                                )
+                            config_meta = ConfigMeta(
+                                domain=meta_data.get('domain'),
+                                owner=meta_data.get('owner'),
+                                contains_pii=meta_data.get('contains_pii'),
+                                update_frequency=meta_data.get('update_frequency'),
+                                hierarchy=hierarchy,
+                            )
+                        measure_config = Config(meta=config_meta)
+                    
                     measure = Measure(
                         name=measure_data['name'],
                         agg=AggregationType(measure_data['agg']),
@@ -201,6 +251,7 @@ class SemanticModelParser:
                         description=measure_data.get('description'),
                         label=measure_data.get('label'),
                         create_metric=measure_data.get('create_metric'),
+                        config=measure_config,
                     )
                     measures.append(measure)
                 except Exception as e:

@@ -1,36 +1,24 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/dbt_to_lookml/`: Core package — `parser.py`, `mapper.py`, `generator.py`, `models.py`, CLI in `__main__.py`.
-- `tests/`: Pytest suites — `unit/`, `integration/`, plus `test_cli.py`, `test_golden.py`, `test_performance.py`, `test_error_handling.py`, and `fixtures/`.
-- `scripts/`: Utilities (e.g., `run-tests.py` orchestrates lint, types, and test modes).
-- `Makefile`: Common dev commands. Other docs/specs in `IMPLEMENTATION_PLAN.md`, `CLAUDE.md`, `specs/`, and sample `semantic_models/`.
+Core code lives in `src/dbt_to_lookml/`, with `parser.py`, `mapper.py`, `generator.py`, `models.py`, and the CLI entrypoint in `__main__.py`. Tests sit under `tests/`, split into `unit/`, `integration/`, and targeted suites such as `test_cli.py` and `test_golden.py` with fixtures in `tests/fixtures/`. Utilities like `scripts/run-tests.py` orchestrate CI-like workflows, while reference docs live in `IMPLEMENTATION_PLAN.md`, `CLAUDE.md`, `specs/`, and sample LookML inputs in `semantic_models/`.
 
 ## Build, Test, and Development Commands
-- Install: `make install` (runtime deps via uv), `make dev-install` or `make dev-setup` (adds dev tools).
-- Test quick sets: `make test` (unit+integration), `make test-fast`, `make test-full`.
-- Quality: `make lint` (ruff), `make type-check` (mypy), `make format` (ruff format+fix), `make quality-gate` (lint+types+tests).
-- Coverage report: `make test-coverage` (HTML at `htmlcov/index.html`).
-- CI-like run: `make ci-test` (writes `test_results.json`).
+- `make install` — sync runtime dependencies via `uv`.
+- `make dev-install` / `make dev-setup` — add linters, type checkers, and tooling.
+- `make test`, `make test-fast`, `make test-full` — run progressively broader pytest suites.
+- `make lint`, `make type-check`, `make format` — enforce Ruff style, mypy strict typing, and formatting fixes.
+- `make quality-gate` — run lint, type checks, and tests together before commits.
+- `dbt-to-lookml generate -i semantic_models -o out --dry-run` — exercise the CLI locally.
 
 ## Coding Style & Naming Conventions
-- Python 3.13, type hints required; mypy `strict=true`.
-- Ruff enforced (line length 88; rules: E,F,I,N,W,UP). Run `make lint` / `make format` before commits.
-- Modules, functions, variables: `snake_case`; classes and Pydantic models: `PascalCase`.
-- Keep docstrings concise; prefer explicit names over abbreviations.
+Target Python 3.13 with strict typing; annotate functions and dataclasses. Follow Ruff’s 88-character line width, rulesets E,F,I,N,W,UP, and prefer descriptive snake_case for variables and functions, PascalCase for classes and Pydantic models. Keep docstrings concise and only introduce ASCII characters.
 
 ## Testing Guidelines
-- Framework: pytest with markers (`unit`, `integration`, `golden`, `cli`, `performance`, `error_handling`, `smoke`, `slow`).
-- Coverage: branch coverage with threshold `--cov-fail-under=95`.
-- Naming: files `tests/**/test_*.py`; classes `Test*`; functions `test_*` (configured in `pyproject.toml`).
-- Examples: `pytest -m unit -q`, `pytest tests/unit/test_parser.py -q`, or `python scripts/run-tests.py all -v`.
+Use pytest with markers like `unit`, `integration`, `cli`, and `golden`. Naming follows `tests/**/test_*.py`, `Test*` classes, and `test_*` functions. Aim for branch coverage ≥95% (`pytest --cov --cov-fail-under=95`) and leverage targeted runs such as `pytest -m unit -q` or `python scripts/run-tests.py all -v` before pushing.
 
 ## Commit & Pull Request Guidelines
-- Commit style follows Conventional Commits (seen in history): `feat:`, `fix:`, `test:`, `docs:`, `chore:`, `ci:`. Use imperative mood and scope where helpful.
-- PRs must include: clear description, linked issues, CLI examples (e.g., `dbt-to-lookml generate -i semantic_models -o out --dry-run`), and notes on tests/coverage.
-- Before opening: run `make quality-gate` and ensure formatting, typing, and coverage pass.
+Write Conventional Commits (e.g., `feat(generator): add lookml flag`). Each PR should link issues, describe the change, cite relevant CLI runs, and note test coverage. Run `make quality-gate` locally, attach output from representative commands, and mention any follow-up work.
 
 ## Security & Configuration Tips
-- Use `uv sync` (via Make targets) to manage locked deps (`uv.lock`). Python version pinned in `.python-version`.
-- Generator requires `lkml`; CLI entrypoint is `dbt-to-lookml`.
-- Avoid committing secrets; prefer environment variables and local config files ignored by Git.
+Dependencies are locked via `uv.lock`; use `uv sync` (through the Make targets) to stay in sync. Respect `.python-version` when creating virtual environments. Keep secrets out of source control—configure them through environment variables or ignored local files.

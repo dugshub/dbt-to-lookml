@@ -38,6 +38,12 @@ semantic_models:
         expr: rental_id
         description: Natural key for rental (for user reference/filtering)
         label: Rental ID
+        config:
+          meta:
+            hierarchy:
+              entity: Rental
+              category: Booking
+              subcategory: Booking Details
       
       # Business Rule Dimensions
       - name: rental_rule_type_title
@@ -45,12 +51,24 @@ semantic_models:
         expr: rental_rule_type_title
         description: Type of pricing rule applied to the rental transaction
         label: Pricing Rule Type
+        config:
+          meta:
+            hierarchy:
+              entity: Rental
+              category: Booking
+              subcategory: Booking Rules
       
       - name: payment_type_title
         type: categorical
         expr: payment_type_title
         description: Payment method used for the transaction
         label: Payment Method
+        config:
+          meta:
+            hierarchy:
+              entity: Rental
+              category: Payment
+              subcategory: Payment Method
       
       # Source & Channel Dimensions
       - name: rental_source_title
@@ -58,18 +76,36 @@ semantic_models:
         expr: rental_source_title
         description: Source channel through which the rental was created
         label: Source Channel
+        config:
+          meta:
+            hierarchy:
+              entity: Rental
+              category: Booking
+              subcategory: Booking Source
       
       - name: rental_source_application
         type: categorical
         expr: rental_source_application
         description: Application used to create the rental
         label: Source Application
+        config:
+          meta:
+            hierarchy:
+              entity: Rental
+              category: Booking
+              subcategory: Booking Source
       
       - name: rental_source_device_category
         type: categorical
         expr: rental_source_device_category
         description: Device category used for the rental (mobile, desktop, tablet)
         label: Device Category
+        config:
+          meta:
+            hierarchy:
+              entity: Rental
+              category: Technology
+              subcategory: Device Type
       
       # User Type Dimensions
       - name: purchased_as_guest
@@ -77,3 +113,9 @@ semantic_models:
         expr: purchased_as_guest
         description: Whether the rental was purchased without a user account
         label: Purchased as Guest
+        config:
+          meta:
+            hierarchy:
+              entity: Rental
+              category: Renter
+              subcategory: Renter Type

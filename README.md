@@ -11,12 +11,33 @@ Convert dbt semantic models into LookML views and explores with validation, form
 - Optional: `uv` for fast, locked dependency management (repo includes `uv.lock`).
 
 ## Installation
-- With uv (recommended):
-  - `make dev-setup` (installs runtime + dev deps)
-  - or `make install` (runtime only)
-- With pip:
-  - `python -m venv .venv && source .venv/bin/activate`
-  - `pip install -e .[dev]`
+
+### From Source (Recommended for now)
+```bash
+git clone https://github.com/yourusername/dbt-to-lookml.git
+cd dbt-to-lookml
+pip install -e .
+```
+
+### Using Pre-built Package
+```bash
+# Build the package
+python -m build
+
+# Install from wheel
+pip install dist/dbt_to_lookml-0.1.0-py3-none-any.whl
+```
+
+### For Development
+```bash
+# With all dev dependencies
+pip install -e ".[dev]"
+
+# Or using uv (faster)
+uv pip install -e ".[dev]"
+```
+
+See [INSTALL.md](INSTALL.md) for detailed installation instructions.
 
 ## Quickstart
 1) Place semantic model YAML files in a folder (e.g., `semantic_models/`).
@@ -32,11 +53,13 @@ Convert dbt semantic models into LookML views and explores with validation, form
 - `dbt-to-lookml validate -i <input_dir> [--strict] [-v]`
 
 ## Project Structure
-- `src/dbt_to_lookml/`: Core package (`parser.py`, `mapper.py`, `generator.py`, models, CLI).
-- `tests/`: Unit, integration, CLI, golden, performance, and error-handling tests.
-- `scripts/`: Tooling, notably `run-tests.py`.
-- `semantic_models/`: Sample inputs for testing/experiments.
-- `Makefile`: Common dev commands.
+- `src/dbt_to_lookml/`: Core package (`parser.py`, `generator.py`, `models.py`, CLI)
+- `tests/`: Unit, integration, CLI, golden, performance, and error-handling tests
+- `scripts/`: Tooling scripts and utilities
+- `semantic_models/`: Sample inputs for testing/experiments
+- `Makefile`: Common dev commands
+- `USAGE.md`: Detailed CLI usage guide
+- `INSTALL.md`: Installation instructions
 
 ## Development
 - Common commands (see `Makefile`):

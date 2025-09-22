@@ -40,6 +40,14 @@ class TimeGranularity(str, Enum):
     MINUTE = "minute"
 
 
+class Hierarchy(BaseModel):
+    """Represents the 3-tier hierarchy for labeling."""
+    
+    entity: Optional[str] = None
+    category: Optional[str] = None
+    subcategory: Optional[str] = None
+
+
 class ConfigMeta(BaseModel):
     """Represents metadata in a config section."""
 
@@ -47,6 +55,7 @@ class ConfigMeta(BaseModel):
     owner: Optional[str] = None
     contains_pii: Optional[bool] = None
     update_frequency: Optional[str] = None
+    hierarchy: Optional[Hierarchy] = None
 
 
 class Config(BaseModel):
@@ -89,6 +98,7 @@ class Dimension(BaseModel):
     description: Optional[str] = None
     label: Optional[str] = None
     type_params: Optional[dict[str, Any]] = None
+    config: Optional[Config] = None
 
     def to_lookml_dict(self) -> dict[str, Any]:
         """Convert dimension to LookML format."""
@@ -96,6 +106,22 @@ class Dimension(BaseModel):
             return self._to_dimension_group_dict()
         else:
             return self._to_dimension_dict()
+    
+    def get_dimension_labels(self) -> tuple[Optional[str], Optional[str]]:
+        """Get view_label and group_label for dimension based on hierarchy.
+        
+        Returns:
+            Tuple of (view_label, group_label) where:
+            - view_label is the entity name
+            - group_label is the category name
+        """
+        if self.config and self.config.meta and self.config.meta.hierarchy:
+            hierarchy = self.config.meta.hierarchy
+            # Format entity and category with proper capitalization
+            view_label = hierarchy.entity.replace('_', ' ').title() if hierarchy.entity else None
+            group_label = hierarchy.category.replace('_', ' ').title() if hierarchy.category else None
+            return view_label, group_label
+        return None, None
 
     def _to_dimension_dict(self) -> dict[str, Any]:
         """Convert categorical dimension to LookML dimension."""
@@ -109,6 +135,13 @@ class Dimension(BaseModel):
             result['description'] = self.description
         if self.label:
             result['label'] = self.label
+        
+        # Add hierarchy labels
+        view_label, group_label = self.get_dimension_labels()
+        if view_label:
+            result['view_label'] = view_label
+        if group_label:
+            result['group_label'] = group_label
             
         return result
 
@@ -133,6 +166,13 @@ class Dimension(BaseModel):
             result['description'] = self.description
         if self.label:
             result['label'] = self.label
+        
+        # Add hierarchy labels
+        view_label, group_label = self.get_dimension_labels()
+        if view_label:
+            result['view_label'] = view_label
+        if group_label:
+            result['group_label'] = group_label
             
         return result
 
@@ -146,7 +186,24 @@ class Measure(BaseModel):
     description: Optional[str] = None
     label: Optional[str] = None
     create_metric: Optional[bool] = None
+    config: Optional[Config] = None
 
+    def get_measure_labels(self) -> tuple[Optional[str], Optional[str]]:
+        """Get view_label and group_label for measure based on hierarchy.
+        
+        Returns:
+            Tuple of (view_label, group_label) where:
+            - view_label is the category name
+            - group_label is the subcategory name
+        """
+        if self.config and self.config.meta and self.config.meta.hierarchy:
+            hierarchy = self.config.meta.hierarchy
+            # Format category and subcategory with proper capitalization
+            view_label = hierarchy.category.replace('_', ' ').title() if hierarchy.category else None
+            group_label = hierarchy.subcategory.replace('_', ' ').title() if hierarchy.subcategory else None
+            return view_label, group_label
+        return None, None
+    
     def to_lookml_dict(self) -> dict[str, Any]:
         """Convert measure to LookML format."""
         # Map dbt aggregation types to LookML measure types
@@ -170,6 +227,13 @@ class Measure(BaseModel):
             result['description'] = self.description
         if self.label:
             result['label'] = self.label
+        
+        # Add hierarchy labels
+        view_label, group_label = self.get_measure_labels()
+        if view_label:
+            result['view_label'] = view_label
+        if group_label:
+            result['group_label'] = group_label
             
         return result
 
