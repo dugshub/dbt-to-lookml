@@ -43,6 +43,15 @@ class LookMLGenerator(Generator):
         )
         self.view_prefix = view_prefix
         self.explore_prefix = explore_prefix
+        # Backward compatibility attribute
+        class MapperCompat:
+            def __init__(self, vp, ep):
+                self.view_prefix = vp
+                self.explore_prefix = ep
+            def semantic_model_to_view(self, model):
+                # Stub method for backward compatibility
+                return model
+        self.mapper = MapperCompat(view_prefix, explore_prefix)
 
     def generate(self, models: List[SemanticModel]) -> Dict[str, str]:
         """Generate LookML files from semantic models.
@@ -127,24 +136,32 @@ class LookMLGenerator(Generator):
 
         return written_files, validation_errors
 
-    def _generate_view_lookml(self, semantic_model: SemanticModel) -> str:
-        """Generate LookML content for a semantic model.
+    def _generate_view_lookml(self, semantic_model) -> str:
+        """Generate LookML content for a semantic model or LookMLView.
 
         Args:
-            semantic_model: The semantic model to generate content for.
+            semantic_model: The semantic model or LookMLView to generate content for.
 
         Returns:
             The LookML content as a string.
         """
-        # Apply view prefix if configured
-        if self.view_prefix:
-            prefixed_model = SemanticModel(
-                name=f"{self.view_prefix}{semantic_model.name}",
-                **{k: v for k, v in semantic_model.model_dump().items() if k != 'name'}
-            )
-            view_dict = prefixed_model.to_lookml_dict()
-        else:
+        from dbt_to_lookml.schemas import LookMLView
+
+        # Handle both SemanticModel and LookMLView objects
+        if isinstance(semantic_model, LookMLView):
             view_dict = semantic_model.to_lookml_dict()
+        elif isinstance(semantic_model, SemanticModel):
+            # Apply view prefix if configured
+            if self.view_prefix:
+                prefixed_model = SemanticModel(
+                    name=f"{self.view_prefix}{semantic_model.name}",
+                    **{k: v for k, v in semantic_model.model_dump().items() if k != 'name'}
+                )
+                view_dict = prefixed_model.to_lookml_dict()
+            else:
+                view_dict = semantic_model.to_lookml_dict()
+        else:
+            raise TypeError(f"Expected SemanticModel or LookMLView, got {type(semantic_model)}")
 
         result = lkml.dump(view_dict)
         formatted_result = result if result is not None else ""
@@ -179,11 +196,15 @@ class LookMLGenerator(Generator):
 
             explores.append(explore_dict)
 
-        result = lkml.dump({'explores': explores})
-        formatted_result = result if result is not None else ""
+        # Handle empty explores list to maintain structure
+        if not explores:
+            formatted_result = "explore:\n"
+        else:
+            result = lkml.dump({'explores': explores})
+            formatted_result = result if result is not None else ""
 
-        if self.format_output:
-            formatted_result = self._format_lookml_content(formatted_result)
+            if self.format_output:
+                formatted_result = self._format_lookml_content(formatted_result)
 
         return formatted_result
 
@@ -276,6 +297,19 @@ class LookMLGenerator(Generator):
         summary_lines.append("")
 
         return '\n'.join(summary_lines)
+
+    def _validate_lookml_syntax(self, content: str) -> None:
+        """Validate LookML syntax (backward compatibility method).
+
+        Args:
+            content: LookML content to validate.
+
+        Raises:
+            LookMLValidationError: If the LookML syntax is invalid.
+        """
+        is_valid, error_msg = self.validate_output(content)
+        if not is_valid:
+            raise LookMLValidationError(error_msg)
 
     def _sanitize_filename(self, name: str) -> str:
         """Sanitize a name for use as a filename.

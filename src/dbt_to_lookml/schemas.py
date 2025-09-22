@@ -161,6 +161,7 @@ class Measure(BaseModel):
     label: Optional[str] = None
     create_metric: Optional[bool] = None
     config: Optional[Config] = None
+    non_additive_dimension: Optional[dict[str, Any]] = None  # For backward compatibility
 
     def get_measure_labels(self) -> tuple[Optional[str], Optional[str]]:
         """Get view_label and group_label for measure based on hierarchy.
@@ -312,11 +313,54 @@ class LookMLView(BaseModel):
     dimension_groups: list[LookMLDimensionGroup] = Field(default_factory=list)
     measures: list[LookMLMeasure] = Field(default_factory=list)
 
+    def to_lookml_dict(self) -> dict[str, Any]:
+        """Convert LookML view to dictionary format."""
+        def convert_bools(d: dict) -> dict:
+            """Convert boolean values to LookML-compatible strings."""
+            result = {}
+            for k, v in d.items():
+                if isinstance(v, bool):
+                    result[k] = "yes" if v else "no"
+                elif isinstance(v, dict):
+                    result[k] = convert_bools(v)
+                elif isinstance(v, list):
+                    result[k] = [convert_bools(item) if isinstance(item, dict) else item for item in v]
+                else:
+                    result[k] = v
+            return result
+
+        view_dict: dict[str, Any] = {
+            'name': self.name,
+            'sql_table_name': self.sql_table_name,
+        }
+
+        if self.description:
+            view_dict['description'] = self.description
+
+        if self.dimensions:
+            view_dict['dimensions'] = [
+                convert_bools(dim.model_dump(exclude_none=True)) for dim in self.dimensions
+            ]
+
+        if self.dimension_groups:
+            view_dict['dimension_groups'] = [
+                convert_bools(dg.model_dump(exclude_none=True)) for dg in self.dimension_groups
+            ]
+
+        if self.measures:
+            view_dict['measures'] = [
+                convert_bools(measure.model_dump(exclude_none=True)) for measure in self.measures
+            ]
+
+        return {'views': [view_dict]}
+
 
 class LookMLExplore(BaseModel):
     """Represents a LookML explore."""
 
     name: str
     view_name: str
+    type: Optional[str] = "table"  # Default type
     description: Optional[str] = None
     hidden: Optional[bool] = None
+    joins: list[dict[str, Any]] = Field(default_factory=list)  # For backward compatibility
