@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List
 
 import yaml
 from pydantic import ValidationError
 
+from dbt_to_lookml.interfaces.parser import Parser
 from dbt_to_lookml.models import (
     AggregationType,
     Config,
@@ -21,19 +22,10 @@ from dbt_to_lookml.models import (
 )
 
 
-class SemanticModelParser:
+class DbtParser(Parser):
     """Parser for dbt semantic model YAML files."""
 
-    def __init__(self, strict_mode: bool = False) -> None:
-        """Initialize the parser.
-
-        Args:
-            strict_mode: If True, raise errors on validation issues.
-                        If False, log warnings and continue.
-        """
-        self.strict_mode = strict_mode
-
-    def parse_file(self, file_path: Path) -> list[SemanticModel]:
+    def parse_file(self, file_path: Path) -> List[SemanticModel]:
         """Parse a single YAML file containing semantic models.
 
         Args:
@@ -50,8 +42,7 @@ class SemanticModelParser:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        with open(file_path, encoding='utf-8') as f:
-            content = yaml.safe_load(f)
+        content = self.read_yaml(file_path)
 
         if not content:
             return []
@@ -75,13 +66,11 @@ class SemanticModelParser:
                 semantic_model = self._parse_semantic_model(model_data)
                 semantic_models.append(semantic_model)
             except (ValidationError, ValueError) as e:
-                if self.strict_mode:
-                    raise
-                print(f"Warning: Skipping invalid model in {file_path}: {e}")
+                self.handle_error(e, f"Skipping invalid model in {file_path}")
 
         return semantic_models
 
-    def parse_directory(self, directory: Path) -> list[SemanticModel]:
+    def parse_directory(self, directory: Path) -> List[SemanticModel]:
         """Parse all YAML files in a directory.
 
         Args:
@@ -100,22 +89,61 @@ class SemanticModelParser:
                 models = self.parse_file(yaml_file)
                 semantic_models.extend(models)
             except Exception as e:
-                if self.strict_mode:
-                    raise
-                print(f"Warning: Failed to parse {yaml_file}: {e}")
+                self.handle_error(e, f"Failed to parse {yaml_file}")
 
         for yaml_file in directory.glob("*.yaml"):
             try:
                 models = self.parse_file(yaml_file)
                 semantic_models.extend(models)
             except Exception as e:
-                if self.strict_mode:
-                    raise
-                print(f"Warning: Failed to parse {yaml_file}: {e}")
+                self.handle_error(e, f"Failed to parse {yaml_file}")
 
         return semantic_models
 
-    def _parse_semantic_model(self, model_data: dict[str, Any]) -> SemanticModel:
+    def validate(self, content: Dict[str, Any]) -> bool:
+        """Validate that content contains valid dbt semantic model structure.
+
+        Args:
+            content: Parsed YAML content to validate.
+
+        Returns:
+            True if valid dbt semantic model structure, False otherwise.
+        """
+        if not content:
+            return False
+
+        # Check for semantic_models key or direct model structure
+        if isinstance(content, dict):
+            if 'semantic_models' in content:
+                models = content['semantic_models']
+                if not isinstance(models, list):
+                    return False
+                # Check first model has required fields
+                if models and len(models) > 0:
+                    return self._validate_model_structure(models[0])
+            else:
+                # Direct model structure
+                return self._validate_model_structure(content)
+        elif isinstance(content, list):
+            # List of models
+            if content and len(content) > 0:
+                return self._validate_model_structure(content[0])
+
+        return False
+
+    def _validate_model_structure(self, model: Dict[str, Any]) -> bool:
+        """Validate a single model structure has required fields.
+
+        Args:
+            model: Model dictionary to validate.
+
+        Returns:
+            True if valid structure, False otherwise.
+        """
+        # Required fields for a semantic model
+        return 'name' in model and 'model' in model
+
+    def _parse_semantic_model(self, model_data: Dict[str, Any]) -> SemanticModel:
         """Parse a single semantic model from dictionary data.
 
         Args:
@@ -172,7 +200,7 @@ class SemanticModelParser:
                     if expr and isinstance(expr, str):
                         # Clean up multiline expressions
                         expr = expr.strip()
-                    
+
                     # Parse config with hierarchy if present
                     dim_config = None
                     if 'config' in dim_data:
@@ -196,7 +224,7 @@ class SemanticModelParser:
                                 hierarchy=hierarchy,
                             )
                         dim_config = Config(meta=config_meta)
-                    
+
                     dimension = Dimension(
                         name=dim_data['name'],
                         type=DimensionType(dim_data['type']),
@@ -219,7 +247,7 @@ class SemanticModelParser:
                     if expr and isinstance(expr, str):
                         # Clean up multiline expressions
                         expr = expr.strip()
-                    
+
                     # Parse config with hierarchy if present
                     measure_config = None
                     if 'config' in measure_data:
@@ -243,7 +271,7 @@ class SemanticModelParser:
                                 hierarchy=hierarchy,
                             )
                         measure_config = Config(meta=config_meta)
-                    
+
                     measure = Measure(
                         name=measure_data['name'],
                         agg=AggregationType(measure_data['agg']),
@@ -267,7 +295,7 @@ class SemanticModelParser:
                 dimensions=dimensions,
                 measures=measures,
             )
-            
+
         except Exception as e:
             model_name = model_data.get('name', 'unknown')
             raise ValueError(f"Error parsing semantic model '{model_name}': {e}") from e

@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from dbt_to_lookml.generator import LookMLGenerator, LookMLValidationError
+from dbt_to_lookml.generators.lookml import LookMLGenerator, LookMLValidationError
 from dbt_to_lookml.models import (
     AggregationType,
     Dimension,

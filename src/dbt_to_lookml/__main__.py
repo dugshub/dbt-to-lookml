@@ -5,10 +5,10 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from dbt_to_lookml.parser import SemanticModelParser
+from dbt_to_lookml.parsers.dbt import DbtParser
 
 try:
-    from dbt_to_lookml.generator import LookMLGenerator
+    from dbt_to_lookml.generators.lookml import LookMLGenerator
     GENERATOR_AVAILABLE = True
 except ImportError:
     GENERATOR_AVAILABLE = False
@@ -95,7 +95,7 @@ def generate(
             f"[bold blue]Parsing semantic models from {input_dir}[/bold blue]"
         )
 
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = []
         file_count = 0
         error_count = 0
@@ -212,7 +212,7 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
             f"[bold blue]Validating semantic models in {input_dir}[/bold blue]"
         )
 
-        parser = SemanticModelParser(strict_mode=strict)
+        parser = DbtParser(strict_mode=strict)
         semantic_models = []
         file_count = 0
         error_count = 0

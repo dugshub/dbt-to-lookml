@@ -20,15 +20,15 @@ from dbt_to_lookml.models import (
     SemanticModel,
     TimeGranularity,
 )
-from dbt_to_lookml.parser import SemanticModelParser
+from dbt_to_lookml.parsers.dbt import DbtParser
 
 
-class TestSemanticModelParser:
-    """Test cases for SemanticModelParser."""
+class TestDbtParser:
+    """Test cases for DbtParser."""
 
     def test_parse_empty_file(self) -> None:
         """Test parsing an empty YAML file."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
 
         with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
             yaml.dump({}, f)
@@ -42,7 +42,7 @@ class TestSemanticModelParser:
 
     def test_parse_single_model(self) -> None:
         """Test parsing a file with a single semantic model."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
 
         model_data = {
             "name": "users",
@@ -79,7 +79,7 @@ class TestSemanticModelParser:
 
     def test_parse_multiple_models_in_list(self) -> None:
         """Test parsing a file with multiple semantic models in a list."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
 
         models_data = {
             "semantic_models": [
@@ -114,14 +114,14 @@ class TestSemanticModelParser:
 
     def test_parse_nonexistent_file(self) -> None:
         """Test parsing a file that doesn't exist."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
 
         with pytest.raises(FileNotFoundError):
             parser.parse_file(Path("/nonexistent/file.yml"))
 
     def test_strict_mode_validation_error(self) -> None:
         """Test that strict mode raises validation errors."""
-        parser = SemanticModelParser(strict_mode=True)
+        parser = DbtParser(strict_mode=True)
 
         # Invalid model data (missing required fields)
         model_data = {
@@ -141,7 +141,7 @@ class TestSemanticModelParser:
 
     def test_non_strict_mode_validation_error(self) -> None:
         """Test that non-strict mode handles validation errors gracefully."""
-        parser = SemanticModelParser(strict_mode=False)
+        parser = DbtParser(strict_mode=False)
 
         # Mix of valid and invalid model data
         models_data = {
@@ -174,7 +174,7 @@ class TestSemanticModelParser:
 
     def test_parse_complex_semantic_model(self) -> None:
         """Test parsing a complex semantic model with all features."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
 
         complex_model_data = {
             "version": 2,
@@ -322,7 +322,7 @@ class TestSemanticModelParser:
 
     def test_parse_directory(self) -> None:
         """Test parsing multiple files from a directory."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -362,7 +362,7 @@ class TestSemanticModelParser:
 
     def test_parse_invalid_yaml(self) -> None:
         """Test parsing invalid YAML files."""
-        parser = SemanticModelParser(strict_mode=True)
+        parser = DbtParser(strict_mode=True)
         
         invalid_yaml = "invalid: yaml: content: ["
         
@@ -378,7 +378,7 @@ class TestSemanticModelParser:
 
     def test_parse_malformed_semantic_model(self) -> None:
         """Test parsing with various malformed semantic model structures."""
-        parser = SemanticModelParser(strict_mode=True)
+        parser = DbtParser(strict_mode=True)
         
         # Test cases with malformed data
         test_cases = [
@@ -421,7 +421,7 @@ class TestSemanticModelParser:
 
     def test_parse_empty_directory(self) -> None:
         """Test parsing an empty directory."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -430,7 +430,7 @@ class TestSemanticModelParser:
 
     def test_parse_directory_with_only_non_yaml_files(self) -> None:
         """Test parsing directory with no YAML files."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -443,7 +443,7 @@ class TestSemanticModelParser:
 
     def test_parser_with_read_permission_error(self) -> None:
         """Test parser behavior when file cannot be read."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         with patch('pathlib.Path.read_text') as mock_read:
             mock_read.side_effect = PermissionError("Permission denied")
@@ -460,7 +460,7 @@ class TestSemanticModelParser:
 
     def test_parse_file_with_version_field(self) -> None:
         """Test parsing files with version field (common in dbt)."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         model_data = {
             "version": 2,
@@ -488,7 +488,7 @@ class TestSemanticModelParser:
 
     def test_parse_model_with_complex_expressions(self) -> None:
         """Test parsing models with complex SQL expressions."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         model_data = {
             "name": "complex_expr_model",
@@ -544,14 +544,14 @@ class TestSemanticModelParser:
 
     def test_parse_nonexistent_directory(self) -> None:
         """Test parsing a directory that doesn't exist."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
 
         with pytest.raises(FileNotFoundError):
             parser.parse_directory(Path("/nonexistent/directory"))
 
     def test_parse_extremely_large_model(self) -> None:
         """Test parsing a very large semantic model."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         # Create a model with many dimensions and measures
         large_model_data = {
@@ -599,7 +599,7 @@ class TestSemanticModelParser:
 
     def test_parse_deeply_nested_yaml_structure(self) -> None:
         """Test parsing YAML with deeply nested structures."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         nested_model_data = {
             "version": 2,
@@ -655,7 +655,7 @@ class TestSemanticModelParser:
 
     def test_parse_file_with_unicode_content(self) -> None:
         """Test parsing files with Unicode characters."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         unicode_model_data = {
             "name": "测试模型",  # Chinese characters
@@ -689,7 +689,7 @@ class TestSemanticModelParser:
 
     def test_parse_file_with_very_long_strings(self) -> None:
         """Test parsing files with extremely long string values."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         long_description = "A" * 10000  # Very long description
         long_expr = "CASE " + " ".join([f"WHEN field_{i} = 'value_{i}' THEN 'result_{i}'" for i in range(100)]) + " ELSE 'default' END"
@@ -724,7 +724,7 @@ class TestSemanticModelParser:
 
     def test_parse_yaml_with_anchors_and_aliases(self) -> None:
         """Test parsing YAML files with anchors and aliases."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         yaml_with_anchors = """
 common_config: &common_config
@@ -767,7 +767,7 @@ semantic_models:
 
     def test_parse_file_with_special_characters_in_names(self) -> None:
         """Test parsing with special characters in field names."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         special_chars_model = {
             "name": "model-with_special.chars",
@@ -809,7 +809,7 @@ semantic_models:
 
     def test_parse_file_with_null_values(self) -> None:
         """Test parsing files with null/None values."""
-        parser = SemanticModelParser(strict_mode=False)
+        parser = DbtParser(strict_mode=False)
         
         null_values_model = {
             "name": "model_with_nulls",
@@ -849,7 +849,7 @@ semantic_models:
 
     def test_parse_file_with_empty_lists(self) -> None:
         """Test parsing files with empty entity/dimension/measure lists."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         empty_lists_model = {
             "name": "empty_model",
@@ -876,7 +876,7 @@ semantic_models:
 
     def test_parse_mixed_valid_invalid_files_in_directory(self) -> None:
         """Test parsing directory with mix of valid and invalid files."""
-        parser = SemanticModelParser(strict_mode=False)
+        parser = DbtParser(strict_mode=False)
         
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -909,7 +909,7 @@ semantic_models:
         """Test concurrent parsing of the same file."""
         import threading
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         model_data = {
             "name": "concurrent_model",
@@ -949,7 +949,7 @@ semantic_models:
 
     def test_parse_file_encoding_variations(self) -> None:
         """Test parsing files with different encodings."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         model_data = {
             "name": "encoding_test",
@@ -971,7 +971,7 @@ semantic_models:
 
     def test_parse_huge_directory(self) -> None:
         """Test parsing directory with many files."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
