@@ -28,7 +28,7 @@ class TestRunner:
 
         cmd = [
             "python", "-m", "pytest",
-            "__tests__/unit/",
+            "src/tests/unit/",
             "--tb=line",  # Compact traceback format
             "--no-header",  # Skip pytest header
             "--quiet" if not verbose else "-v",
@@ -59,7 +59,7 @@ class TestRunner:
 
         cmd = [
             "python", "-m", "pytest",
-            "__tests__/integration/",
+            "src/tests/integration/",
             "--tb=line",
             "--no-header",
             "--quiet" if not verbose else "-v",
@@ -86,7 +86,7 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "__tests__/test_golden.py",
+            "src/tests/test_golden.py",
             "-v" if verbose else "-q",
         ]
         
@@ -114,7 +114,7 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "__tests__/test_error_handling.py",
+            "src/tests/test_error_handling.py",
             "-v" if verbose else "-q",
             "-m", "error_handling",
         ]
@@ -143,7 +143,7 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "__tests__/test_performance.py",
+            "src/tests/test_performance.py",
             "-v" if verbose else "-q",
         ]
         
@@ -177,7 +177,7 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "__tests__/test_cli.py",
+            "src/tests/test_cli.py",
             "-v" if verbose else "-q",
         ]
         
@@ -204,7 +204,7 @@ class TestRunner:
         print("🔍 Running linting...")
         
         # Run ruff check
-        cmd = ["python", "-m", "ruff", "check", "src/", "__tests__/"]
+        cmd = ["python", "-m", "ruff", "check", "src/"]
         result = subprocess.run(cmd, cwd=self.root_dir, capture_output=True, text=True)
         
         linting_passed = result.returncode == 0
@@ -256,7 +256,7 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "__tests__/integration/test_end_to_end.py::TestEndToEndIntegration::test_real_world_semantic_models_integration",
+            "src/tests/integration/test_end_to_end.py::TestEndToEndIntegration::test_real_world_semantic_models_integration",
             "-v" if verbose else "-q",
         ]
         

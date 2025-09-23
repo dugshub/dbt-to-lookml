@@ -102,7 +102,7 @@ test-error:
 
 test-coverage:
 	@echo "📊 Generating coverage report..."
-	@uv run pytest __tests__/unit/ --cov=dbt_to_lookml --cov-report=html --cov-report=term-missing --cov-branch --cov-fail-under=95
+	@uv run pytest src/tests/unit/ --cov=dbt_to_lookml --cov-report=html --cov-report=term-missing --cov-branch --cov-fail-under=95
 	@echo "📊 Coverage report: htmlcov/index.html"
 
 smoke-test:
@@ -120,8 +120,8 @@ lint:
 
 format:
 	@echo "🎨 Formatting code..."
-	@uv run ruff format src/ __tests__/
-	@uv run ruff check src/ __tests__/ --fix
+	@uv run ruff format src/
+	@uv run ruff check src/ --fix
 	@echo "✅ Code formatted"
 
 type-check:
@@ -203,7 +203,7 @@ benchmark:
 
 test-stress:
 	@echo "💪 Running stress tests..."
-	@uv run pytest __tests__/test_performance.py::TestPerformance::test_stress_test_many_models -v -s
+	@uv run pytest src/tests/test_performance.py::TestPerformance::test_stress_test_many_models -v -s
 
 # LookML generation helpers (wrap CLI until a separate tool is built)
 lookml-preview:
