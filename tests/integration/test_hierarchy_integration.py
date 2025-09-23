@@ -5,8 +5,8 @@ from tempfile import TemporaryDirectory
 import yaml
 import lkml
 
-from dbt_to_lookml.parser import SemanticModelParser
-from dbt_to_lookml.generator import LookMLGenerator
+from dbt_to_lookml.parsers.dbt import DbtParser
+from dbt_to_lookml.generators.lookml import LookMLGenerator
 
 
 class TestHierarchyIntegration:
@@ -134,7 +134,7 @@ class TestHierarchyIntegration:
                 yaml.dump(semantic_model_data, f)
             
             # Parse the semantic model
-            parser = SemanticModelParser()
+            parser = DbtParser()
             models = parser.parse_file(yaml_file)
             
             assert len(models) == 1
@@ -280,7 +280,7 @@ class TestHierarchyIntegration:
             with open(yaml_file, 'w') as f:
                 yaml.dump(semantic_model_data, f)
             
-            parser = SemanticModelParser()
+            parser = DbtParser()
             models = parser.parse_file(yaml_file)
             
             generator = LookMLGenerator()

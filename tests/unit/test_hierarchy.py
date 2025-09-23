@@ -5,16 +5,18 @@ from tempfile import NamedTemporaryFile
 import yaml
 import pytest
 
-from dbt_to_lookml.models import (
+from dbt_to_lookml.types import (
     AggregationType,
+    DimensionType,
+)
+from dbt_to_lookml.schemas import (
     Config,
     ConfigMeta,
     Dimension,
-    DimensionType,
     Hierarchy,
     Measure,
 )
-from dbt_to_lookml.parser import SemanticModelParser
+from dbt_to_lookml.parsers.dbt import DbtParser
 
 
 class TestHierarchyLabeling:
@@ -165,7 +167,7 @@ class TestHierarchyLabeling:
     
     def test_parser_with_hierarchy(self) -> None:
         """Test that parser correctly extracts hierarchy from YAML."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         model_data = {
             "semantic_models": [{

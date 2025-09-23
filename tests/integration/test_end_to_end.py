@@ -14,19 +14,21 @@ import threading
 import pytest
 lkml = pytest.importorskip("lkml")
 
-from dbt_to_lookml.generator import LookMLGenerator
-from dbt_to_lookml.models import (
+from dbt_to_lookml.generators.lookml import LookMLGenerator
+from dbt_to_lookml.types import (
     AggregationType,
+    DimensionType,
+)
+from dbt_to_lookml.schemas import (
     Config,
     ConfigMeta,
     Dimension,
-    DimensionType,
     Entity,
     LookMLView,
     Measure,
     SemanticModel,
 )
-from dbt_to_lookml.parser import SemanticModelParser
+from dbt_to_lookml.parsers.dbt import DbtParser
 
 
 class TestEndToEndIntegration:
@@ -38,7 +40,7 @@ class TestEndToEndIntegration:
         fixture_path = Path(__file__).parent.parent / "fixtures"
 
         # Parse the sample semantic model
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(fixture_path)
 
         assert len(semantic_models) > 0
@@ -75,7 +77,7 @@ class TestEndToEndIntegration:
         """Test generating LookML with view and explore prefixes."""
         fixture_path = Path(__file__).parent.parent / "fixtures"
 
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(fixture_path)
 
         generator = LookMLGenerator(
@@ -108,7 +110,7 @@ class TestEndToEndIntegration:
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
         # Parse all real semantic models
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
         
         assert len(semantic_models) >= 6  # We know there are 6 semantic model files
@@ -161,7 +163,7 @@ class TestEndToEndIntegration:
         """Test that complex SQL expressions from real models are preserved."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
         
@@ -196,7 +198,7 @@ class TestEndToEndIntegration:
         """Test that all aggregation types in real models are handled correctly."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
         
         # Collect all aggregation types used
@@ -233,7 +235,7 @@ class TestEndToEndIntegration:
         """Test that time dimensions are converted to dimension_groups."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
         
         # Find models with time dimensions
@@ -272,7 +274,7 @@ class TestEndToEndIntegration:
         """Test that dbt ref() patterns are converted correctly."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
         
         # Find models that use ref() syntax
@@ -300,7 +302,7 @@ class TestEndToEndIntegration:
         """Test handling of large semantic models with many dimensions and measures."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"  # This is the largest model
         semantic_models = parser.parse_file(users_file)
         
@@ -337,7 +339,7 @@ class TestEndToEndIntegration:
         """Test that partial generation works when some models fail."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
         
         generator = LookMLGenerator()
@@ -369,7 +371,7 @@ class TestEndToEndIntegration:
         """Test handling of Unicode and special characters in descriptions."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
         
         generator = LookMLGenerator()
@@ -393,7 +395,7 @@ class TestEndToEndIntegration:
         """Test that generated LookML passes syntax validation."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
         
         generator = LookMLGenerator(validate_syntax=True)
@@ -420,7 +422,7 @@ class TestEndToEndIntegration:
         """Test that generation summary provides accurate statistics."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
         
         generator = LookMLGenerator()
@@ -450,7 +452,7 @@ class TestEndToEndIntegration:
         """Test that processing multiple models works correctly."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
         
         # Process models individually and then all together
@@ -493,7 +495,7 @@ class TestEndToEndIntegration:
         """Test complete pipeline with strict validation enabled."""
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser(strict_mode=True)
+        parser = DbtParser(strict_mode=True)
         generator = LookMLGenerator(validate_syntax=True, format_output=True)
         
         semantic_models = parser.parse_directory(semantic_models_dir)
@@ -522,7 +524,7 @@ class TestEndToEndIntegration:
         
         semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
         
         # Measure parsing time
