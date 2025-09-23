@@ -7,7 +7,7 @@ import lkml
 from rich.console import Console
 
 from dbt_to_lookml.interfaces.generator import Generator
-from dbt_to_lookml.models import SemanticModel
+from dbt_to_lookml.schemas import SemanticModel
 
 console = Console()
 

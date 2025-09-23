@@ -9,12 +9,14 @@ import yaml
 from pydantic import ValidationError
 
 from dbt_to_lookml.interfaces.parser import Parser
-from dbt_to_lookml.models import (
+from dbt_to_lookml.types import (
     AggregationType,
+    DimensionType,
+)
+from dbt_to_lookml.schemas import (
     Config,
     ConfigMeta,
     Dimension,
-    DimensionType,
     Entity,
     Hierarchy,
     Measure,
