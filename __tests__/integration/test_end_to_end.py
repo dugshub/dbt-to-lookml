@@ -107,7 +107,7 @@ class TestEndToEndIntegration:
     def test_real_semantic_models_end_to_end(self) -> None:
         """Test complete pipeline with real semantic models."""
         # Use the actual semantic models from the project
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         # Parse all real semantic models
         parser = DbtParser()
@@ -161,7 +161,7 @@ class TestEndToEndIntegration:
 
     def test_complex_sql_expressions_preserved(self) -> None:
         """Test that complex SQL expressions from real models are preserved."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"
@@ -196,7 +196,7 @@ class TestEndToEndIntegration:
 
     def test_all_aggregation_types_in_real_models(self) -> None:
         """Test that all aggregation types in real models are handled correctly."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
@@ -233,7 +233,7 @@ class TestEndToEndIntegration:
 
     def test_time_dimensions_converted_correctly(self) -> None:
         """Test that time dimensions are converted to dimension_groups."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
@@ -272,7 +272,7 @@ class TestEndToEndIntegration:
 
     def test_dbt_ref_patterns_converted(self) -> None:
         """Test that dbt ref() patterns are converted correctly."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
@@ -300,7 +300,7 @@ class TestEndToEndIntegration:
 
     def test_large_semantic_model_handling(self) -> None:
         """Test handling of large semantic models with many dimensions and measures."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"  # This is the largest model
@@ -337,7 +337,7 @@ class TestEndToEndIntegration:
 
     def test_error_recovery_and_partial_generation(self) -> None:
         """Test that partial generation works when some models fail."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
@@ -369,7 +369,7 @@ class TestEndToEndIntegration:
 
     def test_unicode_and_special_characters(self) -> None:
         """Test handling of Unicode and special characters in descriptions."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
@@ -393,7 +393,7 @@ class TestEndToEndIntegration:
 
     def test_lookml_syntax_validation_passes(self) -> None:
         """Test that generated LookML passes syntax validation."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
@@ -420,7 +420,7 @@ class TestEndToEndIntegration:
 
     def test_generation_summary_accuracy(self) -> None:
         """Test that generation summary provides accurate statistics."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
@@ -450,7 +450,7 @@ class TestEndToEndIntegration:
 
     def test_concurrent_model_processing(self) -> None:
         """Test that processing multiple models works correctly."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
@@ -493,7 +493,7 @@ class TestEndToEndIntegration:
 
     def test_pipeline_with_validation_enabled(self) -> None:
         """Test complete pipeline with strict validation enabled."""
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser(strict_mode=True)
         generator = LookMLGenerator(validate_syntax=True, format_output=True)
@@ -521,8 +521,8 @@ class TestEndToEndIntegration:
     def test_performance_with_real_models(self) -> None:
         """Test performance characteristics with real semantic models."""
         import time
-        
-        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+
+        semantic_models_dir = Path("/Users/doug/Work/data-modelling/official-models-staging/redshift_gold/models/semantic_models")
         
         parser = DbtParser()
         generator = LookMLGenerator()
