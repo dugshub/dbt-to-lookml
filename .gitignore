@@ -72,3 +72,8 @@ explores.lkml
 
 # uv
 uv.lock  # Exclude lock file for libraries
+.uv-cache/
+
+# Claude Code
+.claude/
+.mcp.json
