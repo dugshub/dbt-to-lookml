@@ -14,9 +14,14 @@ Convert dbt semantic models into LookML views and explores with validation, form
 
 ### From Source (Recommended for now)
 ```bash
-git clone https://github.com/yourusername/dbt-to-lookml.git
+git clone https://github.com/dugshub/dbt-to-lookml.git
 cd dbt-to-lookml
 pip install -e .
+```
+
+### From Git Tag (once v0.1.0 is released)
+```bash
+pip install git+https://github.com/dugshub/dbt-to-lookml.git@v0.1.0
 ```
 
 ### Using Pre-built Package
