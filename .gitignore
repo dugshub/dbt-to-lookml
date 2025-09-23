@@ -77,3 +77,4 @@ uv.lock  # Exclude lock file for libraries
 # Claude Code
 .claude/
 .mcp.json
+AGENTS.md
