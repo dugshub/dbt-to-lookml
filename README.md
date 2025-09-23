@@ -7,7 +7,7 @@ Convert dbt semantic models into LookML views and explores with validation, form
 - Includes strict typing (mypy), linting (ruff), and a comprehensive pytest suite with high coverage.
 
 ## Requirements
-- Python >= 3.13
+- Python >= 3.9
 - Optional: `uv` for fast, locked dependency management (repo includes `uv.lock`).
 
 ## Installation
