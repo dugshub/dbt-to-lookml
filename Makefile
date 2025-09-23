@@ -142,19 +142,28 @@ clean:
 	@rm -rf *.egg-info/
 	@rm -rf .pytest_cache/
 	@rm -rf .testmoncore/
+	@rm -rf .benchmarks/
+	@rm -rf output/
+	@rm -rf htmlcov/
+	@rm -rf .coverage
+	@rm -rf coverage.xml
 	@find . -type d -name __pycache__ -exec rm -rf {} +
 	@find . -type f -name "*.pyc" -delete
+	@find . -type f -name "*.log" -delete
+	@find . -type f -name ".DS_Store" -delete
+	@find . -type f -name "*.tmp" -delete
+	@find . -type f -name "*.swp" -delete
+	@find . -type f -name "*.swo" -delete
+	@find . -type f -name "*~" -delete
 	@echo "✅ Cleaned build artifacts"
 
 clean-all: clean
 	@echo "🧹 Deep cleaning..."
-	@rm -rf htmlcov/
-	@rm -rf .coverage
-	@rm -rf coverage.xml
 	@rm -rf .mypy_cache/
 	@rm -rf .ruff_cache/
+	@rm -rf .uv-cache/
 	@rm -rf test_results.json
-	@rm -rf .testmoncore/
+	@uv cache clean
 	@echo "✅ Deep clean completed"
 
 # CI/CD targets
