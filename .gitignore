@@ -32,6 +32,7 @@ venv.bak/
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .tox/
 .cache
@@ -72,3 +73,9 @@ explores.lkml
 
 # uv
 uv.lock  # Exclude lock file for libraries
+.uv-cache/
+
+# Claude Code
+.claude/
+.mcp.json
+AGENTS.md

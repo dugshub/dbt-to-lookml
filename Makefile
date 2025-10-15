@@ -102,7 +102,7 @@ test-error:
 
 test-coverage:
 	@echo "📊 Generating coverage report..."
-	@uv run pytest tests/unit/ --cov=dbt_to_lookml --cov-report=html --cov-report=term-missing --cov-branch --cov-fail-under=95
+	@uv run pytest src/tests/unit/ --cov=dbt_to_lookml --cov-report=html --cov-report=term-missing --cov-branch --cov-fail-under=95
 	@echo "📊 Coverage report: htmlcov/index.html"
 
 smoke-test:
@@ -120,8 +120,8 @@ lint:
 
 format:
 	@echo "🎨 Formatting code..."
-	@uv run ruff format src/ tests/
-	@uv run ruff check src/ tests/ --fix
+	@uv run ruff format src/
+	@uv run ruff check src/ --fix
 	@echo "✅ Code formatted"
 
 type-check:
@@ -142,19 +142,28 @@ clean:
 	@rm -rf *.egg-info/
 	@rm -rf .pytest_cache/
 	@rm -rf .testmoncore/
+	@rm -rf .benchmarks/
+	@rm -rf output/
+	@rm -rf htmlcov/
+	@rm -rf .coverage
+	@rm -rf coverage.xml
 	@find . -type d -name __pycache__ -exec rm -rf {} +
 	@find . -type f -name "*.pyc" -delete
+	@find . -type f -name "*.log" -delete
+	@find . -type f -name ".DS_Store" -delete
+	@find . -type f -name "*.tmp" -delete
+	@find . -type f -name "*.swp" -delete
+	@find . -type f -name "*.swo" -delete
+	@find . -type f -name "*~" -delete
 	@echo "✅ Cleaned build artifacts"
 
 clean-all: clean
 	@echo "🧹 Deep cleaning..."
-	@rm -rf htmlcov/
-	@rm -rf .coverage
-	@rm -rf coverage.xml
 	@rm -rf .mypy_cache/
 	@rm -rf .ruff_cache/
+	@rm -rf .uv-cache/
 	@rm -rf test_results.json
-	@rm -rf .testmoncore/
+	@uv cache clean
 	@echo "✅ Deep clean completed"
 
 # CI/CD targets
@@ -194,7 +203,7 @@ benchmark:
 
 test-stress:
 	@echo "💪 Running stress tests..."
-	@uv run pytest tests/test_performance.py::TestPerformance::test_stress_test_many_models -v -s
+	@uv run pytest src/tests/test_performance.py::TestPerformance::test_stress_test_many_models -v -s
 
 # LookML generation helpers (wrap CLI until a separate tool is built)
 lookml-preview:

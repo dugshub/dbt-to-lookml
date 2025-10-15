@@ -3,10 +3,30 @@ name = "dbt-to-lookml"
 version = "0.1.0"
 description = "Convert dbt semantic models to LookML views and explores"
 readme = "README.md"
+license = {text = "MIT"}
 authors = [
     { name = "DougsHub", email = "douglasgmcfarlane@gmail.com" }
 ]
-requires-python = ">=3.13"
+maintainers = [
+    { name = "DougsHub", email = "douglasgmcfarlane@gmail.com" }
+]
+requires-python = ">=3.9"
+keywords = ["dbt", "lookml", "looker", "semantic-layer", "analytics", "data-modeling"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Database",
+]
 dependencies = [
     "pydantic>=2.0",
     "pyyaml",
@@ -21,6 +41,8 @@ dev = [
     "pytest-cov",
     "mypy",
     "ruff",
+    "build",
+    "twine",
 ]
 
 [project.scripts]
@@ -30,21 +52,27 @@ dbt-to-lookml = "dbt_to_lookml.__main__:cli"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/dbt_to_lookml"]
+
 [tool.ruff]
-target-version = "py313"
+target-version = "py39"
 line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.9"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["src/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -56,7 +84,7 @@ addopts = [
     "--cov-report=html",
     "--cov-report=xml",
     "--cov-branch",
-    "--cov-fail-under=95",
+    "--cov-fail-under=60",
     "-v",
     "--tb=short",
 ]

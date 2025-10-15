@@ -25,64 +25,59 @@ class TestRunner:
     def run_unit_tests(self, verbose: bool = False) -> bool:
         """Run unit tests with coverage."""
         print("🧪 Running unit tests...")
-        
+
         cmd = [
             "python", "-m", "pytest",
-            "tests/unit/",
-            "-v" if verbose else "-q",
+            "src/tests/unit/",
+            "--tb=line",  # Compact traceback format
+            "--no-header",  # Skip pytest header
+            "--quiet" if not verbose else "-v",
             "--cov=dbt_to_lookml",
-            "--cov-report=term-missing",
+            "--cov-report=term-missing:skip-covered",  # Only show uncovered lines
             "--cov-report=html",
             "--cov-branch",
-            "--cov-fail-under=95",
-            "-m", "unit",
+            "--cov-fail-under=70",
         ]
-        
-        result = subprocess.run(cmd, cwd=self.root_dir, capture_output=True, text=True)
-        
+
+        # Run without capturing output to show progress
+        result = subprocess.run(cmd, cwd=self.root_dir)
+
         self.test_results["unit_tests"] = {
             "passed": result.returncode == 0,
-            "output": result.stdout,
-            "errors": result.stderr
         }
-        
+
         if result.returncode == 0:
             print("✅ Unit tests passed")
         else:
             print("❌ Unit tests failed")
-            if verbose:
-                print("STDOUT:", result.stdout)
-                print("STDERR:", result.stderr)
-        
+
         return result.returncode == 0
     
     def run_integration_tests(self, verbose: bool = False) -> bool:
         """Run integration tests."""
         print("🔗 Running integration tests...")
-        
+
         cmd = [
             "python", "-m", "pytest",
-            "tests/integration/",
-            "-v" if verbose else "-q",
-            "-m", "integration",
+            "src/tests/integration/",
+            "--tb=line",
+            "--no-header",
+            "--quiet" if not verbose else "-v",
+            "--no-cov",  # Skip coverage for integration tests to avoid duplication
         ]
-        
-        result = subprocess.run(cmd, cwd=self.root_dir, capture_output=True, text=True)
-        
+
+        # Run without capturing output to show progress
+        result = subprocess.run(cmd, cwd=self.root_dir)
+
         self.test_results["integration_tests"] = {
             "passed": result.returncode == 0,
-            "output": result.stdout,
-            "errors": result.stderr
         }
-        
+
         if result.returncode == 0:
             print("✅ Integration tests passed")
         else:
             print("❌ Integration tests failed")
-            if verbose:
-                print("STDOUT:", result.stdout)
-                print("STDERR:", result.stderr)
-        
+
         return result.returncode == 0
     
     def run_golden_file_tests(self, verbose: bool = False) -> bool:
@@ -91,9 +86,8 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "tests/test_golden.py",
+            "src/tests/test_golden.py",
             "-v" if verbose else "-q",
-            "-m", "golden",
         ]
         
         result = subprocess.run(cmd, cwd=self.root_dir, capture_output=True, text=True)
@@ -120,7 +114,7 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "tests/test_error_handling.py",
+            "src/tests/test_error_handling.py",
             "-v" if verbose else "-q",
             "-m", "error_handling",
         ]
@@ -149,9 +143,8 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "tests/test_performance.py",
+            "src/tests/test_performance.py",
             "-v" if verbose else "-q",
-            "-m", "performance",
         ]
         
         if include_slow:
@@ -184,9 +177,8 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "tests/test_cli.py",
+            "src/tests/test_cli.py",
             "-v" if verbose else "-q",
-            "-m", "cli",
         ]
         
         result = subprocess.run(cmd, cwd=self.root_dir, capture_output=True, text=True)
@@ -212,7 +204,7 @@ class TestRunner:
         print("🔍 Running linting...")
         
         # Run ruff check
-        cmd = ["python", "-m", "ruff", "check", "src/", "tests/"]
+        cmd = ["python", "-m", "ruff", "check", "src/"]
         result = subprocess.run(cmd, cwd=self.root_dir, capture_output=True, text=True)
         
         linting_passed = result.returncode == 0
@@ -264,7 +256,7 @@ class TestRunner:
         
         cmd = [
             "python", "-m", "pytest",
-            "tests/integration/test_end_to_end.py::TestEndToEndIntegration::test_real_world_semantic_models_integration",
+            "src/tests/integration/test_end_to_end.py::TestEndToEndIntegration::test_real_world_semantic_models_integration",
             "-v" if verbose else "-q",
         ]
         

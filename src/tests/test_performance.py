@@ -62,7 +62,8 @@ class TestPerformance:
                 name=f"test_model_{i}",
                 model=f"test_table_{i}",
                 entities=[
-                    Entity(name="id", type="primary"),
+                    Entity(name="id", type="primary")
+                ] + [
                     Entity(name=f"foreign_key_{j}", type="foreign")
                     for j in range(3)
                 ],
