@@ -47,6 +47,7 @@ dev = [
 
 [project.scripts]
 dbt-to-lookml = "dbt_to_lookml.__main__:cli"
+d2l = "dbt_to_lookml.__main__:cli"
 
 [build-system]
 requires = ["hatchling"]
