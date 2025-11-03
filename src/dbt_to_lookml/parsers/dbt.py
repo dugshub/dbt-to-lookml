@@ -211,12 +211,20 @@ class DbtParser(Parser):
                         if 'meta' in config_data:
                             meta_data = config_data['meta']
                             hierarchy = None
+                            # Support both nested hierarchy and flat entity/category
                             if 'hierarchy' in meta_data:
                                 hierarchy_data = meta_data['hierarchy']
                                 hierarchy = Hierarchy(
                                     entity=hierarchy_data.get('entity'),
                                     category=hierarchy_data.get('category'),
                                     subcategory=hierarchy_data.get('subcategory'),
+                                )
+                            elif 'entity' in meta_data or 'category' in meta_data:
+                                # Flat structure: meta.entity and meta.category
+                                hierarchy = Hierarchy(
+                                    entity=meta_data.get('entity'),
+                                    category=meta_data.get('category'),
+                                    subcategory=meta_data.get('subcategory'),
                                 )
                             config_meta = ConfigMeta(
                                 domain=meta_data.get('domain'),
@@ -258,12 +266,20 @@ class DbtParser(Parser):
                         if 'meta' in config_data:
                             meta_data = config_data['meta']
                             hierarchy = None
+                            # Support both nested hierarchy and flat entity/category
                             if 'hierarchy' in meta_data:
                                 hierarchy_data = meta_data['hierarchy']
                                 hierarchy = Hierarchy(
                                     entity=hierarchy_data.get('entity'),
                                     category=hierarchy_data.get('category'),
                                     subcategory=hierarchy_data.get('subcategory'),
+                                )
+                            elif 'entity' in meta_data or 'category' in meta_data:
+                                # Flat structure: meta.entity and meta.category
+                                hierarchy = Hierarchy(
+                                    entity=meta_data.get('entity'),
+                                    category=meta_data.get('category'),
+                                    subcategory=meta_data.get('subcategory'),
                                 )
                             config_meta = ConfigMeta(
                                 domain=meta_data.get('domain'),

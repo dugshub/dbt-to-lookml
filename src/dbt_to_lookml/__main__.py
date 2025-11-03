@@ -39,6 +39,13 @@ def cli() -> None:
     help="Directory to output LookML files",
 )
 @click.option(
+    "--schema",
+    "-s",
+    type=str,
+    required=True,
+    help="Database schema name for sql_table_name (e.g., 'redshift_gold')",
+)
+@click.option(
     "--view-prefix",
     type=str,
     default="",
@@ -73,6 +80,7 @@ def cli() -> None:
 def generate(
     input_dir: Path,
     output_dir: Path,
+    schema: str,
     view_prefix: str,
     explore_prefix: str,
     dry_run: bool,
@@ -143,6 +151,7 @@ def generate(
             explore_prefix=explore_prefix,
             validate_syntax=not no_validation,
             format_output=not no_formatting,
+            schema=schema,
         )
 
         # Generate files

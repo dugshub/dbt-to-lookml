@@ -214,8 +214,15 @@ class SemanticModel(BaseModel):
     dimensions: list[Dimension] = Field(default_factory=list)
     measures: list[Measure] = Field(default_factory=list)
 
-    def to_lookml_dict(self) -> dict[str, Any]:
-        """Convert entire semantic model to lkml views format."""
+    def to_lookml_dict(self, schema: str = "") -> dict[str, Any]:
+        """Convert entire semantic model to lkml views format.
+
+        Args:
+            schema: Optional database schema name to prepend to table name.
+
+        Returns:
+            Dictionary in LookML views format.
+        """
         dimensions = []
         dimension_groups = []
 
@@ -237,7 +244,7 @@ class SemanticModel(BaseModel):
         # Build the view dict
         view_dict: dict[str, Any] = {
             'name': self.name,
-            'sql_table_name': self._extract_table_name(),
+            'sql_table_name': self._extract_table_name(schema),
         }
 
         if dimensions:
@@ -251,11 +258,23 @@ class SemanticModel(BaseModel):
 
         return {'views': [view_dict]}
 
-    def _extract_table_name(self) -> str:
-        """Extract table name from dbt ref() syntax."""
+    def _extract_table_name(self, schema: str = "") -> str:
+        """Extract table name from dbt ref() syntax.
+
+        Args:
+            schema: Optional database schema name to prepend.
+
+        Returns:
+            Fully qualified table name (schema.table or just table).
+        """
         # Handle ref('table_name') syntax
         match = re.search(r"ref\(['\"]([^'\"]+)['\"]\)", self.model)
-        return match.group(1) if match else self.model
+        table_name = match.group(1) if match else self.model
+
+        # Prepend schema if provided
+        if schema:
+            return f"{schema}.{table_name}"
+        return table_name
 
 
 # ============================================================================

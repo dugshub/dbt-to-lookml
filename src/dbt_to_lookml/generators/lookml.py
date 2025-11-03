@@ -25,7 +25,8 @@ class LookMLGenerator(Generator):
         view_prefix: str = "",
         explore_prefix: str = "",
         validate_syntax: bool = True,
-        format_output: bool = True
+        format_output: bool = True,
+        schema: str = ""
     ) -> None:
         """Initialize the generator.
 
@@ -34,15 +35,18 @@ class LookMLGenerator(Generator):
             explore_prefix: Prefix to add to explore names.
             validate_syntax: Whether to validate generated LookML syntax.
             format_output: Whether to format LookML output for readability.
+            schema: Database schema name for sql_table_name.
         """
         super().__init__(
             validate_syntax=validate_syntax,
             format_output=format_output,
             view_prefix=view_prefix,
-            explore_prefix=explore_prefix
+            explore_prefix=explore_prefix,
+            schema=schema
         )
         self.view_prefix = view_prefix
         self.explore_prefix = explore_prefix
+        self.schema = schema
         # Backward compatibility attribute
         class MapperCompat:
             def __init__(self, vp, ep):
@@ -157,9 +161,9 @@ class LookMLGenerator(Generator):
                     name=f"{self.view_prefix}{semantic_model.name}",
                     **{k: v for k, v in semantic_model.model_dump().items() if k != 'name'}
                 )
-                view_dict = prefixed_model.to_lookml_dict()
+                view_dict = prefixed_model.to_lookml_dict(schema=self.schema)
             else:
-                view_dict = semantic_model.to_lookml_dict()
+                view_dict = semantic_model.to_lookml_dict(schema=self.schema)
         else:
             raise TypeError(f"Expected SemanticModel or LookMLView, got {type(semantic_model)}")
 
