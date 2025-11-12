@@ -988,3 +988,1136 @@ semantic_models:
             model_names = {m.name for m in models}
             expected_names = {f"model_{i:03d}" for i in range(100)}
             assert model_names == expected_names
+
+    # Tests for uncovered code paths to improve coverage from 61% to 85%+
+
+    def test_parse_yaml_list_structure(self) -> None:
+        """Test parsing when YAML root is a list of models."""
+        parser = DbtParser()
+
+        # Root element is a list (edge case)
+        models_list = [
+            {
+                "name": "list_model_1",
+                "model": "table1",
+                "entities": [],
+                "dimensions": [],
+                "measures": []
+            },
+            {
+                "name": "list_model_2",
+                "model": "table2",
+                "entities": [],
+                "dimensions": [],
+                "measures": []
+            }
+        ]
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(models_list, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 2
+            assert models[0].name == "list_model_1"
+            assert models[1].name == "list_model_2"
+        finally:
+            temp_path.unlink()
+
+    def test_parse_invalid_yaml_structure_scalar(self) -> None:
+        """Test parsing with scalar YAML content raises error."""
+        parser = DbtParser()
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            # Write a scalar value instead of dict/list
+            f.write("just a string")
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="Invalid YAML structure"):
+                parser.parse_file(temp_path)
+        finally:
+            temp_path.unlink()
+
+    def test_parse_directory_with_yaml_extension(self) -> None:
+        """Test parsing directory handles both .yml and .yaml files."""
+        parser = DbtParser()
+
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create .yaml file (tests the second glob pattern at lines 96-101)
+            yaml_model = {
+                "name": "yaml_model",
+                "model": "yaml_table",
+                "entities": [],
+                "dimensions": [],
+                "measures": []
+            }
+            (temp_path / "model.yaml").write_text(yaml.dump(yaml_model))
+
+            models = parser.parse_directory(temp_path)
+            assert len(models) == 1
+            assert models[0].name == "yaml_model"
+
+    def test_validate_method_with_semantic_models_key(self) -> None:
+        """Test validate() method with semantic_models key structure."""
+        parser = DbtParser()
+
+        content = {
+            "semantic_models": [
+                {
+                    "name": "test",
+                    "model": "table"
+                }
+            ]
+        }
+        assert parser.validate(content) is True
+
+    def test_validate_method_with_direct_model(self) -> None:
+        """Test validate() method with direct model structure."""
+        parser = DbtParser()
+
+        content = {
+            "name": "test",
+            "model": "table"
+        }
+        assert parser.validate(content) is True
+
+    def test_validate_method_with_list_of_models(self) -> None:
+        """Test validate() method with list of models."""
+        parser = DbtParser()
+
+        content = [
+            {
+                "name": "test",
+                "model": "table"
+            }
+        ]
+        assert parser.validate(content) is True
+
+    def test_validate_method_with_invalid_semantic_models_structure(self) -> None:
+        """Test validate() method with non-list semantic_models."""
+        parser = DbtParser()
+
+        content = {
+            "semantic_models": "not_a_list"
+        }
+        assert parser.validate(content) is False
+
+    def test_validate_method_with_empty_content(self) -> None:
+        """Test validate() method with empty content."""
+        parser = DbtParser()
+
+        assert parser.validate({}) is False
+        assert parser.validate(None) is False
+        assert parser.validate([]) is False
+
+    def test_validate_method_with_missing_required_fields(self) -> None:
+        """Test validate() method with missing required fields."""
+        parser = DbtParser()
+
+        # Missing 'model' field
+        content = {"name": "test"}
+        assert parser.validate(content) is False
+
+        # Missing 'name' field
+        content = {"model": "table"}
+        assert parser.validate(content) is False
+
+    def test_validate_method_with_empty_list(self) -> None:
+        """Test validate() method with empty list returns False."""
+        parser = DbtParser()
+
+        content = []
+        assert parser.validate(content) is False
+
+    def test_validate_model_structure_method(self) -> None:
+        """Test _validate_model_structure() private method."""
+        parser = DbtParser()
+
+        # Valid structure
+        assert parser._validate_model_structure({"name": "test", "model": "table"}) is True
+
+        # Missing name
+        assert parser._validate_model_structure({"model": "table"}) is False
+
+        # Missing model
+        assert parser._validate_model_structure({"name": "test"}) is False
+
+        # Empty dict
+        assert parser._validate_model_structure({}) is False
+
+    def test_dimension_with_nested_hierarchy_config(self) -> None:
+        """Test dimension parsing with nested hierarchy in config."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "hierarchy_model",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "user_status",
+                    "type": "categorical",
+                    "config": {
+                        "meta": {
+                            "hierarchy": {
+                                "entity": "user",
+                                "category": "profile",
+                                "subcategory": "account_status"
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            assert dim.config is not None
+            assert dim.config.meta is not None
+            assert dim.config.meta.hierarchy is not None
+            assert dim.config.meta.hierarchy.entity == "user"
+            assert dim.config.meta.hierarchy.category == "profile"
+            assert dim.config.meta.hierarchy.subcategory == "account_status"
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_with_flat_hierarchy_config_subject(self) -> None:
+        """Test dimension parsing with flat hierarchy using 'subject' field."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "flat_hierarchy_model",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "location",
+                    "type": "categorical",
+                    "config": {
+                        "meta": {
+                            "subject": "customer",
+                            "category": "demographics",
+                            "subcategory": "geo"
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            assert dim.config is not None
+            assert dim.config.meta is not None
+            assert dim.config.meta.subject == "customer"
+            assert dim.config.meta.category == "demographics"
+            assert dim.config.meta.hierarchy is not None
+            assert dim.config.meta.hierarchy.entity == "customer"
+            assert dim.config.meta.hierarchy.category == "demographics"
+            assert dim.config.meta.hierarchy.subcategory == "geo"
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_with_flat_hierarchy_config_entity(self) -> None:
+        """Test dimension parsing with flat hierarchy using 'entity' field."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "flat_hierarchy_entity",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "order_status",
+                    "type": "categorical",
+                    "config": {
+                        "meta": {
+                            "entity": "order",
+                            "category": "details"
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            assert dim.config is not None
+            assert dim.config.meta is not None
+            assert dim.config.meta.hierarchy is not None
+            assert dim.config.meta.hierarchy.entity == "order"
+            assert dim.config.meta.hierarchy.category == "details"
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_with_full_config_metadata(self) -> None:
+        """Test dimension parsing with all config metadata fields."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "full_config_model",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "customer_age",
+                    "type": "categorical",
+                    "config": {
+                        "meta": {
+                            "domain": "customer",
+                            "owner": "analytics_team",
+                            "contains_pii": True,
+                            "update_frequency": "daily",
+                            "category": "demographics"
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            assert dim.config.meta.domain == "customer"
+            assert dim.config.meta.owner == "analytics_team"
+            assert dim.config.meta.contains_pii is True
+            assert dim.config.meta.update_frequency == "daily"
+        finally:
+            temp_path.unlink()
+
+    def test_measure_with_nested_hierarchy_config(self) -> None:
+        """Test measure parsing with nested hierarchy in config."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_hierarchy_model",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "total_revenue",
+                    "agg": "sum",
+                    "expr": "amount",
+                    "config": {
+                        "meta": {
+                            "hierarchy": {
+                                "entity": "order",
+                                "category": "financials",
+                                "subcategory": "revenue"
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.config is not None
+            assert measure.config.meta is not None
+            assert measure.config.meta.hierarchy is not None
+            assert measure.config.meta.hierarchy.entity == "order"
+            assert measure.config.meta.hierarchy.category == "financials"
+            assert measure.config.meta.hierarchy.subcategory == "revenue"
+        finally:
+            temp_path.unlink()
+
+    def test_measure_with_flat_hierarchy_config_subject(self) -> None:
+        """Test measure parsing with flat hierarchy using 'subject' field."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_flat_subject",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "order_count",
+                    "agg": "count",
+                    "config": {
+                        "meta": {
+                            "subject": "transaction",
+                            "category": "counts"
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.config.meta.subject == "transaction"
+            assert measure.config.meta.hierarchy is not None
+            assert measure.config.meta.hierarchy.entity == "transaction"
+            assert measure.config.meta.hierarchy.category == "counts"
+        finally:
+            temp_path.unlink()
+
+    def test_measure_with_flat_hierarchy_config_entity(self) -> None:
+        """Test measure parsing with flat hierarchy using 'entity' field."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_flat_entity",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "unique_users",
+                    "agg": "count_distinct",
+                    "expr": "user_id",
+                    "config": {
+                        "meta": {
+                            "entity": "user",
+                            "category": "engagement"
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.config.meta.hierarchy is not None
+            assert measure.config.meta.hierarchy.entity == "user"
+            assert measure.config.meta.hierarchy.category == "engagement"
+        finally:
+            temp_path.unlink()
+
+    def test_measure_with_full_config_metadata(self) -> None:
+        """Test measure parsing with all config metadata fields."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_full_config",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "total_amount",
+                    "agg": "sum",
+                    "expr": "amount",
+                    "config": {
+                        "meta": {
+                            "domain": "finance",
+                            "owner": "finance_team",
+                            "contains_pii": False,
+                            "update_frequency": "hourly",
+                            "category": "metrics"
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.config.meta.domain == "finance"
+            assert measure.config.meta.owner == "finance_team"
+            assert measure.config.meta.contains_pii is False
+            assert measure.config.meta.update_frequency == "hourly"
+        finally:
+            temp_path.unlink()
+
+    def test_entity_parsing_error_handling(self) -> None:
+        """Test error handling when entity parsing fails."""
+        parser = DbtParser(strict_mode=True)
+
+        # Entity missing required 'name' field
+        model_data = {
+            "name": "entity_error_model",
+            "model": "table",
+            "entities": [
+                {
+                    "type": "primary",
+                    # Missing 'name' field
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="Error parsing entity"):
+                parser.parse_file(temp_path)
+        finally:
+            temp_path.unlink()
+
+    def test_entity_missing_type_field(self) -> None:
+        """Test error handling when entity is missing 'type' field."""
+        parser = DbtParser(strict_mode=True)
+
+        model_data = {
+            "name": "entity_no_type",
+            "model": "table",
+            "entities": [
+                {
+                    "name": "my_id",
+                    # Missing 'type' field
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="Error parsing entity"):
+                parser.parse_file(temp_path)
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_parsing_error_missing_name(self) -> None:
+        """Test error handling when dimension is missing name."""
+        parser = DbtParser(strict_mode=True)
+
+        model_data = {
+            "name": "dim_error_model",
+            "model": "table",
+            "dimensions": [
+                {
+                    "type": "categorical",
+                    # Missing 'name' field
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="Error parsing dimension"):
+                parser.parse_file(temp_path)
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_parsing_error_invalid_type(self) -> None:
+        """Test error handling when dimension has invalid type."""
+        parser = DbtParser(strict_mode=True)
+
+        model_data = {
+            "name": "dim_invalid_type",
+            "model": "table",
+            "dimensions": [
+                {
+                    "name": "test_dim",
+                    "type": "invalid_dimension_type",
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="Error parsing dimension"):
+                parser.parse_file(temp_path)
+        finally:
+            temp_path.unlink()
+
+    def test_measure_parsing_error_missing_name(self) -> None:
+        """Test error handling when measure is missing name."""
+        parser = DbtParser(strict_mode=True)
+
+        model_data = {
+            "name": "measure_error_model",
+            "model": "table",
+            "measures": [
+                {
+                    "agg": "count",
+                    # Missing 'name' field
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="Error parsing measure"):
+                parser.parse_file(temp_path)
+        finally:
+            temp_path.unlink()
+
+    def test_measure_parsing_error_invalid_agg(self) -> None:
+        """Test error handling when measure has invalid aggregation type."""
+        parser = DbtParser(strict_mode=True)
+
+        model_data = {
+            "name": "measure_invalid_agg",
+            "model": "table",
+            "measures": [
+                {
+                    "name": "bad_measure",
+                    "agg": "invalid_aggregation",
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="Error parsing measure"):
+                parser.parse_file(temp_path)
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_with_multiline_expression(self) -> None:
+        """Test dimension parsing with multiline SQL expressions."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "multiline_expr_model",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "complex_case",
+                    "type": "categorical",
+                    "expr": "  \n  CASE WHEN amount > 1000 THEN 'high'\n       WHEN amount > 100 THEN 'medium'\n       ELSE 'low' END  \n  "
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            # Expression should be stripped of leading/trailing whitespace
+            assert dim.expr.startswith("CASE")
+            assert dim.expr.endswith("END")
+            assert "high" in dim.expr
+            assert "medium" in dim.expr
+        finally:
+            temp_path.unlink()
+
+    def test_measure_with_multiline_expression(self) -> None:
+        """Test measure parsing with multiline SQL expressions."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_multiline",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "conditional_sum",
+                    "agg": "sum",
+                    "expr": "  \n  CASE WHEN status = 'completed'\n       THEN amount ELSE 0 END  \n  "
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            # Expression should be stripped
+            assert measure.expr.startswith("CASE")
+            assert measure.expr.endswith("END")
+        finally:
+            temp_path.unlink()
+
+    def test_parse_directory_yaml_file_error_handling(self) -> None:
+        """Test error handling when parsing .yaml files in directory."""
+        parser = DbtParser(strict_mode=False)
+
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create a valid .yml file
+            valid_model = {"name": "valid", "model": "table1"}
+            (temp_path / "valid.yml").write_text(yaml.dump(valid_model))
+
+            # Create an invalid .yaml file (malformed YAML)
+            (temp_path / "invalid.yaml").write_text("invalid: yaml: content: [")
+
+            # Should handle the error gracefully and return valid model
+            models = parser.parse_directory(temp_path)
+            # At least the valid model should be parsed
+            assert any(m.name == "valid" for m in models)
+
+    def test_config_with_only_meta_no_hierarchy(self) -> None:
+        """Test dimension config parsing with meta but no hierarchy info."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "simple_meta_model",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "simple_dim",
+                    "type": "categorical",
+                    "config": {
+                        "meta": {
+                            "domain": "test",
+                            "owner": "test_owner"
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            assert dim.config is not None
+            assert dim.config.meta.domain == "test"
+            assert dim.config.meta.owner == "test_owner"
+            # Hierarchy should be None when not specified
+            assert dim.config.meta.hierarchy is None
+        finally:
+            temp_path.unlink()
+
+    def test_measure_config_with_only_meta_no_hierarchy(self) -> None:
+        """Test measure config parsing with meta but no hierarchy info."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "simple_measure_meta",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "simple_measure",
+                    "agg": "count",
+                    "config": {
+                        "meta": {
+                            "domain": "metrics",
+                            "owner": "analytics"
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.config is not None
+            assert measure.config.meta.domain == "metrics"
+            assert measure.config.meta.owner == "analytics"
+            assert measure.config.meta.hierarchy is None
+        finally:
+            temp_path.unlink()
+
+    def test_model_config_without_meta(self) -> None:
+        """Test model parsing with config but no meta section."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "config_no_meta_model",
+            "model": "base_table",
+            "config": {
+                "other_field": "value"
+                # No 'meta' section
+            }
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            model = models[0]
+            assert model.config is not None
+            assert model.config.meta is None
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_config_without_meta(self) -> None:
+        """Test dimension parsing with config but no meta section."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "dim_config_no_meta",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "test_dim",
+                    "type": "categorical",
+                    "config": {
+                        "other_field": "value"
+                        # No 'meta' section
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            assert dim.config is not None
+            assert dim.config.meta is None
+        finally:
+            temp_path.unlink()
+
+    def test_measure_config_without_meta(self) -> None:
+        """Test measure parsing with config but no meta section."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_config_no_meta",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "test_measure",
+                    "agg": "count",
+                    "config": {
+                        "other_field": "value"
+                        # No 'meta' section
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.config is not None
+            assert measure.config.meta is None
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_without_config(self) -> None:
+        """Test dimension parsing without config section."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "dim_no_config",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "simple_dim",
+                    "type": "categorical",
+                    "expr": "status",
+                    # No 'config' section
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            assert dim.config is None
+        finally:
+            temp_path.unlink()
+
+    def test_measure_without_config(self) -> None:
+        """Test measure parsing without config section."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_no_config",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "simple_measure",
+                    "agg": "count",
+                    # No 'config' section
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.config is None
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_with_none_expression(self) -> None:
+        """Test dimension parsing with None expression value."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "dim_none_expr",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "test_dim",
+                    "type": "categorical",
+                    "expr": None
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            assert dim.expr is None
+        finally:
+            temp_path.unlink()
+
+    def test_measure_with_none_expression(self) -> None:
+        """Test measure parsing with None expression value."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_none_expr",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "test_measure",
+                    "agg": "count",
+                    "expr": None
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.expr is None
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_with_only_category_in_meta(self) -> None:
+        """Test dimension with only category field in meta (no entity/subject)."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "dim_only_category",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "test_dim",
+                    "type": "categorical",
+                    "config": {
+                        "meta": {
+                            "category": "demographics"
+                            # Only category, no entity or subject
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            assert dim.config is not None
+            assert dim.config.meta.category == "demographics"
+            # Hierarchy should be created because category is present
+            assert dim.config.meta.hierarchy is not None
+            assert dim.config.meta.hierarchy.category == "demographics"
+        finally:
+            temp_path.unlink()
+
+    def test_measure_with_only_category_in_meta(self) -> None:
+        """Test measure with only category field in meta (no entity/subject)."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_only_category",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "test_measure",
+                    "agg": "count",
+                    "config": {
+                        "meta": {
+                            "category": "metrics"
+                            # Only category, no entity or subject
+                        }
+                    }
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.config is not None
+            assert measure.config.meta.category == "metrics"
+            assert measure.config.meta.hierarchy is not None
+            assert measure.config.meta.hierarchy.category == "metrics"
+        finally:
+            temp_path.unlink()
+
+    def test_dimension_with_empty_string_expression(self) -> None:
+        """Test dimension with empty string expression."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "dim_empty_expr",
+            "model": "base_table",
+            "dimensions": [
+                {
+                    "name": "test_dim",
+                    "type": "categorical",
+                    "expr": ""  # Empty string
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            dim = models[0].dimensions[0]
+            # Empty string is falsy, so it's treated as if no expr was provided
+            assert dim.expr == ""
+        finally:
+            temp_path.unlink()
+
+    def test_measure_with_empty_string_expression(self) -> None:
+        """Test measure with empty string expression."""
+        parser = DbtParser()
+
+        model_data = {
+            "name": "measure_empty_expr",
+            "model": "fact_table",
+            "measures": [
+                {
+                    "name": "test_measure",
+                    "agg": "count",
+                    "expr": ""  # Empty string
+                }
+            ]
+        }
+
+        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(model_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            models = parser.parse_file(temp_path)
+            assert len(models) == 1
+
+            measure = models[0].measures[0]
+            assert measure.expr == ""
+        finally:
+            temp_path.unlink()

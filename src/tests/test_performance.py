@@ -14,18 +14,17 @@ import yaml
 
 import pytest
 
-from dbt_to_lookml.generator import LookMLGenerator
-from dbt_to_lookml.models import (
-    AggregationType,
+from dbt_to_lookml.generators.lookml import LookMLGenerator
+from dbt_to_lookml.schemas import (
     Config,
     ConfigMeta,
     Dimension,
-    DimensionType,
     Entity,
     Measure,
     SemanticModel,
 )
-from dbt_to_lookml.parser import SemanticModelParser
+from dbt_to_lookml.types import AggregationType, DimensionType
+from dbt_to_lookml.parsers.dbt import DbtParser
 
 # Try to import psutil for memory monitoring
 try:
@@ -42,7 +41,7 @@ class TestPerformance:
         """Test parsing performance with multiple semantic model files."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
 
-        parser = SemanticModelParser()
+        parser = DbtParser()
 
         # Measure parsing time
         start_time = time.time()
@@ -153,7 +152,7 @@ class TestPerformance:
             )
             large_semantic_models.append(model)
 
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
 
         with TemporaryDirectory() as temp_dir:
@@ -175,7 +174,7 @@ class TestPerformance:
     def test_concurrent_processing_performance(self) -> None:
         """Test performance when processing multiple models concurrently."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
 
         # Sequential processing
@@ -338,7 +337,7 @@ class TestPerformance:
     def test_file_io_performance(self) -> None:
         """Test file I/O performance with many small files."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         # Measure file reading performance
         yaml_files = list(semantic_models_dir.glob("*.yml"))
@@ -358,7 +357,7 @@ class TestPerformance:
     def test_validation_performance_impact(self) -> None:
         """Test performance impact of validation."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
 
         # Generate without validation
@@ -467,7 +466,7 @@ class TestPerformance:
         process = psutil.Process()
         initial_memory = process.memory_info().rss / 1024 / 1024  # MB
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
         
         # Create a moderate-sized model for repeated processing
@@ -522,7 +521,7 @@ class TestPerformance:
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
         
         def process_models(thread_id: int) -> Dict[str, Any]:
-            parser = SemanticModelParser()
+            parser = DbtParser()
             generator = LookMLGenerator()
             
             start_time = time.time()
@@ -650,7 +649,7 @@ class TestPerformance:
         """Benchmark current performance against expected baseline."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
         
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator(validate_syntax=True)
         
         # Measure end-to-end performance

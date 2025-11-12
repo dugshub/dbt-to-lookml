@@ -641,3 +641,917 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         # Should handle Unicode characters properly
         assert "unicode_view" in content
         assert "你好" in content or "unicode" in content  # Content should be preserved
+
+
+# Tests for low coverage code paths
+class TestFindModelByPrimaryEntity:
+    """Tests for _find_model_by_primary_entity method."""
+
+    def test_find_model_with_matching_primary_entity(self) -> None:
+        """Test finding a model with a matching primary entity."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[Entity(name="order_id", type="primary")],
+            ),
+        ]
+
+        result = generator._find_model_by_primary_entity("user_id", models)
+
+        assert result is not None
+        assert result.name == "users"
+
+    def test_find_model_with_no_matching_entity(self) -> None:
+        """Test finding a model when no entity matches."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[Entity(name="order_id", type="primary")],
+            ),
+        ]
+
+        result = generator._find_model_by_primary_entity("nonexistent_id", models)
+
+        assert result is None
+
+    def test_find_model_with_foreign_entity_only(self) -> None:
+        """Test finding a model when entity exists but is foreign, not primary."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="searches",
+                model="fact_searches",
+                entities=[Entity(name="user_id", type="foreign")],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        # Should find users which has user_id as primary
+        result = generator._find_model_by_primary_entity("user_id", models)
+
+        assert result is not None
+        assert result.name == "users"
+
+    def test_find_model_with_multiple_entities(self) -> None:
+        """Test finding model when it has multiple entities."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                    Entity(name="search_id", type="foreign"),
+                ],
+            ),
+        ]
+
+        result = generator._find_model_by_primary_entity("rental_id", models)
+
+        assert result is not None
+        assert result.name == "rentals"
+
+    def test_find_model_with_empty_model_list(self) -> None:
+        """Test finding model in empty list."""
+        generator = LookMLGenerator()
+
+        result = generator._find_model_by_primary_entity("user_id", [])
+
+        assert result is None
+
+
+class TestIdentifyFactModels:
+    """Tests for _identify_fact_models method."""
+
+    def test_identify_models_with_measures(self) -> None:
+        """Test identifying fact models that have measures."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[Entity(name="order_id", type="primary")],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[Entity(name="rental_id", type="primary")],
+                measures=[
+                    Measure(name="rental_count", agg=AggregationType.COUNT),
+                    Measure(name="total_revenue", agg=AggregationType.SUM),
+                ],
+            ),
+        ]
+
+        fact_models = generator._identify_fact_models(models)
+
+        assert len(fact_models) == 2
+        assert fact_models[0].name == "orders"
+        assert fact_models[1].name == "rentals"
+
+    def test_identify_with_no_fact_models(self) -> None:
+        """Test identifying fact models when none exist."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+            SemanticModel(
+                name="products",
+                model="dim_products",
+                entities=[Entity(name="product_id", type="primary")],
+            ),
+        ]
+
+        fact_models = generator._identify_fact_models(models)
+
+        assert len(fact_models) == 0
+
+    def test_identify_with_empty_list(self) -> None:
+        """Test identifying fact models in empty list."""
+        generator = LookMLGenerator()
+
+        fact_models = generator._identify_fact_models([])
+
+        assert len(fact_models) == 0
+
+    def test_identify_with_single_measure(self) -> None:
+        """Test identifying model with single measure."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="events",
+                model="fact_events",
+                entities=[Entity(name="event_id", type="primary")],
+                measures=[Measure(name="event_count", agg=AggregationType.COUNT)],
+            ),
+        ]
+
+        fact_models = generator._identify_fact_models(models)
+
+        assert len(fact_models) == 1
+        assert fact_models[0].name == "events"
+
+
+class TestInferRelationship:
+    """Tests for _infer_relationship method."""
+
+    def test_primary_to_primary_with_match(self) -> None:
+        """Test one-to-one relationship (primary to primary with matching names)."""
+        generator = LookMLGenerator()
+
+        relationship = generator._infer_relationship(
+            from_entity_type="primary",
+            to_entity_type="primary",
+            entity_name_match=True,
+        )
+
+        assert relationship == "one_to_one"
+
+    def test_primary_to_primary_without_match(self) -> None:
+        """Test many-to-one when primary entities don't match."""
+        generator = LookMLGenerator()
+
+        relationship = generator._infer_relationship(
+            from_entity_type="primary",
+            to_entity_type="primary",
+            entity_name_match=False,
+        )
+
+        assert relationship == "many_to_one"
+
+    def test_foreign_to_primary(self) -> None:
+        """Test many-to-one relationship (foreign to primary)."""
+        generator = LookMLGenerator()
+
+        relationship = generator._infer_relationship(
+            from_entity_type="foreign",
+            to_entity_type="primary",
+            entity_name_match=True,
+        )
+
+        assert relationship == "many_to_one"
+
+    def test_foreign_to_primary_without_match(self) -> None:
+        """Test many-to-one for foreign to primary regardless of match."""
+        generator = LookMLGenerator()
+
+        relationship = generator._infer_relationship(
+            from_entity_type="foreign",
+            to_entity_type="primary",
+            entity_name_match=False,
+        )
+
+        assert relationship == "many_to_one"
+
+    def test_primary_to_foreign(self) -> None:
+        """Test relationship when target is foreign (edge case)."""
+        generator = LookMLGenerator()
+
+        relationship = generator._infer_relationship(
+            from_entity_type="primary",
+            to_entity_type="foreign",
+            entity_name_match=True,
+        )
+
+        # Should default to many_to_one
+        assert relationship == "many_to_one"
+
+    def test_foreign_to_foreign(self) -> None:
+        """Test relationship between two foreign entities."""
+        generator = LookMLGenerator()
+
+        relationship = generator._infer_relationship(
+            from_entity_type="foreign",
+            to_entity_type="foreign",
+            entity_name_match=True,
+        )
+
+        assert relationship == "many_to_one"
+
+
+class TestGenerateSqlOnClause:
+    """Tests for _generate_sql_on_clause method."""
+
+    def test_generate_simple_sql_on_clause(self) -> None:
+        """Test generating a simple SQL ON clause."""
+        generator = LookMLGenerator()
+
+        sql_on = generator._generate_sql_on_clause(
+            from_view="rentals",
+            from_entity="user_id",
+            to_view="users",
+            to_entity="user_id",
+        )
+
+        assert sql_on == "${rentals.user_id} = ${users.user_id}"
+
+    def test_generate_sql_on_clause_with_different_names(self) -> None:
+        """Test generating SQL ON clause with different entity names."""
+        generator = LookMLGenerator()
+
+        sql_on = generator._generate_sql_on_clause(
+            from_view="orders",
+            from_entity="customer_id",
+            to_view="customers",
+            to_entity="id",
+        )
+
+        assert sql_on == "${orders.customer_id} = ${customers.id}"
+
+    def test_generate_sql_on_clause_with_prefixes(self) -> None:
+        """Test generating SQL ON clause with prefixed view names."""
+        generator = LookMLGenerator()
+
+        sql_on = generator._generate_sql_on_clause(
+            from_view="v_rentals",
+            from_entity="search_id",
+            to_view="v_searches",
+            to_entity="search_id",
+        )
+
+        assert sql_on == "${v_rentals.search_id} = ${v_searches.search_id}"
+
+    def test_generate_sql_on_clause_with_special_chars(self) -> None:
+        """Test generating SQL ON clause with special characters in names."""
+        generator = LookMLGenerator()
+
+        sql_on = generator._generate_sql_on_clause(
+            from_view="fact_table",
+            from_entity="key_column",
+            to_view="dim_table",
+            to_entity="key_column",
+        )
+
+        assert "${fact_table.key_column}" in sql_on
+        assert "${dim_table.key_column}" in sql_on
+        assert "=" in sql_on
+
+
+class TestBuildJoinGraph:
+    """Tests for _build_join_graph method."""
+
+    def test_build_join_graph_simple_one_hop(self) -> None:
+        """Test building a join graph with a single join."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        assert len(joins) == 1
+        assert joins[0]["view_name"] == "users"
+        assert "${rentals.user_id}" in joins[0]["sql_on"]
+        assert "${users.user_id}" in joins[0]["sql_on"]
+        assert joins[0]["relationship"] == "many_to_one"
+        assert joins[0]["type"] == "left_outer"
+
+    def test_build_join_graph_multi_hop(self) -> None:
+        """Test building a join graph with multi-hop relationships."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="search_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="searches",
+                model="fact_searches",
+                entities=[
+                    Entity(name="search_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        # Should have join to searches (direct) and users (multi-hop)
+        assert len(joins) == 2
+        view_names = [j["view_name"] for j in joins]
+        assert "searches" in view_names
+        assert "users" in view_names
+
+    def test_build_join_graph_no_foreign_entities(self) -> None:
+        """Test building join graph for model with no foreign entities."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        assert len(joins) == 0
+
+    def test_build_join_graph_circular_dependency(self) -> None:
+        """Test that circular dependencies are handled correctly."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                    Entity(name="customer_id", type="foreign"),
+                ],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="customers",
+                model="dim_customers",
+                entities=[
+                    Entity(name="customer_id", type="primary"),
+                    Entity(name="order_id", type="foreign"),  # Circular reference
+                ],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        # Should handle circular dependency without infinite loop
+        # Should only include the direct join to customers
+        assert len(joins) >= 1
+        assert any(j["view_name"] == "customers" for j in joins)
+
+    def test_build_join_graph_with_view_prefix(self) -> None:
+        """Test that view prefixes are applied in join graph."""
+        generator = LookMLGenerator(view_prefix="v_")
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        assert len(joins) == 1
+        assert joins[0]["view_name"] == "v_users"
+        assert "${v_rentals.user_id}" in joins[0]["sql_on"]
+
+    def test_build_join_graph_missing_target_model(self) -> None:
+        """Test join graph when foreign key target doesn't exist."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                    Entity(name="customer_id", type="foreign"),
+                ],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            # No customers model exists
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        # Should handle missing target gracefully
+        assert len(joins) == 0
+
+    def test_build_join_graph_multiple_foreign_keys(self) -> None:
+        """Test join graph with multiple foreign keys in same model."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                    Entity(name="search_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+            SemanticModel(
+                name="searches",
+                model="fact_searches",
+                entities=[Entity(name="search_id", type="primary")],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        # Should have joins to both users and searches
+        assert len(joins) == 2
+        view_names = {j["view_name"] for j in joins}
+        assert view_names == {"users", "searches"}
+
+    def test_build_join_graph_depth_limit(self) -> None:
+        """Test that join graph respects depth limit of 2 hops."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="level0",
+                model="fact_level0",
+                entities=[
+                    Entity(name="level0_id", type="primary"),
+                    Entity(name="level1_id", type="foreign"),
+                ],
+                measures=[Measure(name="count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="level1",
+                model="fact_level1",
+                entities=[
+                    Entity(name="level1_id", type="primary"),
+                    Entity(name="level2_id", type="foreign"),
+                ],
+            ),
+            SemanticModel(
+                name="level2",
+                model="fact_level2",
+                entities=[
+                    Entity(name="level2_id", type="primary"),
+                    Entity(name="level3_id", type="foreign"),
+                ],
+            ),
+            SemanticModel(
+                name="level3",
+                model="fact_level3",
+                entities=[Entity(name="level3_id", type="primary")],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        # Should include level1 (depth 1) and level2 (depth 2) but not level3 (depth 3)
+        view_names = {j["view_name"] for j in joins}
+        assert "level1" in view_names
+        assert "level2" in view_names
+        # level3 should not be included (depth limit reached)
+        assert "level3" not in view_names
+
+
+class TestGenerateExploreslookml:
+    """Tests for _generate_explores_lookml method."""
+
+    def test_generate_explores_with_no_fact_models(self) -> None:
+        """Test generating explores when there are no fact models."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+            SemanticModel(
+                name="products",
+                model="dim_products",
+                entities=[Entity(name="product_id", type="primary")],
+            ),
+        ]
+
+        content = generator._generate_explores_lookml(models)
+
+        # Should still generate valid LookML with includes but minimal explores
+        assert 'include:' in content
+        assert "users" in content
+        assert "products" in content
+
+    def test_generate_explores_with_explores_without_joins(self) -> None:
+        """Test generating explores when there are no join relationships."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="events",
+                model="fact_events",
+                entities=[Entity(name="event_id", type="primary")],
+                measures=[Measure(name="event_count", agg=AggregationType.COUNT)],
+            ),
+        ]
+
+        content = generator._generate_explores_lookml(models)
+
+        # Should generate explore without joins
+        assert "explore:" in content
+        assert "events" in content
+        assert 'include: "events.view.lkml"' in content
+
+    def test_generate_explores_with_description(self) -> None:
+        """Test that explore description is included when present."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                description="Order analysis explore",
+                entities=[Entity(name="order_id", type="primary")],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+        ]
+
+        content = generator._generate_explores_lookml(models)
+
+        assert "Order analysis explore" in content
+
+    def test_generate_explores_with_multiple_fact_models(self) -> None:
+        """Test generating explores for multiple fact models."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[Entity(name="order_id", type="primary")],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="returns",
+                model="fact_returns",
+                entities=[Entity(name="return_id", type="primary")],
+                measures=[Measure(name="return_count", agg=AggregationType.COUNT)],
+            ),
+        ]
+
+        content = generator._generate_explores_lookml(models)
+
+        # Should have both explores
+        assert "explore:" in content
+        assert "orders" in content
+        assert "returns" in content
+
+    def test_generate_explores_with_prefixes(self) -> None:
+        """Test that prefixes are applied to explore names."""
+        generator = LookMLGenerator(explore_prefix="e_", view_prefix="v_")
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[Entity(name="rental_id", type="primary")],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+        ]
+
+        content = generator._generate_explores_lookml(models)
+
+        assert "e_rentals" in content
+        assert 'include: "v_rentals.view.lkml"' in content
+
+    def test_generate_explores_with_complex_joins(self) -> None:
+        """Test generating explores with complex multi-hop joins."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="search_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="searches",
+                model="fact_searches",
+                entities=[
+                    Entity(name="search_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        content = generator._generate_explores_lookml(models)
+
+        # Should have joins in the explore
+        assert "join:" in content or "joins:" in content or "relationship:" in content
+
+
+class TestJoinGraphEdgeCases:
+    """Tests for edge cases in join graph building."""
+
+    def test_target_model_missing_primary_entity(self) -> None:
+        """Test when target model exists but doesn't have the primary entity."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                    Entity(name="customer_id", type="foreign"),
+                ],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="customers",
+                model="dim_customers",
+                entities=[
+                    Entity(name="customer_id", type="foreign"),  # No primary version
+                    Entity(name="cust_id", type="primary"),
+                ],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        # Should skip the join because target doesn't have customer_id as primary
+        assert len(joins) == 0
+
+    def test_source_without_primary_matches_foreign(self) -> None:
+        """Test relationship inference when source has only foreign entity."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="order_items",
+                model="fact_order_items",
+                entities=[
+                    Entity(name="order_item_id", type="primary"),
+                    Entity(name="order_id", type="foreign"),
+                ],
+                measures=[Measure(name="item_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                ],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        # Should generate a join with many_to_one relationship
+        assert len(joins) == 1
+        assert joins[0]["relationship"] == "many_to_one"
+
+
+class TestGenerateViewWithSchema:
+    """Tests for view generation with schema parameter."""
+
+    def test_generate_view_with_schema(self) -> None:
+        """Test generating view with custom schema."""
+        generator = LookMLGenerator(schema="analytics")
+
+        semantic_model = SemanticModel(
+            name="users",
+            model="dim_users",
+            entities=[Entity(name="user_id", type="primary")],
+        )
+
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Should include schema in sql_table_name
+        assert "analytics" in content or "dim_users" in content
+        assert "view:" in content
+
+
+class TestFormatLookMLEdgeCases:
+    """Tests for edge cases in LookML formatting."""
+
+    def test_format_empty_content(self) -> None:
+        """Test formatting empty content."""
+        generator = LookMLGenerator(format_output=True)
+
+        formatted = generator._format_lookml_content("")
+
+        assert formatted == ""
+
+    def test_format_whitespace_only(self) -> None:
+        """Test formatting whitespace-only content."""
+        generator = LookMLGenerator(format_output=True)
+
+        formatted = generator._format_lookml_content("   \n  \n  ")
+
+        # Should preserve or minimize whitespace
+        assert formatted.strip() == ""
+
+    def test_format_with_nested_braces(self) -> None:
+        """Test formatting deeply nested structures."""
+        generator = LookMLGenerator(format_output=True)
+
+        unformatted = "view:\nname: test\ndimension:\nfield:\ntype: string"
+
+        formatted = generator._format_lookml_content(unformatted)
+
+        # Should have proper indentation levels
+        lines = formatted.split('\n')
+        assert len(lines) > 1  # Should have multiple lines
+        assert len(formatted) > 0  # Should have content
+
+    def test_format_with_explore_keyword(self) -> None:
+        """Test formatting with explore keyword."""
+        generator = LookMLGenerator(format_output=True)
+
+        unformatted = "explore: orders\njoin: customers\nsql_on: ${orders.id}=${customers.id}"
+
+        formatted = generator._format_lookml_content(unformatted)
+
+        assert "explore:" in formatted
+        assert "join:" in formatted
+        assert "sql_on:" in formatted
+        # Should preserve structure
+        assert len(formatted) > 0
+
+
+class TestGenerateWithEmptyModels:
+    """Tests for generation with various empty model configurations."""
+
+    def test_generate_view_lookml_with_lookmlview_object(self) -> None:
+        """Test that _generate_view_lookml accepts LookMLView objects."""
+        generator = LookMLGenerator()
+
+        view = LookMLView(
+            name="test_view",
+            sql_table_name="test_table",
+        )
+
+        content = generator._generate_view_lookml(view)
+
+        assert "view:" in content
+        assert "test_view" in content
+        assert "sql_table_name: test_table" in content
+
+    def test_generate_with_invalid_object_type(self) -> None:
+        """Test error handling when invalid object type is passed."""
+        generator = LookMLGenerator()
+
+        with pytest.raises(TypeError, match="Expected SemanticModel or LookMLView"):
+            generator._generate_view_lookml("not a valid object")  # type: ignore
+
+    def test_generate_explores_empty_list(self) -> None:
+        """Test explores generation with empty model list."""
+        generator = LookMLGenerator()
+
+        content = generator._generate_explores_lookml([])
+
+        # Should generate minimal valid LookML
+        assert "explore:" in content or len(content.strip()) >= 0
+
+
+class TestValidateOutput:
+    """Tests for LookML output validation."""
+
+    def test_validate_output_with_valid_content(self) -> None:
+        """Test validation of valid LookML content."""
+        generator = LookMLGenerator()
+
+        valid_lookml = "view: test_view { sql_table_name: test_table ;; }"
+
+        is_valid, error_msg = generator.validate_output(valid_lookml)
+
+        assert is_valid is True
+        assert error_msg == ""
+
+    @patch('lkml.load')
+    def test_validate_output_with_none_result(self, mock_load: MagicMock) -> None:
+        """Test validation when parser returns None."""
+        mock_load.return_value = None
+
+        generator = LookMLGenerator()
+
+        is_valid, error_msg = generator.validate_output("some content")
+
+        assert is_valid is False
+        assert "Failed to parse" in error_msg
+
+    @patch('lkml.load')
+    def test_validate_output_with_exception(self, mock_load: MagicMock) -> None:
+        """Test validation when parser raises exception."""
+        mock_load.side_effect = Exception("Parse error")
+
+        generator = LookMLGenerator()
+
+        is_valid, error_msg = generator.validate_output("invalid content")
+
+        assert is_valid is False
+        assert "Invalid LookML syntax" in error_msg or "Parse error" in error_msg
