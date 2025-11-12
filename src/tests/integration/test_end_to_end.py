@@ -551,3 +551,63 @@ class TestEndToEndIntegration:
         assert len(semantic_models) >= 5
         assert len(generated_files) >= 6
         assert len(validation_errors) == 0
+
+    def test_dimension_sets_in_generated_views(self) -> None:
+        """Test that all generated view files include dimension sets."""
+        fixture_path = Path(__file__).parent.parent / "fixtures"
+
+        parser = DbtParser()
+        semantic_models = parser.parse_directory(fixture_path)
+
+        generator = LookMLGenerator()
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator.generate_lookml_files(
+                semantic_models, output_dir
+            )
+
+            assert len(validation_errors) == 0
+
+            # Check each view file for dimension sets
+            view_files = [f for f in generated_files if f.name.endswith('.view.lkml')]
+
+            assert len(view_files) > 0, "No view files were generated"
+
+            for view_file in view_files:
+                content = view_file.read_text()
+
+                # Parse LookML to check structure
+                parsed = lkml.load(content)
+                views = parsed.get('views', [])
+
+                assert len(views) > 0, f"No views found in {view_file.name}"
+
+                for view in views:
+                    # Check if view has dimensions
+                    has_dimensions = (
+                        len(view.get('dimensions', [])) > 0 or
+                        len(view.get('dimension_groups', [])) > 0
+                    )
+
+                    if has_dimensions:
+                        # If view has dimensions, it should have a set
+                        sets = view.get('sets', [])
+                        assert len(sets) > 0, f"View {view['name']} has dimensions but no sets"
+
+                        # Find dimensions_only set
+                        dim_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+                        assert dim_set is not None, f"View {view['name']} missing dimensions_only set"
+
+                        # Verify fields list is not empty
+                        fields = dim_set.get('fields', [])
+                        assert len(fields) > 0, f"View {view['name']} dimension set has no fields"
+
+                        # Verify all dimension and entity names are in the set
+                        dimension_names = [d['name'] for d in view.get('dimensions', [])]
+                        dimension_group_names = [dg['name'] for dg in view.get('dimension_groups', [])]
+                        all_expected_names = set(dimension_names + dimension_group_names)
+
+                        for expected_name in all_expected_names:
+                            assert expected_name in fields, \
+                                f"Dimension {expected_name} not in set of view {view['name']}"

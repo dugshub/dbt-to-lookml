@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch, MagicMock
 
 import pytest
+import lkml
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator, LookMLValidationError
 from dbt_to_lookml.types import (
@@ -1611,3 +1612,154 @@ class TestValidateOutput:
 
         assert is_valid is False
         assert "Invalid LookML syntax" in error_msg or "Parse error" in error_msg
+
+    def test_dimension_set_in_view_output(self) -> None:
+        """Test that dimension sets appear in generated view LookML."""
+        generator = LookMLGenerator()
+
+        semantic_model = SemanticModel(
+            name="users",
+            model="dim_users",
+            entities=[
+                Entity(name="user_id", type="primary"),
+                Entity(name="tenant_id", type="foreign")
+            ],
+            dimensions=[
+                Dimension(name="status", type=DimensionType.CATEGORICAL),
+                Dimension(name="created_at", type=DimensionType.TIME)
+            ],
+            measures=[
+                Measure(name="user_count", agg=AggregationType.COUNT)
+            ]
+        )
+
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Verify set block exists
+        assert "set:" in content or "sets:" in content
+        assert "dimensions_only" in content
+
+        # Verify set includes all dimensions
+        assert "user_id" in content  # entity
+        assert "tenant_id" in content  # entity
+        assert "status" in content  # dimension
+        assert "created_at" in content  # dimension
+
+    def test_dimension_set_empty_view(self) -> None:
+        """Test that views with no dimensions don't generate sets."""
+        generator = LookMLGenerator()
+
+        # Measures-only view (shouldn't happen in practice, but handle gracefully)
+        semantic_model = SemanticModel(
+            name="metrics_only",
+            model="fct_metrics",
+            measures=[
+                Measure(name="total", agg=AggregationType.SUM)
+            ]
+        )
+
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Verify no set block when no dimensions
+        assert "set:" not in content and "sets:" not in content
+
+    def test_dimension_set_includes_hidden_entities(self) -> None:
+        """Test that hidden entities are included in dimension sets."""
+        generator = LookMLGenerator()
+
+        semantic_model = SemanticModel(
+            name="orders",
+            model="fct_orders",
+            entities=[
+                Entity(name="order_id", type="primary", description="Hidden primary key")
+            ],
+            dimensions=[
+                Dimension(name="status", type=DimensionType.CATEGORICAL)
+            ]
+        )
+
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Verify hidden entity is in the set
+        assert "dimensions_only" in content
+        # Parse to verify structure
+        parsed = lkml.load(content)
+        views = parsed.get('views', [])
+        assert len(views) == 1
+
+        sets = views[0].get('sets', [])
+        if sets:  # If implementation uses sets list
+            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            assert dimension_set is not None
+            assert 'order_id' in dimension_set['fields']
+            assert 'status' in dimension_set['fields']
+
+    def test_dimension_set_includes_dimension_groups(self) -> None:
+        """Test that dimension_groups (time dimensions) are included in sets."""
+        generator = LookMLGenerator()
+
+        semantic_model = SemanticModel(
+            name="events",
+            model="fct_events",
+            entities=[
+                Entity(name="event_id", type="primary")
+            ],
+            dimensions=[
+                Dimension(
+                    name="event_timestamp",
+                    type=DimensionType.TIME,
+                    type_params={'time_granularity': 'day'}
+                ),
+                Dimension(name="event_type", type=DimensionType.CATEGORICAL)
+            ]
+        )
+
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Verify dimension_group is in the set
+        assert "dimensions_only" in content
+        assert "event_timestamp" in content  # Should be in set even as dimension_group
+        assert "event_type" in content
+
+        # Verify the set contains the base name, not the timeframe variant
+        parsed = lkml.load(content)
+        views = parsed.get('views', [])
+        assert len(views) == 1
+
+        sets = views[0].get('sets', [])
+        if sets:
+            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            assert dimension_set is not None
+            assert 'event_timestamp' in dimension_set['fields']
+            assert 'event_type' in dimension_set['fields']
+            assert 'event_id' in dimension_set['fields']
+
+    def test_dimension_set_only_dimensions_no_measures(self) -> None:
+        """Test dimension set in view with only dimensions (no measures)."""
+        generator = LookMLGenerator()
+
+        semantic_model = SemanticModel(
+            name="product",
+            model="dim_product",
+            entities=[
+                Entity(name="product_id", type="primary")
+            ],
+            dimensions=[
+                Dimension(name="product_name", type=DimensionType.CATEGORICAL),
+                Dimension(name="category", type=DimensionType.CATEGORICAL)
+            ]
+        )
+
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Should still generate set even without measures
+        assert "dimensions_only" in content
+        parsed = lkml.load(content)
+        views = parsed.get('views', [])
+        sets = views[0].get('sets', [])
+        assert len(sets) > 0
+        dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+        assert dimension_set is not None
+        assert 'product_id' in dimension_set['fields']
+        assert 'product_name' in dimension_set['fields']
+        assert 'category' in dimension_set['fields']

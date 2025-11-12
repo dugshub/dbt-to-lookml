@@ -461,6 +461,136 @@ class TestSemanticModel:
         assert model.config.meta.domain == "commerce"
         assert model.defaults["agg_time_dimension"] == "created_date"
 
+    def test_semantic_model_dimension_set_generation(self) -> None:
+        """Test that semantic model generates dimension sets correctly."""
+        entity = Entity(name="user_id", type="primary")
+        dimension = Dimension(name="status", type=DimensionType.CATEGORICAL)
+        measure = Measure(name="user_count", agg=AggregationType.COUNT)
+
+        model = SemanticModel(
+            name="users",
+            model="dim_users",
+            entities=[entity],
+            dimensions=[dimension],
+            measures=[measure],
+        )
+
+        lookml_dict = model.to_lookml_dict()
+
+        # Verify sets are present in the output
+        assert 'views' in lookml_dict
+        assert len(lookml_dict['views']) == 1
+        view = lookml_dict['views'][0]
+        assert 'sets' in view
+        assert len(view['sets']) > 0
+
+        # Verify dimensions_only set exists
+        dimension_set = next((s for s in view['sets'] if s['name'] == 'dimensions_only'), None)
+        assert dimension_set is not None
+
+        # Verify all dimension fields are in the set
+        assert 'user_id' in dimension_set['fields']  # entity
+        assert 'status' in dimension_set['fields']  # dimension
+
+    def test_semantic_model_dimension_set_with_time_dimensions(self) -> None:
+        """Test dimension set includes time dimension names (dimension_groups)."""
+        entity = Entity(name="event_id", type="primary")
+        time_dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={'time_granularity': 'day'}
+        )
+        regular_dim = Dimension(name="event_type", type=DimensionType.CATEGORICAL)
+
+        model = SemanticModel(
+            name="events",
+            model="fact_events",
+            entities=[entity],
+            dimensions=[time_dim, regular_dim],
+        )
+
+        lookml_dict = model.to_lookml_dict()
+        view = lookml_dict['views'][0]
+
+        # Verify dimension_groups are in the view
+        assert 'dimension_groups' in view
+        assert len(view['dimension_groups']) > 0
+
+        # Verify dimension set includes time dimension base name
+        dimension_set = next((s for s in view['sets'] if s['name'] == 'dimensions_only'), None)
+        assert dimension_set is not None
+        assert 'created_at' in dimension_set['fields']
+        assert 'event_type' in dimension_set['fields']
+        assert 'event_id' in dimension_set['fields']
+
+    def test_semantic_model_no_dimension_set_when_no_dimensions(self) -> None:
+        """Test that no dimension set is generated when there are no dimensions."""
+        measure = Measure(name="total", agg=AggregationType.SUM)
+
+        model = SemanticModel(
+            name="metrics",
+            model="fact_metrics",
+            measures=[measure],
+        )
+
+        lookml_dict = model.to_lookml_dict()
+        view = lookml_dict['views'][0]
+
+        # Verify no sets when no dimensions
+        assert 'sets' not in view or len(view.get('sets', [])) == 0
+
+    def test_semantic_model_dimension_set_includes_hidden_entities(self) -> None:
+        """Test that dimension set includes all entity types including foreign and unique."""
+        primary_entity = Entity(name="order_id", type="primary")
+        foreign_entity = Entity(name="customer_id", type="foreign")
+        unique_entity = Entity(name="tracking_id", type="unique")
+        dimension = Dimension(name="order_status", type=DimensionType.CATEGORICAL)
+
+        model = SemanticModel(
+            name="orders",
+            model="fct_orders",
+            entities=[primary_entity, foreign_entity, unique_entity],
+            dimensions=[dimension],
+            measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+        )
+
+        lookml_dict = model.to_lookml_dict()
+        view = lookml_dict['views'][0]
+
+        # Verify all entities are in the dimension set
+        dimension_set = next((s for s in view['sets'] if s['name'] == 'dimensions_only'), None)
+        assert dimension_set is not None
+        assert 'order_id' in dimension_set['fields']
+        assert 'customer_id' in dimension_set['fields']
+        assert 'tracking_id' in dimension_set['fields']
+        assert 'order_status' in dimension_set['fields']
+
+    def test_semantic_model_dimension_set_with_schema(self) -> None:
+        """Test that dimension set is generated correctly when schema is provided."""
+        entity = Entity(name="user_id", type="primary")
+        dimension = Dimension(name="status", type=DimensionType.CATEGORICAL)
+
+        model = SemanticModel(
+            name="users",
+            model="dim_users",
+            entities=[entity],
+            dimensions=[dimension],
+        )
+
+        # Generate with schema
+        lookml_dict = model.to_lookml_dict(schema="analytics")
+
+        view = lookml_dict['views'][0]
+
+        # Verify schema is applied to table name
+        assert view['sql_table_name'] == "analytics.dim_users"
+
+        # Verify dimension set is still generated
+        dimension_set = next((s for s in view['sets'] if s['name'] == 'dimensions_only'), None)
+        assert dimension_set is not None
+        assert 'user_id' in dimension_set['fields']
+        assert 'status' in dimension_set['fields']
+
 
 class TestConfigMeta:
     """Test cases for ConfigMeta model."""

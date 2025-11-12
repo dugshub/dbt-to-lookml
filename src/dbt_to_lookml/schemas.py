@@ -345,6 +345,13 @@ class SemanticModel(BaseModel):
         # Convert measures (pass model name for group_label inference)
         measures = [measure.to_lookml_dict(model_name=self.name) for measure in self.measures]
 
+        # Collect all dimension field names for the dimensions_only set
+        dimension_field_names: list[str] = []
+        for entity in self.entities:
+            dimension_field_names.append(entity.name)
+        for dim in self.dimensions:
+            dimension_field_names.append(dim.name)
+
         # Build the view dict
         view_dict: dict[str, Any] = {
             'name': self.name,
@@ -359,6 +366,15 @@ class SemanticModel(BaseModel):
 
         if measures:
             view_dict['measures'] = measures
+
+        # Add dimensions_only set if we have any dimensions
+        if dimension_field_names:
+            view_dict['sets'] = [
+                {
+                    'name': 'dimensions_only',
+                    'fields': dimension_field_names
+                }
+            ]
 
         return {'views': [view_dict]}
 
