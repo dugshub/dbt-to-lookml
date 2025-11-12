@@ -122,6 +122,66 @@ class TestEntity:
         assert lookml_dict['hidden'] == "yes"
         assert lookml_dict['primary_key'] == "yes"
 
+    def test_entity_expr_qualification_simple_column(self) -> None:
+        """Test that simple column names in expr get qualified with ${TABLE}."""
+        # Simple column name should be qualified
+        entity = Entity(name="facility_sk", type="foreign", expr="id")
+        lookml_dict = entity.to_lookml_dict()
+        assert lookml_dict['sql'] == "${TABLE}.id"
+
+        # Column with underscores should also be qualified
+        entity2 = Entity(name="user_key", type="foreign", expr="facility_sk")
+        lookml_dict2 = entity2.to_lookml_dict()
+        assert lookml_dict2['sql'] == "${TABLE}.facility_sk"
+
+    def test_entity_expr_qualification_already_qualified(self) -> None:
+        """Test that expressions already containing ${TABLE} are unchanged."""
+        entity = Entity(name="user_id", type="primary", expr="${TABLE}.id")
+        lookml_dict = entity.to_lookml_dict()
+        assert lookml_dict['sql'] == "${TABLE}.id"
+
+        # With other LookML references
+        entity2 = Entity(name="ref_id", type="foreign", expr="${other_view.id}")
+        lookml_dict2 = entity2.to_lookml_dict()
+        assert lookml_dict2['sql'] == "${other_view.id}"
+
+    def test_entity_expr_qualification_none_default(self) -> None:
+        """Test that None expr defaults to ${TABLE}.{name}."""
+        entity = Entity(name="user_id", type="primary")
+        lookml_dict = entity.to_lookml_dict()
+        assert lookml_dict['sql'] == "${TABLE}.user_id"
+
+    def test_entity_expr_qualification_complex_expression(self) -> None:
+        """Test that complex expressions are left as-is."""
+        # Expression with functions
+        entity = Entity(
+            name="full_name",
+            type="unique",
+            expr="CONCAT(first_name, ' ', last_name)"
+        )
+        lookml_dict = entity.to_lookml_dict()
+        # Complex expressions with spaces and functions are not auto-qualified
+        assert lookml_dict['sql'] == "CONCAT(first_name, ' ', last_name)"
+
+        # Expression with CASE statement
+        entity2 = Entity(
+            name="status_code",
+            type="primary",
+            expr="CASE WHEN active THEN 1 ELSE 0 END"
+        )
+        lookml_dict2 = entity2.to_lookml_dict()
+        assert lookml_dict2['sql'] == "CASE WHEN active THEN 1 ELSE 0 END"
+
+    def test_entity_expr_qualification_with_cast(self) -> None:
+        """Test expressions with CAST are left as-is."""
+        entity = Entity(
+            name="user_id_str",
+            type="primary",
+            expr="CAST(user_id AS VARCHAR)"
+        )
+        lookml_dict = entity.to_lookml_dict()
+        assert lookml_dict['sql'] == "CAST(user_id AS VARCHAR)"
+
 
 class TestDimension:
     """Test cases for Dimension model."""
