@@ -1,7 +1,8 @@
 # Makefile for dbt-to-lookml development and testing
 
 .PHONY: help install test test-fast test-full test-unit test-integration test-golden test-cli test-performance test-error test-coverage lint format type-check clean dev-install smoke-test ci-test benchmark test-all-verbose \
-	lookml-generate lookml-preview lookml-validate lookml-validate-strict lookml-demo
+	lookml-generate lookml-preview lookml-validate lookml-validate-strict lookml-demo \
+	tasks-list tasks-show tasks-update tasks-reindex tasks-next-id
 
 # Defaults for LookML generation commands (override via: make <target> INPUT_DIR=... OUTPUT_DIR=...)
 INPUT_DIR ?= semantic_models
@@ -18,6 +19,13 @@ help:
 	@echo "  lookml-validate   Validate semantic models (-v)"
 	@echo "  lookml-validate-strict  Validate in strict mode (-v, --strict)"
 	@echo "  lookml-demo       Preview using default sample folder 'semantic_models/'"
+	@echo ""
+	@echo "Task Management:"
+	@echo "  tasks-list        List all issues"
+	@echo "  tasks-show ID=... Show issue details (e.g., make tasks-show ID=DTL-001)"
+	@echo "  tasks-update      Update issue (ID, STATUS, LABEL, EVENT, DESC)"
+	@echo "  tasks-reindex     Regenerate index.md"
+	@echo "  tasks-next-id     Show next available issue ID"
 	@echo ""
 	@echo "Setup:"
 	@echo "  install          Install project dependencies"
@@ -225,3 +233,39 @@ lookml-validate-strict:
 lookml-demo:
 	@echo "🎬 Demo: preview generation using default sample folder (semantic_models/)"
 	@$(MAKE) lookml-preview INPUT_DIR=semantic_models OUTPUT_DIR=$(OUTPUT_DIR)
+
+# Task Management Commands
+tasks-list:
+	@uv run python scripts/dtl_tasks.py list
+
+tasks-show:
+ifndef ID
+	@echo "Error: ID parameter required. Usage: make tasks-show ID=DTL-001"
+	@exit 1
+endif
+	@uv run python scripts/dtl_tasks.py show $(ID)
+
+tasks-update:
+ifndef ID
+	@echo "Error: ID parameter required. Usage: make tasks-update ID=DTL-001 STATUS=in-progress"
+	@exit 1
+endif
+ifdef STATUS
+	@uv run python scripts/dtl_tasks.py update $(ID) --status $(STATUS)
+endif
+ifdef LABEL
+	@uv run python scripts/dtl_tasks.py update $(ID) --add-label $(LABEL)
+endif
+ifdef EVENT
+ifndef DESC
+	@echo "Error: DESC parameter required when using EVENT"
+	@exit 1
+endif
+	@uv run python scripts/dtl_tasks.py update $(ID) --event "$(EVENT)" --description "$(DESC)"
+endif
+
+tasks-reindex:
+	@uv run python scripts/dtl_tasks.py reindex
+
+tasks-next-id:
+	@uv run python scripts/dtl_tasks.py next-id
