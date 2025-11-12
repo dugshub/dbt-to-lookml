@@ -28,7 +28,7 @@ make tasks-reindex
 /plan:decompose "feature description"
 
 # 2. Create issues from plan
-/plan:create issue-plan-{name}.yaml
+/plan:create .tasks/plans/issue-plan-{name}.yaml
 
 # 3. Generate strategy for an issue
 /plan:strategy DTL-001
@@ -79,6 +79,7 @@ grep -r "priority:high" .tasks/issues/
 
 ```
 .tasks/
+├── plans/            # YAML plans: issue-plan-{name}.yaml
 ├── issues/           # Issues: DTL-001.md, DTL-002.md
 ├── epics/            # Epics: DTL-001.md (if epic)
 ├── strategies/       # Strategies: DTL-001-strategy.md

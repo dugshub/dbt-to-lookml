@@ -12,6 +12,7 @@ Instead of using external issue tracking (like Linear), we use local markdown fi
 .tasks/
 ├── config.yaml          # Project configuration (issue counter, labels)
 ├── index.md             # Auto-generated index of all issues
+├── plans/               # YAML planning files (issue-plan-{name}.yaml)
 ├── issues/              # Individual issue files (DTL-001.md, DTL-002.md, etc.)
 ├── epics/               # Epic files (DTL-001.md for epics)
 ├── strategies/          # Implementation strategies (DTL-001-strategy.md)
@@ -101,14 +102,14 @@ uv run python scripts/dtl_tasks.py next-id
 # Decompose requirements into YAML plan
 /plan:decompose "Add user authentication system"
 
-# Creates: issue-plan-user-authentication.yaml
+# Creates: .tasks/plans/issue-plan-user-authentication.yaml
 ```
 
 ### 2. Create Issues
 
 ```bash
 # Create markdown issues from YAML
-/plan:create issue-plan-user-authentication.yaml
+/plan:create .tasks/plans/issue-plan-user-authentication.yaml
 
 # Creates:
 #   .tasks/epics/DTL-001.md (epic)

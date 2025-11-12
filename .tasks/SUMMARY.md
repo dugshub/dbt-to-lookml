@@ -140,10 +140,10 @@ Description of what happened
 ```
 1. Plan & Decompose
    /plan:decompose "feature description"
-   → Creates: issue-plan-{name}.yaml
+   → Creates: .tasks/plans/issue-plan-{name}.yaml
 
 2. Create Issues
-   /plan:create issue-plan-{name}.yaml
+   /plan:create .tasks/plans/issue-plan-{name}.yaml
    → Creates: .tasks/issues/*.md, .tasks/epics/*.md
 
 3. Generate Strategy

@@ -135,10 +135,10 @@ make tasks-update ID=DTL-001 EVENT="Started planning" DESC="Reviewing existing t
 # Decompose feature into issues
 /plan:decompose "Add Redis caching to improve performance"
 
-# This creates: issue-plan-redis-caching.yaml
+# This creates: .tasks/plans/issue-plan-redis-caching.yaml
 
 # Create markdown issues
-/plan:create issue-plan-redis-caching.yaml
+/plan:create .tasks/plans/issue-plan-redis-caching.yaml
 
 # Output:
 # ✅ Issue Sync Complete!

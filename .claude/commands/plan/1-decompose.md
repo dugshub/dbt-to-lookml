@@ -157,20 +157,20 @@ After all fixes:
 ✅ YAML validation complete - ready to save
 ```
 
-**Step 14: Save** - Write to project root: `issue-plan-{kebab-case}.yaml`
+**Step 14: Save** - Write to `.tasks/plans/` directory: `.tasks/plans/issue-plan-{kebab-case}.yaml`
 
 **Step 15: Confirm Idempotent Nature**
 
 Display to user:
 ```
-✅ YAML plan saved: issue-plan-{kebab-case}.yaml
+✅ YAML plan saved: .tasks/plans/issue-plan-{kebab-case}.yaml
 
 This plan is idempotent:
 - Run /plan:create multiple times safely
-- YAML → Linear sync (creates missing, updates changed, skips synced)
-- Edit YAML and re-run to update Linear issues
+- YAML → Markdown sync (creates missing, updates changed, skips synced)
+- Edit YAML and re-run to update markdown issues
 
-Next: /plan:create issue-plan-{kebab-case}.yaml [--dry-run]
+Next: /plan:create .tasks/plans/issue-plan-{kebab-case}.yaml [--dry-run]
 ```
 
 ---
@@ -180,7 +180,7 @@ Next: /plan:create issue-plan-{kebab-case}.yaml [--dry-run]
 **Step 16: Commit** - Optionally commit the YAML plan to git:
 
 ```bash
-git add issue-plan-{name}.yaml
+git add .tasks/plans/issue-plan-{name}.yaml
 git commit -m "docs(planning): add issue decomposition plan for {feature}"
 ```
 
