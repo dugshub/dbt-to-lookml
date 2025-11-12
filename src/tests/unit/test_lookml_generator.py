@@ -193,17 +193,19 @@ class TestLookMLGenerator:
             )
 
             # Verify files were created
-            assert len(generated_files) == 3  # 2 views + 1 explores file
+            assert len(generated_files) == 4  # 2 views + 1 explores file + 1 model file
             assert len(validation_errors) == 0
 
             # Check file contents
             users_view = output_dir / "users.view.lkml"
             orders_view = output_dir / "orders.view.lkml"
             explores_file = output_dir / "explores.lkml"
+            model_file = output_dir / "semantic_model.model.lkml"
 
             assert users_view.exists()
             assert orders_view.exists()
             assert explores_file.exists()
+            assert model_file.exists()
 
             # Verify content
             users_content = users_view.read_text()
@@ -232,7 +234,7 @@ class TestLookMLGenerator:
             )
 
             # Files should be listed but not actually created
-            assert len(generated_files) == 2  # view + explores
+            assert len(generated_files) == 3  # view + explores + model
             assert not any(f.exists() for f in generated_files)
 
     def test_validation_enabled(self) -> None:
@@ -417,6 +419,60 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         assert "Explore files: 1" in summary
         assert "Error 1" in summary
         assert "Error 2" in summary
+
+    def test_model_file_generation_default(self) -> None:
+        """Test model file generation with default connection and name."""
+        generator = LookMLGenerator()
+
+        semantic_models = [
+            SemanticModel(name="test", model="test_table")
+        ]
+
+        files = generator.generate(semantic_models)
+
+        # Verify model file is generated with default name
+        assert "semantic_model.model.lkml" in files
+
+        model_content = files["semantic_model.model.lkml"]
+
+        # Verify model file content
+        assert 'connection: "redshift_test"' in model_content
+        assert 'include: "explores.lkml"' in model_content
+        assert 'include: "*.view.lkml"' in model_content
+
+    def test_model_file_generation_custom(self) -> None:
+        """Test model file generation with custom connection and name."""
+        generator = LookMLGenerator(
+            connection="my_connection",
+            model_name="my_project"
+        )
+
+        semantic_models = [
+            SemanticModel(name="test", model="test_table")
+        ]
+
+        files = generator.generate(semantic_models)
+
+        # Verify model file is generated with custom name
+        assert "my_project.model.lkml" in files
+        assert "semantic_model.model.lkml" not in files
+
+        model_content = files["my_project.model.lkml"]
+
+        # Verify custom connection in model file
+        assert 'connection: "my_connection"' in model_content
+        assert 'include: "explores.lkml"' in model_content
+        assert 'include: "*.view.lkml"' in model_content
+
+    def test_model_file_not_generated_without_models(self) -> None:
+        """Test that model file is not generated when there are no models."""
+        generator = LookMLGenerator()
+
+        files = generator.generate([])
+
+        # No files should be generated when there are no models
+        assert len(files) == 0
+        assert "semantic_model.model.lkml" not in files
 
     def test_complex_view_with_all_elements(self) -> None:
         """Test generating view with all possible elements."""

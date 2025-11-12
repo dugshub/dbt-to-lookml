@@ -77,6 +77,20 @@ def cli() -> None:
     is_flag=True,
     help="Show detailed generation summary at the end",
 )
+@click.option(
+    "--connection",
+    "-c",
+    type=str,
+    default="redshift_test",
+    help="Looker connection name for the model file (default: redshift_test)",
+)
+@click.option(
+    "--model-name",
+    "-m",
+    type=str,
+    default="semantic_model",
+    help="Name for the generated model file without extension (default: semantic_model)",
+)
 def generate(
     input_dir: Path,
     output_dir: Path,
@@ -87,6 +101,8 @@ def generate(
     no_validation: bool,
     no_formatting: bool,
     show_summary: bool,
+    connection: str,
+    model_name: str,
 ) -> None:
     """Generate LookML views and explores from semantic models."""
     if not GENERATOR_AVAILABLE:
@@ -152,6 +168,8 @@ def generate(
             validate_syntax=not no_validation,
             format_output=not no_formatting,
             schema=schema,
+            connection=connection,
+            model_name=model_name,
         )
 
         # Generate files

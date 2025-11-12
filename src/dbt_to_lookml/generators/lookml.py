@@ -28,7 +28,9 @@ class LookMLGenerator(Generator):
         explore_prefix: str = "",
         validate_syntax: bool = True,
         format_output: bool = True,
-        schema: str = ""
+        schema: str = "",
+        connection: str = "redshift_test",
+        model_name: str = "semantic_model"
     ) -> None:
         """Initialize the generator.
 
@@ -38,6 +40,8 @@ class LookMLGenerator(Generator):
             validate_syntax: Whether to validate generated LookML syntax.
             format_output: Whether to format LookML output for readability.
             schema: Database schema name for sql_table_name.
+            connection: Looker connection name for the model file.
+            model_name: Name for the generated model file (without .model.lkml extension).
         """
         super().__init__(
             validate_syntax=validate_syntax,
@@ -49,6 +53,8 @@ class LookMLGenerator(Generator):
         self.view_prefix = view_prefix
         self.explore_prefix = explore_prefix
         self.schema = schema
+        self.connection = connection
+        self.model_name = model_name
         # Backward compatibility attribute
         class MapperCompat:
             def __init__(self, vp, ep):
@@ -279,6 +285,14 @@ class LookMLGenerator(Generator):
             files["explores.lkml"] = explores_content
             console.print("  [green]✓[/green] Generated explores.lkml")
 
+        # Generate model file if there are models
+        if models:
+            console.print("[bold blue]Generating model file...[/bold blue]")
+            model_content = self._generate_model_lookml()
+            model_filename = f"{self._sanitize_filename(self.model_name)}.model.lkml"
+            files[model_filename] = model_content
+            console.print(f"  [green]✓[/green] Generated {model_filename}")
+
         return files
 
     def validate_output(self, content: str) -> Tuple[bool, str]:
@@ -355,6 +369,30 @@ class LookMLGenerator(Generator):
             raise TypeError(f"Expected SemanticModel or LookMLView, got {type(semantic_model)}")
 
         result = lkml.dump(view_dict)
+        formatted_result = result if result is not None else ""
+
+        if self.format_output:
+            formatted_result = self._format_lookml_content(formatted_result)
+
+        return formatted_result
+
+    def _generate_model_lookml(self) -> str:
+        """Generate LookML model file content.
+
+        The model file defines the connection and includes explore and view files.
+
+        Returns:
+            LookML model file content as a string.
+        """
+        model_dict = {
+            'connection': self.connection,
+            'include': [
+                'explores.lkml',
+                '*.view.lkml'
+            ]
+        }
+
+        result = lkml.dump(model_dict)
         formatted_result = result if result is not None else ""
 
         if self.format_output:
