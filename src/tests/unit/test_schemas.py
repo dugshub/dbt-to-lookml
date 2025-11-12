@@ -78,6 +78,50 @@ class TestEntity:
         with pytest.raises(ValidationError):
             Entity(name="id")  # Missing type
 
+    def test_entity_to_lookml_primary_hidden(self) -> None:
+        """Test that primary entities are hidden in LookML output."""
+        entity = Entity(name="user_id", type="primary", description="User identifier")
+        lookml_dict = entity.to_lookml_dict(is_fact_table=False)
+
+        assert lookml_dict['name'] == "user_id"
+        assert lookml_dict['type'] == "string"
+        assert lookml_dict['primary_key'] == "yes"
+        assert lookml_dict['hidden'] == "yes"
+        assert lookml_dict['sql'] == "${TABLE}.user_id"
+
+    def test_entity_to_lookml_foreign_hidden(self) -> None:
+        """Test that foreign entities are hidden in LookML output."""
+        entity = Entity(name="customer_id", type="foreign", description="Foreign key")
+        lookml_dict = entity.to_lookml_dict(is_fact_table=False)
+
+        assert lookml_dict['name'] == "customer_id"
+        assert lookml_dict['type'] == "string"
+        assert lookml_dict['hidden'] == "yes"
+        assert 'primary_key' not in lookml_dict
+
+    def test_entity_to_lookml_unique_hidden(self) -> None:
+        """Test that unique entities are hidden in LookML output."""
+        entity = Entity(name="email", type="unique", description="Unique email")
+        lookml_dict = entity.to_lookml_dict(is_fact_table=False)
+
+        assert lookml_dict['name'] == "email"
+        assert lookml_dict['type'] == "string"
+        assert lookml_dict['hidden'] == "yes"
+        assert 'primary_key' not in lookml_dict
+
+    def test_entity_to_lookml_with_custom_expr(self) -> None:
+        """Test that entities with custom expressions are hidden."""
+        entity = Entity(
+            name="composite_key",
+            type="primary",
+            expr="CONCAT(user_id, '_', order_id)"
+        )
+        lookml_dict = entity.to_lookml_dict(is_fact_table=True, view_label="Orders")
+
+        assert lookml_dict['sql'] == "CONCAT(user_id, '_', order_id)"
+        assert lookml_dict['hidden'] == "yes"
+        assert lookml_dict['primary_key'] == "yes"
+
 
 class TestDimension:
     """Test cases for Dimension model."""

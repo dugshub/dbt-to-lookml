@@ -112,7 +112,7 @@ class TestFlatMetaLabeling:
         assert lookml_dict['name'] == "rental_count"
 
     def test_entity_in_fact_table_with_labels(self) -> None:
-        """Test that primary entities in fact tables get labels."""
+        """Test that primary entities in fact tables get labels and are hidden."""
         entity = Entity(
             name="rental",
             type="primary",
@@ -128,9 +128,10 @@ class TestFlatMetaLabeling:
         assert lookml_dict['primary_key'] == "yes"
         assert lookml_dict['view_label'] == "Rentals"
         assert lookml_dict['group_label'] == "Join Keys"
+        assert lookml_dict['hidden'] == "yes"
 
     def test_entity_in_dimension_table_no_labels(self) -> None:
-        """Test that primary entities in dimension tables don't get group_label."""
+        """Test that primary entities in dimension tables don't get group_label but are hidden."""
         entity = Entity(
             name="facility",
             type="primary",
@@ -146,6 +147,7 @@ class TestFlatMetaLabeling:
         assert lookml_dict['primary_key'] == "yes"
         assert 'view_label' not in lookml_dict
         assert 'group_label' not in lookml_dict
+        assert lookml_dict['hidden'] == "yes"
 
     def test_semantic_model_with_flat_meta(self) -> None:
         """Test complete semantic model with flat meta structure."""

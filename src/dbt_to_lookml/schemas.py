@@ -75,9 +75,8 @@ class Entity(BaseModel):
                     result['view_label'] = view_label
                 result['group_label'] = 'Join Keys'
 
-        # Hide foreign key entities (used only for joins)
-        if self.type == 'foreign':
-            result['hidden'] = 'yes'
+        # Hide all entities (typically surrogate keys) - natural keys should be defined as dimensions
+        result['hidden'] = 'yes'
 
         if self.description:
             result['description'] = self.description
