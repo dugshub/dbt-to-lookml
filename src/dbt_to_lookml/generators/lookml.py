@@ -57,6 +57,191 @@ class LookMLGenerator(Generator):
                 return model
         self.mapper = MapperCompat(view_prefix, explore_prefix)
 
+    def _find_model_by_primary_entity(
+        self, entity_name: str, models: List[SemanticModel]
+    ) -> SemanticModel | None:
+        """Find a semantic model that has a primary entity with the given name.
+
+        Args:
+            entity_name: Name of the entity to search for.
+            models: List of semantic models to search within.
+
+        Returns:
+            The semantic model with the matching primary entity, or None if not found.
+        """
+        for model in models:
+            for entity in model.entities:
+                if entity.name == entity_name and entity.type == 'primary':
+                    return model
+        return None
+
+    def _identify_fact_models(self, models: List[SemanticModel]) -> List[SemanticModel]:
+        """Identify fact tables (models with measures) that should become base explores.
+
+        Args:
+            models: List of semantic models to analyze.
+
+        Returns:
+            List of semantic models that have measures (fact tables).
+        """
+        return [model for model in models if len(model.measures) > 0]
+
+    def _infer_relationship(
+        self,
+        from_entity_type: str,
+        to_entity_type: str,
+        entity_name_match: bool
+    ) -> str:
+        """Infer the join relationship cardinality based on entity types.
+
+        Args:
+            from_entity_type: Entity type in the source model ('primary' or 'foreign').
+            to_entity_type: Entity type in the target model ('primary' or 'foreign').
+            entity_name_match: Whether the entity names match (e.g., both named 'rental').
+
+        Returns:
+            The relationship type: 'one_to_one' or 'many_to_one'.
+        """
+        # If both entities are primary with matching names, it's a one-to-one relationship
+        if from_entity_type == 'primary' and to_entity_type == 'primary' and entity_name_match:
+            return 'one_to_one'
+        # Foreign to primary is many-to-one
+        return 'many_to_one'
+
+    def _generate_sql_on_clause(
+        self,
+        from_view: str,
+        from_entity: str,
+        to_view: str,
+        to_entity: str
+    ) -> str:
+        """Generate the SQL ON clause for a LookML join.
+
+        Args:
+            from_view: Name of the source view.
+            from_entity: Name of the entity in the source view.
+            to_view: Name of the target view.
+            to_entity: Name of the entity in the target view.
+
+        Returns:
+            LookML-formatted SQL ON clause (e.g., "${from_view.entity} = ${to_view.entity}").
+        """
+        return f"${{{from_view}.{from_entity}}} = ${{{to_view}.{to_entity}}}"
+
+    def _build_join_graph(
+        self,
+        fact_model: SemanticModel,
+        all_models: List[SemanticModel]
+    ) -> List[Dict[str, str]]:
+        """Build a complete join graph for a fact table including multi-hop joins.
+
+        This method traverses foreign key relationships to build a complete join graph.
+        It handles both direct joins (fact → dimension) and multi-hop joins
+        (fact → dim1 → dim2), as in rentals → searches → sessions.
+
+        Args:
+            fact_model: The fact table semantic model to build joins for.
+            all_models: All available semantic models.
+
+        Returns:
+            List of join dictionaries with keys: view_name, sql_on, relationship, type.
+        """
+        joins = []
+        visited = set()  # Track models we've already joined to avoid cycles
+
+        # Track the view names for models (with prefix applied)
+        model_view_names = {
+            model.name: f"{self.view_prefix}{model.name}" for model in all_models
+        }
+
+        fact_view_name = f"{self.view_prefix}{fact_model.name}"
+        visited.add(fact_model.name)
+
+        # Queue for BFS traversal: (source_model, source_view_name, depth)
+        from collections import deque
+        queue = deque([(fact_model, fact_view_name, 0)])
+
+        # Track join paths to handle multi-hop joins correctly
+        # Maps model_name → (parent_view_name, parent_entity_name)
+        join_paths = {}
+
+        while queue:
+            current_model, current_view_name, depth = queue.popleft()
+
+            # Limit to 2 hops maximum (depth 0 = fact, depth 1 = direct, depth 2 = multi-hop)
+            if depth >= 2:
+                continue
+
+            # Process all foreign key entities in the current model
+            for entity in current_model.entities:
+                if entity.type != 'foreign':
+                    continue
+
+                # Find the target model with this entity as primary key
+                target_model = self._find_model_by_primary_entity(entity.name, all_models)
+
+                if not target_model or target_model.name in visited:
+                    continue
+
+                # Mark as visited to prevent cycles
+                visited.add(target_model.name)
+
+                target_view_name = model_view_names[target_model.name]
+
+                # Find the primary entity in the target model
+                target_primary_entity = None
+                for target_entity in target_model.entities:
+                    if target_entity.name == entity.name and target_entity.type == 'primary':
+                        target_primary_entity = target_entity
+                        break
+
+                if not target_primary_entity:
+                    continue
+
+                # Determine relationship cardinality
+                # Check if both source and target have the same entity name as primary
+                source_primary_entity = None
+                for src_entity in current_model.entities:
+                    if src_entity.type == 'primary' and src_entity.name == entity.name:
+                        source_primary_entity = src_entity
+                        break
+
+                entity_name_match = source_primary_entity is not None
+                from_entity_type = source_primary_entity.type if source_primary_entity else 'foreign'
+                to_entity_type = target_primary_entity.type
+
+                relationship = self._infer_relationship(
+                    from_entity_type,
+                    to_entity_type,
+                    entity_name_match
+                )
+
+                # Generate SQL ON clause
+                sql_on = self._generate_sql_on_clause(
+                    current_view_name,
+                    entity.name,
+                    target_view_name,
+                    target_primary_entity.name
+                )
+
+                # Create join block
+                join = {
+                    'view_name': target_view_name,
+                    'sql_on': sql_on,
+                    'relationship': relationship,
+                    'type': 'left_outer'
+                }
+
+                joins.append(join)
+
+                # Add to queue for multi-hop processing
+                queue.append((target_model, target_view_name, depth + 1))
+
+                # Track the join path for this model
+                join_paths[target_model.name] = (current_view_name, entity.name)
+
+        return joins
+
     def generate(self, models: List[SemanticModel]) -> Dict[str, str]:
         """Generate LookML files from semantic models.
 
@@ -178,37 +363,79 @@ class LookMLGenerator(Generator):
     def _generate_explores_lookml(self, semantic_models: List[SemanticModel]) -> str:
         """Generate LookML content for explores from semantic models.
 
+        Only generates explores for fact tables (models with measures) and includes
+        automatic join graph generation based on entity relationships.
+
         Args:
             semantic_models: List of semantic models to create explores for.
 
         Returns:
-            The LookML content as a string.
+            The LookML content as a string with include statements and explores.
         """
+        # Generate include statements for all view files
+        include_statements = []
+        for model in semantic_models:
+            view_filename = f"{self.view_prefix}{model.name}.view.lkml"
+            include_statements.append(f'include: "{view_filename}"')
+
+        # Identify fact models (those with measures)
+        fact_models = self._identify_fact_models(semantic_models)
+
         explores = []
 
-        for model in semantic_models:
-            explore_name = f"{self.explore_prefix}{model.name}"
-            view_name = f"{self.view_prefix}{model.name}"
+        # Generate explores only for fact models with join graphs
+        for fact_model in fact_models:
+            explore_name = f"{self.explore_prefix}{fact_model.name}"
+            view_name = f"{self.view_prefix}{fact_model.name}"
 
             explore_dict = {
                 'name': explore_name,
-                'type': 'table',
                 'from': view_name,
             }
-            if model.description:
-                explore_dict['description'] = model.description
+
+            if fact_model.description:
+                explore_dict['description'] = fact_model.description
+
+            # Build join graph for this fact model
+            joins = self._build_join_graph(fact_model, semantic_models)
+
+            # Add joins to explore if any exist
+            if joins:
+                # Convert join dicts to LookML format
+                # lkml library expects 'joins' as a list of dicts with specific structure
+                explore_dict['joins'] = []
+                for join in joins:
+                    join_dict = {
+                        'name': join['view_name'],
+                        'sql_on': join['sql_on'],
+                        'relationship': join['relationship'],
+                        'type': join['type']
+                    }
+                    explore_dict['joins'].append(join_dict)
 
             explores.append(explore_dict)
 
+        # Combine include statements and explores
+        result_parts = []
+
+        # Add include statements
+        if include_statements:
+            result_parts.append('\n'.join(include_statements))
+            result_parts.append('')  # Blank line after includes
+
         # Handle empty explores list to maintain structure
         if not explores:
-            formatted_result = "explore:\n"
+            result_parts.append("explore:\n")
         else:
-            result = lkml.dump({'explores': explores})
-            formatted_result = result if result is not None else ""
+            # Generate LookML for explores
+            explores_content = lkml.dump({'explores': explores})
+            if explores_content:
+                result_parts.append(explores_content)
 
-            if self.format_output:
-                formatted_result = self._format_lookml_content(formatted_result)
+        formatted_result = '\n'.join(result_parts)
+
+        if self.format_output and formatted_result.strip():
+            formatted_result = self._format_lookml_content(formatted_result)
 
         return formatted_result
 

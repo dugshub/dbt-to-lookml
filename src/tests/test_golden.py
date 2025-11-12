@@ -8,9 +8,9 @@ import re
 
 import pytest
 
-from dbt_to_lookml.generator import LookMLGenerator
-from dbt_to_lookml.models import AggregationType, DimensionType
-from dbt_to_lookml.parser import SemanticModelParser
+from dbt_to_lookml.generators.lookml import LookMLGenerator
+from dbt_to_lookml.types import AggregationType, DimensionType
+from dbt_to_lookml.parsers.dbt import DbtParser
 
 
 class TestGoldenFiles:
@@ -31,7 +31,7 @@ class TestGoldenFiles:
     ) -> None:
         """Test that generated users view matches the golden file."""
         # Parse the users semantic model
-        parser = SemanticModelParser()
+        parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
 
@@ -65,7 +65,7 @@ class TestGoldenFiles:
     ) -> None:
         """Test that generated explores file matches the golden file."""
         # Parse all semantic models
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
 
         assert len(semantic_models) > 0
@@ -96,7 +96,7 @@ class TestGoldenFiles:
     ) -> None:
         """Test that generation with prefixes produces different output than golden files."""
         # Parse a semantic model
-        parser = SemanticModelParser()
+        parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
 
@@ -127,7 +127,7 @@ class TestGoldenFiles:
     ) -> None:
         """Test that dry run preview would generate content matching golden files."""
         # Parse semantic models
-        parser = SemanticModelParser()
+        parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
 
@@ -150,7 +150,7 @@ class TestGoldenFiles:
         self, semantic_models_dir: Path
     ) -> None:
         """Test that each individual semantic model generates valid LookML."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         # Test each semantic model file individually
         yaml_files = list(semantic_models_dir.glob("*.yml"))
@@ -186,7 +186,7 @@ class TestGoldenFiles:
         self, golden_dir: Path, semantic_models_dir: Path
     ) -> None:
         """Test that validation enabled still produces golden file output."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
 
@@ -218,7 +218,7 @@ class TestGoldenFiles:
         self, semantic_models_dir: Path
     ) -> None:
         """Test that disabling formatting still produces valid LookML."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
 
@@ -303,7 +303,7 @@ class TestGoldenFiles:
         self, semantic_models_dir: Path
     ) -> None:
         """Test that regenerating the same models produces identical output."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
 
@@ -332,7 +332,7 @@ class TestGoldenFiles:
         self, semantic_models_dir: Path
     ) -> None:
         """Test that complex features in semantic models are preserved in output."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         # Parse users model which has complex features
         users_file = semantic_models_dir / "sem_users.yml"
@@ -365,7 +365,7 @@ class TestGoldenFiles:
         # It's not run as part of regular test suite
         
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
-        parser = SemanticModelParser()
+        parser = DbtParser()
         
         # Update users view golden file
         users_file = semantic_models_dir / "sem_users.yml"
@@ -397,7 +397,7 @@ class TestGoldenFiles:
 
     def test_golden_files_comprehensive_coverage(self, golden_dir: Path, semantic_models_dir: Path) -> None:
         """Test that golden files provide comprehensive coverage of all models."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
         
         # Parse all semantic models
@@ -443,7 +443,7 @@ class TestGoldenFiles:
     
     def test_golden_files_regression_protection(self, semantic_models_dir: Path) -> None:
         """Test regression protection - ensure consistent output across runs."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
         
         # Parse a specific model for regression testing
@@ -482,7 +482,7 @@ class TestGoldenFiles:
     
     def test_golden_files_edge_case_handling(self, semantic_models_dir: Path) -> None:
         """Test that edge cases in semantic models are handled correctly in golden output."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
         
         # Test with all semantic models to catch edge cases
@@ -516,7 +516,7 @@ class TestGoldenFiles:
     
     def test_golden_files_complex_sql_preservation(self, semantic_models_dir: Path) -> None:
         """Test that complex SQL expressions are preserved correctly in golden files."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
         
         # Parse all models to find complex SQL expressions
@@ -560,7 +560,7 @@ class TestGoldenFiles:
     
     def test_golden_files_unicode_handling(self, semantic_models_dir: Path) -> None:
         """Test that Unicode characters in descriptions are handled properly."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
         
         # Parse models that might contain Unicode in descriptions
@@ -585,7 +585,7 @@ class TestGoldenFiles:
     
     def test_golden_files_deterministic_ordering(self, semantic_models_dir: Path) -> None:
         """Test that generated files have deterministic ordering of elements."""
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
         
         users_file = semantic_models_dir / "sem_users.yml"

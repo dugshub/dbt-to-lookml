@@ -211,7 +211,7 @@ class DbtParser(Parser):
                         if 'meta' in config_data:
                             meta_data = config_data['meta']
                             hierarchy = None
-                            # Support both nested hierarchy and flat entity/category
+                            # Support both nested hierarchy and flat subject/entity/category
                             if 'hierarchy' in meta_data:
                                 hierarchy_data = meta_data['hierarchy']
                                 hierarchy = Hierarchy(
@@ -219,10 +219,12 @@ class DbtParser(Parser):
                                     category=hierarchy_data.get('category'),
                                     subcategory=hierarchy_data.get('subcategory'),
                                 )
-                            elif 'entity' in meta_data or 'category' in meta_data:
-                                # Flat structure: meta.entity and meta.category
+                            elif 'entity' in meta_data or 'subject' in meta_data or 'category' in meta_data:
+                                # Flat structure: meta.subject/entity and meta.category
+                                # Use 'subject' if present, otherwise fall back to 'entity'
+                                entity_value = meta_data.get('subject') or meta_data.get('entity')
                                 hierarchy = Hierarchy(
-                                    entity=meta_data.get('entity'),
+                                    entity=entity_value,
                                     category=meta_data.get('category'),
                                     subcategory=meta_data.get('subcategory'),
                                 )
@@ -231,6 +233,9 @@ class DbtParser(Parser):
                                 owner=meta_data.get('owner'),
                                 contains_pii=meta_data.get('contains_pii'),
                                 update_frequency=meta_data.get('update_frequency'),
+                                # Set both flat fields and hierarchy for backward compatibility
+                                subject=meta_data.get('subject'),
+                                category=meta_data.get('category'),
                                 hierarchy=hierarchy,
                             )
                         dim_config = Config(meta=config_meta)
@@ -266,7 +271,7 @@ class DbtParser(Parser):
                         if 'meta' in config_data:
                             meta_data = config_data['meta']
                             hierarchy = None
-                            # Support both nested hierarchy and flat entity/category
+                            # Support both nested hierarchy and flat subject/entity/category
                             if 'hierarchy' in meta_data:
                                 hierarchy_data = meta_data['hierarchy']
                                 hierarchy = Hierarchy(
@@ -274,10 +279,12 @@ class DbtParser(Parser):
                                     category=hierarchy_data.get('category'),
                                     subcategory=hierarchy_data.get('subcategory'),
                                 )
-                            elif 'entity' in meta_data or 'category' in meta_data:
-                                # Flat structure: meta.entity and meta.category
+                            elif 'entity' in meta_data or 'subject' in meta_data or 'category' in meta_data:
+                                # Flat structure: meta.subject/entity and meta.category
+                                # Use 'subject' if present, otherwise fall back to 'entity'
+                                entity_value = meta_data.get('subject') or meta_data.get('entity')
                                 hierarchy = Hierarchy(
-                                    entity=meta_data.get('entity'),
+                                    entity=entity_value,
                                     category=meta_data.get('category'),
                                     subcategory=meta_data.get('subcategory'),
                                 )
@@ -286,6 +293,9 @@ class DbtParser(Parser):
                                 owner=meta_data.get('owner'),
                                 contains_pii=meta_data.get('contains_pii'),
                                 update_frequency=meta_data.get('update_frequency'),
+                                # Set both flat fields and hierarchy for backward compatibility
+                                subject=meta_data.get('subject'),
+                                category=meta_data.get('category'),
                                 hierarchy=hierarchy,
                             )
                         measure_config = Config(meta=config_meta)

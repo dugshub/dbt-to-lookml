@@ -29,6 +29,9 @@ class ConfigMeta(BaseModel):
     owner: Optional[str] = None
     contains_pii: Optional[bool] = None
     update_frequency: Optional[str] = None
+    # Support both flat structure (subject, category) and nested (hierarchy)
+    subject: Optional[str] = None
+    category: Optional[str] = None
     hierarchy: Optional[Hierarchy] = None
 
 
@@ -46,8 +49,17 @@ class Entity(BaseModel):
     expr: Optional[str] = None
     description: Optional[str] = None
 
-    def to_lookml_dict(self) -> dict[str, Any]:
-        """Convert entity to LookML dimension format."""
+    def to_lookml_dict(
+        self,
+        view_label: Optional[str] = None,
+        is_fact_table: bool = False
+    ) -> dict[str, Any]:
+        """Convert entity to LookML dimension format.
+
+        Args:
+            view_label: Optional view_label for the entity (from model subject).
+            is_fact_table: Whether this entity is in a fact table (has measures).
+        """
         result: dict[str, Any] = {
             'name': self.name,
             'type': 'string',
@@ -56,6 +68,16 @@ class Entity(BaseModel):
 
         if self.type == 'primary':
             result['primary_key'] = 'yes'
+
+            # Add view_label and group_label for primary entities in fact tables
+            if is_fact_table:
+                if view_label:
+                    result['view_label'] = view_label
+                result['group_label'] = 'Join Keys'
+
+        # Hide foreign key entities (used only for joins)
+        if self.type == 'foreign':
+            result['hidden'] = 'yes'
 
         if self.description:
             result['description'] = self.description
@@ -82,18 +104,32 @@ class Dimension(BaseModel):
             return self._to_dimension_dict()
 
     def get_dimension_labels(self) -> tuple[Optional[str], Optional[str]]:
-        """Get view_label and group_label for dimension based on hierarchy.
+        """Get view_label and group_label for dimension based on meta.
 
         Returns:
             Tuple of (view_label, group_label) where:
-            - view_label is the entity name
-            - group_label is the category name
+            - view_label comes from meta.subject (or meta.hierarchy.entity as fallback)
+            - group_label comes from meta.category (or meta.hierarchy.category as fallback)
         """
-        if self.config and self.config.meta and self.config.meta.hierarchy:
-            hierarchy = self.config.meta.hierarchy
-            # Format entity and category with proper capitalization
-            view_label = hierarchy.entity.replace('_', ' ').title() if hierarchy.entity else None
-            group_label = hierarchy.category.replace('_', ' ').title() if hierarchy.category else None
+        if self.config and self.config.meta:
+            meta = self.config.meta
+
+            # Try flat structure first (meta.subject, meta.category)
+            view_label = meta.subject
+            group_label = meta.category
+
+            # Fall back to hierarchical structure if flat structure not present
+            if not view_label and meta.hierarchy:
+                view_label = meta.hierarchy.entity
+            if not group_label and meta.hierarchy:
+                group_label = meta.hierarchy.category
+
+            # Format with proper capitalization if present
+            if view_label:
+                view_label = view_label.replace('_', ' ').title()
+            if group_label:
+                group_label = group_label.replace('_', ' ').title()
+
             return view_label, group_label
         return None, None
 
@@ -163,24 +199,42 @@ class Measure(BaseModel):
     config: Optional[Config] = None
     non_additive_dimension: Optional[dict[str, Any]] = None  # For backward compatibility
 
-    def get_measure_labels(self) -> tuple[Optional[str], Optional[str]]:
-        """Get view_label and group_label for measure based on hierarchy.
+    def get_measure_labels(self, model_name: Optional[str] = None) -> tuple[str, Optional[str]]:
+        """Get view_label and group_label for measure.
 
         Returns:
             Tuple of (view_label, group_label) where:
-            - view_label is the category name
-            - group_label is the subcategory name
+            - view_label is always " Metrics" (with leading space for sort order)
+            - group_label is inferred from model name or meta.category
         """
-        if self.config and self.config.meta and self.config.meta.hierarchy:
-            hierarchy = self.config.meta.hierarchy
-            # Format category and subcategory with proper capitalization
-            view_label = hierarchy.category.replace('_', ' ').title() if hierarchy.category else None
-            group_label = hierarchy.subcategory.replace('_', ' ').title() if hierarchy.subcategory else None
-            return view_label, group_label
-        return None, None
+        # Always use " Metrics" as view_label (leading space for sort order)
+        view_label = " Metrics"
 
-    def to_lookml_dict(self) -> dict[str, Any]:
-        """Convert measure to LookML format."""
+        # Try to get group_label from meta first
+        group_label = None
+        if self.config and self.config.meta:
+            meta = self.config.meta
+            # Try flat structure first
+            if meta.category:
+                group_label = meta.category.replace('_', ' ').title()
+            # Fall back to hierarchical structure
+            elif meta.hierarchy and meta.hierarchy.category:
+                group_label = meta.hierarchy.category.replace('_', ' ').title()
+
+        # If no group_label from meta, infer from model name
+        if not group_label and model_name:
+            # Convert model name to title case and add "Performance"
+            formatted_name = model_name.replace('_', ' ').title()
+            group_label = f"{formatted_name} Performance"
+
+        return view_label, group_label
+
+    def to_lookml_dict(self, model_name: Optional[str] = None) -> dict[str, Any]:
+        """Convert measure to LookML format.
+
+        Args:
+            model_name: Optional semantic model name for inferring group_label.
+        """
         result: dict[str, Any] = {
             'name': self.name,
             'type': LOOKML_TYPE_MAP.get(self.agg, 'number'),
@@ -192,10 +246,9 @@ class Measure(BaseModel):
         if self.label:
             result['label'] = self.label
 
-        # Add hierarchy labels
-        view_label, group_label = self.get_measure_labels()
-        if view_label:
-            result['view_label'] = view_label
+        # Add measure labels
+        view_label, group_label = self.get_measure_labels(model_name)
+        result['view_label'] = view_label
         if group_label:
             result['group_label'] = group_label
 
@@ -226,9 +279,29 @@ class SemanticModel(BaseModel):
         dimensions = []
         dimension_groups = []
 
+        # Determine if this is a fact table (has measures)
+        is_fact_table = len(self.measures) > 0
+
+        # Extract view_label for entities from config.meta.subject
+        entity_view_label = None
+        if self.config and self.config.meta and self.config.meta.subject:
+            entity_view_label = self.config.meta.subject.replace('_', ' ').title()
+        # If not in model config, try to get from first dimension's subject
+        elif self.dimensions:
+            for dim in self.dimensions:
+                if dim.config and dim.config.meta and dim.config.meta.subject:
+                    entity_view_label = dim.config.meta.subject.replace('_', ' ').title()
+                    break
+        # Fall back to model name if no subject found
+        if not entity_view_label:
+            entity_view_label = self.name.replace('_', ' ').title()
+
         # Convert entities to dimensions
         for entity in self.entities:
-            dimensions.append(entity.to_lookml_dict())
+            dimensions.append(entity.to_lookml_dict(
+                view_label=entity_view_label,
+                is_fact_table=is_fact_table
+            ))
 
         # Convert dimensions (separate regular dims from time dims)
         for dim in self.dimensions:
@@ -238,8 +311,8 @@ class SemanticModel(BaseModel):
             else:
                 dimensions.append(dim_dict)
 
-        # Convert measures
-        measures = [measure.to_lookml_dict() for measure in self.measures]
+        # Convert measures (pass model name for group_label inference)
+        measures = [measure.to_lookml_dict(model_name=self.name) for measure in self.measures]
 
         # Build the view dict
         view_dict: dict[str, Any] = {

@@ -50,17 +50,19 @@ class TestHierarchyLabeling:
             subcategory="booking_revenue"
         )
         config = Config(meta=ConfigMeta(hierarchy=hierarchy))
-        
+
         measure = Measure(
             name="total_checkout",
             agg=AggregationType.SUM,
             expr="checkout_amount",
             config=config
         )
-        
+
         view_label, group_label = measure.get_measure_labels()
-        assert view_label == "Revenue"
-        assert group_label == "Booking Revenue"
+        # Measures always have view_label " Metrics" (with leading space for sort order)
+        assert view_label == " Metrics"
+        # group_label comes from category in hierarchy
+        assert group_label == "Revenue"
     
     def test_dimension_lookml_with_hierarchy(self) -> None:
         """Test dimension LookML output includes hierarchy labels."""
@@ -93,7 +95,7 @@ class TestHierarchyLabeling:
             subcategory="booking_count"
         )
         config = Config(meta=ConfigMeta(hierarchy=hierarchy))
-        
+
         measure = Measure(
             name="rental_count",
             agg=AggregationType.COUNT,
@@ -101,10 +103,12 @@ class TestHierarchyLabeling:
             description="Number of rentals",
             config=config
         )
-        
+
         lookml_dict = measure.to_lookml_dict()
-        assert lookml_dict['view_label'] == "Volume"
-        assert lookml_dict['group_label'] == "Booking Count"
+        # Measures always have view_label " Metrics" (with leading space)
+        assert lookml_dict['view_label'] == " Metrics"
+        # group_label comes from category in hierarchy
+        assert lookml_dict['group_label'] == "Volume"
         assert lookml_dict['name'] == "rental_count"
         assert lookml_dict['type'] == "count"
     

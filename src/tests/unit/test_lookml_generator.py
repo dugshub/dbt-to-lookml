@@ -104,31 +104,40 @@ class TestLookMLGenerator:
         assert "primary_key: yes" in content
 
     def test_generate_explores_lookml(self) -> None:
-        """Test generating LookML content for explores."""
+        """Test generating LookML content for explores with join graphs."""
+        from dbt_to_lookml.schemas import SemanticModel, Entity, Measure
+
         generator = LookMLGenerator()
 
-        explores = [
-            LookMLExplore(
+        # Create fact models (with measures) that should generate explores
+        models = [
+            SemanticModel(
                 name="users",
-                view_name="users",
-                description="User exploration"
+                model="ref('fct_users')",
+                description="User exploration",
+                entities=[Entity(name="user_id", type="primary")],
+                measures=[Measure(name="user_count", agg="count")]
             ),
-            LookMLExplore(
+            SemanticModel(
                 name="orders",
-                view_name="orders",
-                description="Order exploration"
+                model="ref('fct_orders')",
+                description="Order exploration",
+                entities=[Entity(name="order_id", type="primary")],
+                measures=[Measure(name="order_count", agg="count")]
             )
         ]
 
-        content = generator._generate_explores_lookml(explores)
+        content = generator._generate_explores_lookml(models)
 
         # Verify content contains expected elements
         assert "explore:" in content
         assert "users" in content
         assert "orders" in content
-        assert "type: table" in content
         assert "from: users" in content
         assert "from: orders" in content
+        # Should have include statements
+        assert 'include: "users.view.lkml"' in content
+        assert 'include: "orders.view.lkml"' in content
 
     def test_generate_empty_view(self) -> None:
         """Test generating LookML for a view with no dimensions or measures."""
@@ -348,12 +357,15 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
 
     def test_generation_with_prefixes(self) -> None:
         """Test generation with view and explore prefixes."""
+        from dbt_to_lookml.schemas import Measure
+
         generator = LookMLGenerator(view_prefix="v_", explore_prefix="e_")
 
         semantic_models = [
             SemanticModel(
                 name="users",
-                model="dim_users"
+                model="dim_users",
+                measures=[Measure(name="user_count", agg="count")]  # Add measure to make it a fact model
             )
         ]
 
