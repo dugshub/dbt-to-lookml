@@ -426,6 +426,13 @@ class LookMLMeasure(BaseModel):
     group_label: Optional[str] = None
 
 
+class LookMLSet(BaseModel):
+    """Represents a LookML set for grouping fields."""
+
+    name: str
+    fields: list[str]
+
+
 class LookMLView(BaseModel):
     """Represents a LookML view."""
 
@@ -435,12 +442,13 @@ class LookMLView(BaseModel):
     dimensions: list[LookMLDimension] = Field(default_factory=list)
     dimension_groups: list[LookMLDimensionGroup] = Field(default_factory=list)
     measures: list[LookMLMeasure] = Field(default_factory=list)
+    sets: list[LookMLSet] = Field(default_factory=list)
 
     def to_lookml_dict(self) -> dict[str, Any]:
         """Convert LookML view to dictionary format."""
-        def convert_bools(d: dict) -> dict:
+        def convert_bools(d: dict[str, Any]) -> dict[str, Any]:
             """Convert boolean values to LookML-compatible strings."""
-            result = {}
+            result: dict[str, Any] = {}
             for k, v in d.items():
                 if isinstance(v, bool):
                     result[k] = "yes" if v else "no"
@@ -459,6 +467,11 @@ class LookMLView(BaseModel):
 
         if self.description:
             view_dict['description'] = self.description
+
+        if self.sets:
+            view_dict['sets'] = [
+                convert_bools(set_item.model_dump(exclude_none=True)) for set_item in self.sets
+            ]
 
         if self.dimensions:
             view_dict['dimensions'] = [

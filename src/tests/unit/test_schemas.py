@@ -17,6 +17,7 @@ from dbt_to_lookml.schemas import (
     LookMLDimensionGroup,
     LookMLExplore,
     LookMLMeasure,
+    LookMLSet,
     LookMLView,
     Measure,
     SemanticModel,
@@ -621,3 +622,152 @@ class TestLookMLModels:
 
         with pytest.raises(ValidationError):
             LookMLView(sql_table_name="table")  # Missing name
+
+    def test_lookml_view_with_sets(self) -> None:
+        """Test LookML view creation with sets."""
+        sets = [
+            LookMLSet(name="dimension_set", fields=["dim1", "dim2"]),
+            LookMLSet(name="another_set", fields=["dim3"])
+        ]
+        dimensions = [
+            LookMLDimension(name="dim1", type="string", sql="${TABLE}.dim1")
+        ]
+
+        view = LookMLView(
+            name="test_view",
+            sql_table_name="schema.table",
+            sets=sets,
+            dimensions=dimensions
+        )
+
+        assert len(view.sets) == 2
+        assert view.sets[0].name == "dimension_set"
+        assert view.sets[1].name == "another_set"
+
+    def test_lookml_view_without_sets_backward_compatibility(self) -> None:
+        """Test LookML view creation without sets (backward compatibility)."""
+        view = LookMLView(
+            name="test_view",
+            sql_table_name="schema.table"
+        )
+
+        assert len(view.sets) == 0
+        assert view.sets == []
+
+    def test_lookml_view_to_lookml_dict_with_sets(self) -> None:
+        """Test to_lookml_dict() includes sets in output."""
+        sets = [
+            LookMLSet(name="dimension_set", fields=["dim1", "dim2"]),
+            LookMLSet(name="another_set", fields=["dim3"])
+        ]
+        view = LookMLView(
+            name="test_view",
+            sql_table_name="schema.table",
+            sets=sets
+        )
+
+        result = view.to_lookml_dict()
+        view_dict = result['views'][0]
+
+        assert 'sets' in view_dict
+        assert len(view_dict['sets']) == 2
+        assert view_dict['sets'][0]['name'] == "dimension_set"
+        assert view_dict['sets'][0]['fields'] == ["dim1", "dim2"]
+        assert view_dict['sets'][1]['name'] == "another_set"
+        assert view_dict['sets'][1]['fields'] == ["dim3"]
+
+    def test_lookml_view_to_lookml_dict_without_sets(self) -> None:
+        """Test to_lookml_dict() omits sets when empty."""
+        view = LookMLView(
+            name="test_view",
+            sql_table_name="schema.table"
+        )
+
+        result = view.to_lookml_dict()
+        view_dict = result['views'][0]
+
+        assert 'sets' not in view_dict
+
+    def test_lookml_view_to_lookml_dict_sets_ordering(self) -> None:
+        """Test that sets appear in correct order in to_lookml_dict() output."""
+        sets = [LookMLSet(name="set1", fields=["f1"])]
+        dimensions = [LookMLDimension(name="dim1", type="string", sql="${TABLE}.dim1")]
+        measures = [LookMLMeasure(name="measure1", type="count", sql="1")]
+
+        view = LookMLView(
+            name="test_view",
+            sql_table_name="schema.table",
+            description="Test view",
+            sets=sets,
+            dimensions=dimensions,
+            measures=measures
+        )
+
+        result = view.to_lookml_dict()
+        view_dict = result['views'][0]
+
+        # Get dict keys in order
+        keys = list(view_dict.keys())
+
+        # Verify order: name -> sql_table_name -> description -> sets -> dimensions -> measures
+        assert keys.index('name') < keys.index('sql_table_name')
+        assert keys.index('sql_table_name') < keys.index('description')
+        assert keys.index('description') < keys.index('sets')
+        assert keys.index('sets') < keys.index('dimensions')
+        assert keys.index('dimensions') < keys.index('measures')
+
+    def test_lookml_view_to_lookml_dict_multiple_sets(self) -> None:
+        """Test to_lookml_dict() with multiple sets."""
+        sets = [
+            LookMLSet(name="set1", fields=["f1", "f2"]),
+            LookMLSet(name="set2", fields=["f3"]),
+            LookMLSet(name="set3", fields=["f4", "f5", "f6"])
+        ]
+        view = LookMLView(
+            name="test_view",
+            sql_table_name="schema.table",
+            sets=sets
+        )
+
+        result = view.to_lookml_dict()
+        view_dict = result['views'][0]
+
+        assert len(view_dict['sets']) == 3
+        assert view_dict['sets'][0]['name'] == "set1"
+        assert view_dict['sets'][1]['name'] == "set2"
+        assert view_dict['sets'][2]['name'] == "set3"
+        assert len(view_dict['sets'][2]['fields']) == 3
+
+
+class TestLookMLSet:
+    """Test cases for LookMLSet model."""
+
+    def test_lookml_set_creation(self) -> None:
+        """Test basic LookMLSet creation."""
+        set_obj = LookMLSet(name="test_set", fields=["dim1", "dim2"])
+        assert set_obj.name == "test_set"
+        assert set_obj.fields == ["dim1", "dim2"]
+
+    def test_lookml_set_with_multiple_fields(self) -> None:
+        """Test LookMLSet with multiple fields."""
+        fields = ["field1", "field2", "field3", "field4", "field5"]
+        set_obj = LookMLSet(name="multi_set", fields=fields)
+        assert set_obj.name == "multi_set"
+        assert set_obj.fields == fields
+        assert len(set_obj.fields) == 5
+
+    def test_lookml_set_with_empty_fields(self) -> None:
+        """Test LookMLSet with empty fields list."""
+        set_obj = LookMLSet(name="empty_set", fields=[])
+        assert set_obj.name == "empty_set"
+        assert set_obj.fields == []
+
+    def test_lookml_set_validation_missing_name(self) -> None:
+        """Test that LookMLSet validation fails without name."""
+        with pytest.raises(ValidationError):
+            LookMLSet(fields=["dim1", "dim2"])  # Missing name
+
+    def test_lookml_set_validation_missing_fields(self) -> None:
+        """Test that LookMLSet validation fails without fields."""
+        with pytest.raises(ValidationError):
+            LookMLSet(name="test_set")  # Missing fields
