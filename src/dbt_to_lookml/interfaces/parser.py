@@ -58,20 +58,23 @@ class Parser(ABC):
         pass
 
     # Common utility methods
-    def read_yaml(self, path: Path) -> dict[str, Any]:
+    def read_yaml(self, path: Path) -> dict[str, Any] | list[Any]:
         """Shared YAML reading logic.
 
         Args:
             path: Path to YAML file.
 
         Returns:
-            Parsed YAML content as dictionary.
+            Parsed YAML content as dictionary or list.
         """
         with open(path, encoding="utf-8") as f:
             content = yaml.safe_load(f)
-            if not isinstance(content, dict):
-                return {}
-            return content
+            # yaml.safe_load can return dict, list, scalar, or None
+            # Return dict/list as-is (valid YAML structures)
+            # Return empty dict for scalars/None (invalid but safe default)
+            if isinstance(content, (dict, list)):
+                return content
+            return {}
 
     def handle_error(self, error: Exception, context: str = "") -> None:
         """Common error handling based on strict mode.
