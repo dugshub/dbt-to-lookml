@@ -606,3 +606,185 @@ class TestGoldenFiles:
         # All contents should be identical (deterministic ordering)
         for content in contents[1:]:
             assert content == contents[0], "Generated content ordering is not deterministic"
+
+    def test_generate_searches_view_matches_golden(
+        self, golden_dir: Path, semantic_models_dir: Path
+    ) -> None:
+        """Test that generated searches view matches the golden file."""
+        # Parse the searches semantic model
+        parser = DbtParser()
+        searches_file = semantic_models_dir / "sem_searches.yml"
+        semantic_models = parser.parse_file(searches_file)
+
+        assert len(semantic_models) == 1
+        searches_model = semantic_models[0]
+        assert searches_model.name == "searches"
+
+        # Generate LookML
+        generator = LookMLGenerator()
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator.generate_lookml_files(
+                [searches_model], output_dir
+            )
+
+            assert len(validation_errors) == 0
+            searches_view_file = output_dir / "searches.view.lkml"
+            assert searches_view_file.exists()
+
+            # Compare with golden file
+            expected_content = (golden_dir / "expected_searches.view.lkml").read_text()
+            actual_content = searches_view_file.read_text()
+
+            self._assert_content_matches(
+                expected_content, actual_content, "searches.view.lkml"
+            )
+
+    def test_generate_rental_orders_view_matches_golden(
+        self, golden_dir: Path, semantic_models_dir: Path
+    ) -> None:
+        """Test that generated rental_orders view matches the golden file."""
+        # Parse the rental_orders semantic model
+        parser = DbtParser()
+        rental_orders_file = semantic_models_dir / "sem_rental_orders.yml"
+        semantic_models = parser.parse_file(rental_orders_file)
+
+        assert len(semantic_models) == 1
+        rental_orders_model = semantic_models[0]
+        assert rental_orders_model.name == "rental_orders"
+
+        # Generate LookML
+        generator = LookMLGenerator()
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator.generate_lookml_files(
+                [rental_orders_model], output_dir
+            )
+
+            assert len(validation_errors) == 0
+            rental_orders_view_file = output_dir / "rental_orders.view.lkml"
+            assert rental_orders_view_file.exists()
+
+            # Compare with golden file
+            expected_content = (golden_dir / "expected_rental_orders.view.lkml").read_text()
+            actual_content = rental_orders_view_file.read_text()
+
+            self._assert_content_matches(
+                expected_content, actual_content, "rental_orders.view.lkml"
+            )
+
+    def test_view_field_sets_match_golden(
+        self, golden_dir: Path, semantic_models_dir: Path
+    ) -> None:
+        """Test that generated views have correct field sets matching golden files."""
+        # Use lkml to parse and verify sets
+        lkml = pytest.importorskip("lkml")
+
+        parser = DbtParser()
+        generator = LookMLGenerator()
+
+        all_models = parser.parse_directory(semantic_models_dir)
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator.generate_lookml_files(
+                all_models, output_dir
+            )
+
+            assert len(validation_errors) == 0
+
+            # Check each view for field sets
+            for view_model in all_models:
+                expected_golden_file = golden_dir / f"expected_{view_model.name}.view.lkml"
+                generated_view_file = output_dir / f"{view_model.name}.view.lkml"
+
+                assert generated_view_file.exists()
+                assert expected_golden_file.exists()
+
+                # Parse both files
+                generated_content = lkml.load(generated_view_file.read_text())
+                expected_content = lkml.load(expected_golden_file.read_text())
+
+                generated_view = generated_content["views"][0]
+                expected_view = expected_content["views"][0]
+
+                # Verify sets exist and match
+                generated_sets = generated_view.get("sets", [])
+                expected_sets = expected_view.get("sets", [])
+
+                assert (
+                    len(generated_sets) == len(expected_sets)
+                ), f"View {view_model.name} has {len(generated_sets)} sets, expected {len(expected_sets)}"
+
+                for gen_set, exp_set in zip(generated_sets, expected_sets):
+                    assert (
+                        gen_set["name"] == exp_set["name"]
+                    ), f"Set name mismatch in {view_model.name}"
+                    assert (
+                        set(gen_set["fields"]) == set(exp_set["fields"])
+                    ), f"Set fields mismatch in {view_model.name}: {gen_set['fields']} != {exp_set['fields']}"
+
+    def test_explore_join_fields_match_golden(
+        self, golden_dir: Path, semantic_models_dir: Path
+    ) -> None:
+        """Test that generated explores have correct join field parameters matching golden files."""
+        # Use lkml to parse and verify joins
+        lkml = pytest.importorskip("lkml")
+
+        parser = DbtParser()
+        generator = LookMLGenerator()
+
+        all_models = parser.parse_directory(semantic_models_dir)
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator.generate_lookml_files(
+                all_models, output_dir
+            )
+
+            assert len(validation_errors) == 0
+
+            # Parse explores
+            generated_explores_file = output_dir / "explores.lkml"
+            expected_explores_file = golden_dir / "expected_explores.lkml"
+
+            assert generated_explores_file.exists()
+            assert expected_explores_file.exists()
+
+            generated_content = lkml.load(generated_explores_file.read_text())
+            expected_content = lkml.load(expected_explores_file.read_text())
+
+            generated_explores = generated_content.get("explores", [])
+            expected_explores = expected_content.get("explores", [])
+
+            # Match explores by name and verify joins
+            for exp_explore in expected_explores:
+                gen_explore = next(
+                    (e for e in generated_explores if e["name"] == exp_explore["name"]),
+                    None,
+                )
+                assert (
+                    gen_explore is not None
+                ), f"Explore {exp_explore['name']} not found in generated content"
+
+                gen_joins = gen_explore.get("joins", [])
+                exp_joins = exp_explore.get("joins", [])
+
+                for exp_join in exp_joins:
+                    gen_join = next(
+                        (j for j in gen_joins if j["name"] == exp_join["name"]),
+                        None,
+                    )
+                    assert (
+                        gen_join is not None
+                    ), f"Join {exp_join['name']} not found in explore {exp_explore['name']}"
+
+                    # Verify fields parameter
+                    assert (
+                        "fields" in gen_join
+                    ), f"fields parameter missing from join {gen_join['name']}"
+                    assert (
+                        gen_join["fields"] == exp_join["fields"]
+                    ), f"Join fields mismatch for {gen_join['name']}: {gen_join['fields']} != {exp_join['fields']}"

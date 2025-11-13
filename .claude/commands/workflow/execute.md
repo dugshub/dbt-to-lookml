@@ -280,6 +280,7 @@ For each issue in ISSUE_IDS (one at a time):
 
   Use Task tool to launch subagent with:
   - subagent_type: "general-purpose"
+  - model: "haiku"
   - description: "Implement ${ISSUE_ID}"
   - prompt: "Execute /implement ${ISSUE_ID}. Read spec from .tasks/specs/${ISSUE_ID}-spec.md, create feature branch if needed, implement according to spec with tests, run quality gates (format, lint, type-check, tests), commit all changes. Do NOT create PR yet. Report when complete with summary of files changed."
 
@@ -300,7 +301,7 @@ For each issue in ISSUE_IDS (one at a time):
 if PARALLEL_IMPL is true:
 
   Use Task tool to launch subagents in parallel:
-  - For each issue: Same as above but all in SINGLE message
+  - For each issue: Same as above (with model: "haiku") but all in SINGLE message
 
   Wait for all to complete
 

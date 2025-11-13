@@ -611,3 +611,76 @@ class TestEndToEndIntegration:
                         for expected_name in all_expected_names:
                             assert expected_name in fields, \
                                 f"Dimension {expected_name} not in set of view {view['name']}"
+
+    def test_generated_views_contain_field_sets(self) -> None:
+        """Test that all generated views contain dimensions_only field sets."""
+        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+
+        parser = DbtParser()
+        generator = LookMLGenerator()
+
+        all_models = parser.parse_directory(semantic_models_dir)
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator.generate_lookml_files(
+                all_models, output_dir
+            )
+
+            assert len(validation_errors) == 0
+
+            # Verify each view has a dimensions_only set
+            view_files = [f for f in generated_files if f.name.endswith(".view.lkml")]
+
+            for view_file in view_files:
+                content = view_file.read_text()
+                assert (
+                    "set: dimensions_only" in content
+                ), f"View {view_file.name} missing dimensions_only set"
+
+                # Parse and verify structure
+                parsed = lkml.load(content)
+                view = parsed["views"][0]
+                sets = view.get("sets", [])
+
+                assert len(sets) == 1, f"Expected 1 set in {view_file.name}"
+                assert sets[0]["name"] == "dimensions_only"
+                assert "fields" in sets[0]
+                assert len(sets[0]["fields"]) > 0
+
+    def test_generated_explores_have_join_field_constraints(self) -> None:
+        """Test that all explore joins include fields parameter."""
+        semantic_models_dir = Path(__file__).parent.parent.parent / "semantic_models"
+
+        parser = DbtParser()
+        generator = LookMLGenerator()
+
+        all_models = parser.parse_directory(semantic_models_dir)
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator.generate_lookml_files(
+                all_models, output_dir
+            )
+
+            assert len(validation_errors) == 0
+
+            explores_file = output_dir / "explores.lkml"
+            explores_content = explores_file.read_text()
+            parsed = lkml.load(explores_content)
+
+            # Find explores with joins
+            for explore in parsed.get("explores", []):
+                joins = explore.get("joins", [])
+
+                # If explore has joins, verify they have fields parameter
+                for join in joins:
+                    assert (
+                        "fields" in join
+                    ), f"Join {join['name']} in explore {explore['name']} missing fields parameter"
+
+                    # Verify format: [view_name.dimensions_only*]
+                    fields_value = join["fields"]
+                    assert isinstance(fields_value, list)
+                    assert len(fields_value) == 1
+                    assert fields_value[0].endswith(".dimensions_only*")
