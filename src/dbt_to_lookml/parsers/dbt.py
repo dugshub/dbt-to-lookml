@@ -175,6 +175,7 @@ class DbtParser(Parser):
                         owner=meta_data.get("owner"),
                         contains_pii=meta_data.get("contains_pii"),
                         update_frequency=meta_data.get("update_frequency"),
+                        convert_tz=meta_data.get("convert_tz"),
                     )
                 config = Config(meta=config_meta)
 
@@ -259,6 +260,7 @@ class DbtParser(Parser):
                                 subject=meta_data.get("subject"),
                                 category=meta_data.get("category"),
                                 hierarchy=hierarchy,
+                                convert_tz=meta_data.get("convert_tz"),
                             )
                         dim_config = Config(meta=config_meta)
 
@@ -342,6 +344,7 @@ class DbtParser(Parser):
                                 subject=meta_data.get("subject"),
                                 category=meta_data.get("category"),
                                 hierarchy=hierarchy,
+                                convert_tz=meta_data.get("convert_tz"),
                             )
                         measure_config = Config(meta=config_meta)
 
