@@ -210,8 +210,7 @@ class TestGoldenFiles:
             actual_content = users_view_file.read_text()
 
             # Allow for minor formatting differences but core structure should match
-            assert "view:" in actual_content
-            assert "users:" in actual_content
+            assert "view: users" in actual_content
             assert "sql_table_name: dim_renter" in actual_content
 
     def test_formatting_disabled_still_valid(
@@ -239,8 +238,7 @@ class TestGoldenFiles:
 
             content = users_view_file.read_text()
             # Core content should be present regardless of formatting
-            assert "view:" in content
-            assert "users:" in content
+            assert "view: users" in content
 
     def _assert_content_matches(
         self, expected: str, actual: str, filename: str
@@ -355,8 +353,8 @@ class TestGoldenFiles:
             assert "dimension_group:" in content  # Time dimensions
             assert "timeframes:" in content       # Time dimension timeframes
             assert "count_distinct" in content    # Different aggregation types
-            assert "cast(" in content            # Complex SQL expressions
-            assert "nullif(" in content          # Complex SQL expressions
+            assert "SPLIT_PART(" in content       # Complex SQL expressions
+            assert "CASE WHEN" in content         # Complex SQL expressions
 
     def update_golden_files_if_requested(self, golden_dir: Path) -> None:
         """Helper method to update golden files (not a test, for development use)."""
