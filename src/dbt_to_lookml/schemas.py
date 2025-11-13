@@ -363,10 +363,17 @@ class SemanticModel(BaseModel):
         for entity in self.entities:
             dimension_field_names.append(entity.name)
         for dim in self.dimensions:
-            # Time dimensions become dimension_groups which expand to multiple fields
-            # Use wildcard syntax to reference all expanded fields (e.g., "date_day*")
+            # Time dimensions become dimension_groups with multiple timeframe fields
+            # We must explicitly list each timeframe field in the set
             if dim.type == DimensionType.TIME:
-                dimension_field_names.append(f"{dim.name}*")
+                # Determine timeframes (same logic as to_dimension_group_dict)
+                timeframes = ["date", "week", "month", "quarter", "year"]
+                if dim.type_params and dim.type_params.get("time_granularity") in ["hour", "minute"]:
+                    timeframes = ["time", "hour", "date", "week", "month", "quarter", "year"]
+
+                # Add each expanded timeframe field
+                for timeframe in timeframes:
+                    dimension_field_names.append(f"{dim.name}_{timeframe}")
             else:
                 dimension_field_names.append(dim.name)
 
