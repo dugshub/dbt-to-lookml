@@ -59,11 +59,11 @@ class LookMLGenerator(Generator):
 
         # Backward compatibility attribute
         class MapperCompat:
-            def __init__(self, vp, ep):
+            def __init__(self, vp: str, ep: str) -> None:
                 self.view_prefix = vp
                 self.explore_prefix = ep
 
-            def semantic_model_to_view(self, model):
+            def semantic_model_to_view(self, model: SemanticModel) -> SemanticModel:
                 # Stub method for backward compatibility
                 return model
 
@@ -351,7 +351,7 @@ class LookMLGenerator(Generator):
 
         return written_files, validation_errors
 
-    def _generate_view_lookml(self, semantic_model) -> str:
+    def _generate_view_lookml(self, semantic_model: SemanticModel) -> str:
         """Generate LookML content for a semantic model or LookMLView.
 
         Args:

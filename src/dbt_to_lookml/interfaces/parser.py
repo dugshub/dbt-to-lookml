@@ -68,7 +68,10 @@ class Parser(ABC):
             Parsed YAML content as dictionary.
         """
         with open(path, encoding="utf-8") as f:
-            return yaml.safe_load(f)
+            content = yaml.safe_load(f)
+            if not isinstance(content, dict):
+                return {}
+            return content
 
     def handle_error(self, error: Exception, context: str = "") -> None:
         """Common error handling based on strict mode.
