@@ -1,35 +1,30 @@
 """Comprehensive performance and stress tests for dbt-to-lookml."""
 
+import concurrent.futures
 import gc
-import os
-import sys
 import time
-import threading
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import List, Dict, Any
-from unittest.mock import patch
-import concurrent.futures
-import yaml
+from typing import Any
 
 import pytest
 
-from dbt_to_lookml.generator import LookMLGenerator
-from dbt_to_lookml.models import (
-    AggregationType,
+from dbt_to_lookml.generators.lookml import LookMLGenerator
+from dbt_to_lookml.parsers.dbt import DbtParser
+from dbt_to_lookml.schemas import (
     Config,
     ConfigMeta,
     Dimension,
-    DimensionType,
     Entity,
     Measure,
     SemanticModel,
 )
-from dbt_to_lookml.parser import SemanticModelParser
+from dbt_to_lookml.types import AggregationType, DimensionType
 
 # Try to import psutil for memory monitoring
 try:
     import psutil
+
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
@@ -42,7 +37,7 @@ class TestPerformance:
         """Test parsing performance with multiple semantic model files."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
 
-        parser = SemanticModelParser()
+        parser = DbtParser()
 
         # Measure parsing time
         start_time = time.time()
@@ -61,17 +56,13 @@ class TestPerformance:
             model = SemanticModel(
                 name=f"test_model_{i}",
                 model=f"test_table_{i}",
-                entities=[
-                    Entity(name="id", type="primary")
-                ] + [
-                    Entity(name=f"foreign_key_{j}", type="foreign")
-                    for j in range(3)
-                ],
+                entities=[Entity(name="id", type="primary")]
+                + [Entity(name=f"foreign_key_{j}", type="foreign") for j in range(3)],
                 dimensions=[
                     Dimension(
                         name=f"dimension_{j}",
                         type=DimensionType.CATEGORICAL,
-                        description=f"Test dimension {j}"
+                        description=f"Test dimension {j}",
                     )
                     for j in range(10)
                 ],
@@ -79,10 +70,10 @@ class TestPerformance:
                     Measure(
                         name=f"measure_{j}",
                         agg=AggregationType.COUNT,
-                        description=f"Test measure {j}"
+                        description=f"Test measure {j}",
                     )
                     for j in range(5)
-                ]
+                ],
             )
             semantic_models.append(model)
 
@@ -90,7 +81,7 @@ class TestPerformance:
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            
+
             # Measure generation time
             start_time = time.time()
             generated_files, validation_errors = generator.generate_lookml_files(
@@ -100,7 +91,9 @@ class TestPerformance:
 
             # Should complete generation in reasonable time (less than 10 seconds)
             assert generation_time < 10.0
-            assert len(generated_files) == len(semantic_models) + 1  # +1 for explores.lkml
+            assert (
+                len(generated_files) == len(semantic_models) + 1
+            )  # +1 for explores.lkml
             assert len(validation_errors) == 0
 
     @pytest.mark.skipif(not PSUTIL_AVAILABLE, reason="psutil not available")
@@ -120,7 +113,7 @@ class TestPerformance:
                     Entity(
                         name=f"entity_{j}",
                         type="foreign" if j > 0 else "primary",
-                        description=f"Entity {j} description"
+                        description=f"Entity {j} description",
                     )
                     for j in range(5)
                 ],
@@ -129,15 +122,16 @@ class TestPerformance:
                         name=f"dim_{j}",
                         type=DimensionType.CATEGORICAL,
                         description=f"Dimension {j} with detailed description",
-                        expr=f"CASE WHEN field_{j} = 'value' THEN 'result' ELSE 'default' END"
+                        expr=f"CASE WHEN field_{j} = 'value' THEN 'result' ELSE 'default' END",
                     )
                     for j in range(50)
-                ] + [
+                ]
+                + [
                     Dimension(
                         name=f"time_dim_{j}",
                         type=DimensionType.TIME,
                         type_params={"time_granularity": "day"},
-                        expr=f"created_at_{j}::date"
+                        expr=f"created_at_{j}::date",
                     )
                     for j in range(5)
                 ],
@@ -146,24 +140,24 @@ class TestPerformance:
                         name=f"measure_{j}",
                         agg=AggregationType.SUM,
                         expr=f"amount_{j}",
-                        description=f"Measure {j} with detailed description"
+                        description=f"Measure {j} with detailed description",
                     )
                     for j in range(30)
-                ]
+                ],
             )
             large_semantic_models.append(model)
 
-        parser = SemanticModelParser()
+        DbtParser()
         generator = LookMLGenerator()
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            
+
             # Generate LookML files
             generated_files, validation_errors = generator.generate_lookml_files(
                 large_semantic_models, output_dir
             )
-            
+
             final_memory = process.memory_info().rss
             memory_increase = final_memory - initial_memory
             memory_increase_mb = memory_increase / (1024 * 1024)
@@ -175,7 +169,7 @@ class TestPerformance:
     def test_concurrent_processing_performance(self) -> None:
         """Test performance when processing multiple models concurrently."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
-        parser = SemanticModelParser()
+        parser = DbtParser()
         generator = LookMLGenerator()
 
         # Sequential processing
@@ -214,36 +208,31 @@ class TestPerformance:
                 description=f"Stress test model {i}",
                 entities=[
                     Entity(name="id", type="primary"),
-                    Entity(name="parent_id", type="foreign")
+                    Entity(name="parent_id", type="foreign"),
                 ],
                 dimensions=[
                     Dimension(
                         name=f"category_{j}",
                         type=DimensionType.CATEGORICAL,
-                        expr=f"category_{j}_field"
+                        expr=f"category_{j}_field",
                     )
                     for j in range(5)
-                ] + [
+                ]
+                + [
                     Dimension(
                         name="created_date",
                         type=DimensionType.TIME,
                         type_params={"time_granularity": "day"},
-                        expr="created_at::date"
+                        expr="created_at::date",
                     )
                 ],
                 measures=[
                     Measure(
-                        name=f"total_{j}",
-                        agg=AggregationType.SUM,
-                        expr=f"amount_{j}"
+                        name=f"total_{j}", agg=AggregationType.SUM, expr=f"amount_{j}"
                     )
                     for j in range(3)
-                ] + [
-                    Measure(
-                        name="record_count",
-                        agg=AggregationType.COUNT
-                    )
                 ]
+                + [Measure(name="record_count", agg=AggregationType.COUNT)],
             )
             stress_models.append(model)
 
@@ -251,7 +240,7 @@ class TestPerformance:
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            
+
             start_time = time.time()
             generated_files, validation_errors = generator.generate_lookml_files(
                 stress_models, output_dir
@@ -266,10 +255,10 @@ class TestPerformance:
             # Verify some files were actually created
             view_files = list(output_dir.glob("*.view.lkml"))
             assert len(view_files) == 100
-            
+
             explores_file = output_dir / "explores.lkml"
             assert explores_file.exists()
-            
+
             # Spot check a few files for content
             sample_view = output_dir / "stress_model_000.view.lkml"
             assert sample_view.exists()
@@ -287,7 +276,7 @@ class TestPerformance:
             for j in range(20):
                 complex_case += f" WHEN field_{j} = 'value_{j}' AND other_field_{j} > {j} THEN 'result_{j}'"
             complex_case += " ELSE 'default' END"
-            
+
             model = SemanticModel(
                 name=f"complex_model_{i}",
                 model=f"complex_table_{i}",
@@ -295,21 +284,21 @@ class TestPerformance:
                     Dimension(
                         name="complex_dimension",
                         type=DimensionType.CATEGORICAL,
-                        expr=complex_case
+                        expr=complex_case,
                     ),
                     Dimension(
                         name="nested_functions",
                         type=DimensionType.CATEGORICAL,
-                        expr="UPPER(TRIM(COALESCE(NULLIF(field, ''), 'default')))"
-                    )
+                        expr="UPPER(TRIM(COALESCE(NULLIF(field, ''), 'default')))",
+                    ),
                 ],
                 measures=[
                     Measure(
                         name="complex_measure",
                         agg=AggregationType.SUM,
-                        expr="CASE WHEN status = 'active' THEN amount * rate ELSE 0 END"
+                        expr="CASE WHEN status = 'active' THEN amount * rate ELSE 0 END",
                     )
-                ]
+                ],
             )
             complex_models.append(model)
 
@@ -317,7 +306,7 @@ class TestPerformance:
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            
+
             start_time = time.time()
             generated_files, validation_errors = generator.generate_lookml_files(
                 complex_models, output_dir
@@ -327,7 +316,7 @@ class TestPerformance:
             # Should handle complex expressions efficiently (less than 5 seconds)
             assert processing_time < 5.0
             assert len(validation_errors) == 0
-            
+
             # Verify complex expressions are preserved
             sample_file = output_dir / "complex_model_0.view.lkml"
             content = sample_file.read_text()
@@ -338,18 +327,18 @@ class TestPerformance:
     def test_file_io_performance(self) -> None:
         """Test file I/O performance with many small files."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
-        parser = SemanticModelParser()
-        
+        parser = DbtParser()
+
         # Measure file reading performance
         yaml_files = list(semantic_models_dir.glob("*.yml"))
-        
+
         start_time = time.time()
         for _ in range(10):  # Read files multiple times
             for yaml_file in yaml_files:
                 models = parser.parse_file(yaml_file)
                 assert len(models) > 0
         io_time = time.time() - start_time
-        
+
         # Should be able to read files efficiently
         total_reads = len(yaml_files) * 10
         average_time_per_read = io_time / total_reads
@@ -358,7 +347,7 @@ class TestPerformance:
     def test_validation_performance_impact(self) -> None:
         """Test performance impact of validation."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
-        parser = SemanticModelParser()
+        parser = DbtParser()
         semantic_models = parser.parse_directory(semantic_models_dir)
 
         # Generate without validation
@@ -392,67 +381,69 @@ class TestPerformance:
             model = SemanticModel(
                 name=f"cpu_test_{i}",
                 model=f"cpu_table_{i}",
-                config=Config(meta=ConfigMeta(
-                    domain="performance_test",
-                    owner="test_suite",
-                    contains_pii=False,
-                    update_frequency="hourly"
-                )),
+                config=Config(
+                    meta=ConfigMeta(
+                        domain="performance_test",
+                        owner="test_suite",
+                        contains_pii=False,
+                        update_frequency="hourly",
+                    )
+                ),
                 entities=[
                     Entity(
                         name="complex_key",
                         type="primary",
-                        expr=f"MD5(CONCAT(field1, '_', field2, '_', {i}))"
+                        expr=f"MD5(CONCAT(field1, '_', field2, '_', {i}))",
                     )
                 ],
                 dimensions=[
                     Dimension(
                         name="regex_dimension",
                         type=DimensionType.CATEGORICAL,
-                        expr="REGEXP_REPLACE(field, '[^a-zA-Z0-9]', '_', 'g')"
+                        expr="REGEXP_REPLACE(field, '[^a-zA-Z0-9]', '_', 'g')",
                     ),
                     Dimension(
                         name="json_extraction",
                         type=DimensionType.CATEGORICAL,
-                        expr="JSON_EXTRACT_PATH_TEXT(json_column, 'nested', 'field', 'value')"
+                        expr="JSON_EXTRACT_PATH_TEXT(json_column, 'nested', 'field', 'value')",
                     ),
                     Dimension(
                         name="window_function",
                         type=DimensionType.CATEGORICAL,
-                        expr="CASE WHEN ROW_NUMBER() OVER (PARTITION BY category ORDER BY created_at DESC) = 1 THEN 'latest' ELSE 'historical' END"
-                    )
+                        expr="CASE WHEN ROW_NUMBER() OVER (PARTITION BY category ORDER BY created_at DESC) = 1 THEN 'latest' ELSE 'historical' END",
+                    ),
                 ],
                 measures=[
                     Measure(
                         name="complex_calculation",
                         agg=AggregationType.SUM,
-                        expr="CASE WHEN status IN ('completed', 'verified') THEN amount * (1 + tax_rate) ELSE 0 END"
+                        expr="CASE WHEN status IN ('completed', 'verified') THEN amount * (1 + tax_rate) ELSE 0 END",
                     ),
                     Measure(
                         name="statistical_measure",
                         agg=AggregationType.AVERAGE,
-                        expr="SQRT(POWER(value1 - avg_value1, 2) + POWER(value2 - avg_value2, 2))"
-                    )
-                ]
+                        expr="SQRT(POWER(value1 - avg_value1, 2) + POWER(value2 - avg_value2, 2))",
+                    ),
+                ],
             )
             cpu_intensive_models.append(model)
-        
+
         generator = LookMLGenerator(validate_syntax=True, format_output=True)
-        
+
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            
+
             start_time = time.time()
             generated_files, validation_errors = generator.generate_lookml_files(
                 cpu_intensive_models, output_dir
             )
             cpu_time = time.time() - start_time
-            
+
             # Should handle CPU-intensive operations efficiently (less than 15 seconds)
             assert cpu_time < 15.0
             assert len(validation_errors) == 0
             assert len(generated_files) == 21  # 20 views + 1 explores
-            
+
             # Verify complex expressions are preserved
             sample_file = output_dir / "cpu_test_0.view.lkml"
             content = sample_file.read_text()
@@ -466,10 +457,10 @@ class TestPerformance:
         """Test for memory leaks during repeated operations."""
         process = psutil.Process()
         initial_memory = process.memory_info().rss / 1024 / 1024  # MB
-        
-        parser = SemanticModelParser()
+
+        DbtParser()
         generator = LookMLGenerator()
-        
+
         # Create a moderate-sized model for repeated processing
         test_model = SemanticModel(
             name="leak_test",
@@ -481,11 +472,11 @@ class TestPerformance:
             measures=[
                 Measure(name=f"measure_{i}", agg=AggregationType.COUNT)
                 for i in range(25)
-            ]
+            ],
         )
-        
+
         memory_samples = []
-        
+
         # Perform many iterations to detect leaks
         for iteration in range(20):
             with TemporaryDirectory() as temp_dir:
@@ -494,21 +485,23 @@ class TestPerformance:
                     [test_model], output_dir
                 )
                 assert len(validation_errors) == 0
-                
+
                 # Sample memory every few iterations
                 if iteration % 5 == 0:
                     current_memory = process.memory_info().rss / 1024 / 1024
                     memory_samples.append(current_memory)
-                    
+
                 # Force garbage collection
                 gc.collect()
-        
+
         final_memory = process.memory_info().rss / 1024 / 1024
         memory_increase = final_memory - initial_memory
-        
+
         # Memory increase should be minimal (less than 50MB for 20 iterations)
-        assert memory_increase < 50, f"Potential memory leak: {memory_increase:.1f}MB increase"
-        
+        assert memory_increase < 50, (
+            f"Potential memory leak: {memory_increase:.1f}MB increase"
+        )
+
         # Memory should not continuously increase
         if len(memory_samples) > 2:
             # Allow some fluctuation but no continuous growth
@@ -520,54 +513,56 @@ class TestPerformance:
     def test_concurrent_access_performance(self) -> None:
         """Test performance under concurrent access patterns."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
-        
-        def process_models(thread_id: int) -> Dict[str, Any]:
-            parser = SemanticModelParser()
+
+        def process_models(thread_id: int) -> dict[str, Any]:
+            parser = DbtParser()
             generator = LookMLGenerator()
-            
+
             start_time = time.time()
             semantic_models = parser.parse_directory(semantic_models_dir)
-            
+
             with TemporaryDirectory() as temp_dir:
                 output_dir = Path(temp_dir)
                 generated_files, validation_errors = generator.generate_lookml_files(
                     semantic_models, output_dir
                 )
-            
+
             end_time = time.time()
-            
+
             return {
                 "thread_id": thread_id,
                 "duration": end_time - start_time,
                 "models_count": len(semantic_models),
                 "files_count": len(generated_files),
-                "errors_count": len(validation_errors)
+                "errors_count": len(validation_errors),
             }
-        
+
         # Run concurrent processing
         num_threads = 4
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
             start_time = time.time()
             futures = [executor.submit(process_models, i) for i in range(num_threads)]
-            results = [future.result() for future in concurrent.futures.as_completed(futures)]
+            results = [
+                future.result() for future in concurrent.futures.as_completed(futures)
+            ]
             total_concurrent_time = time.time() - start_time
-        
+
         # Run sequential processing for comparison
         start_time = time.time()
-        sequential_result = process_models(0)
+        process_models(0)
         sequential_time = time.time() - start_time
-        
+
         # Verify all threads completed successfully
         assert len(results) == num_threads
         for result in results:
             assert result["errors_count"] == 0
             assert result["models_count"] > 0
             assert result["files_count"] > 0
-        
+
         # Concurrent processing should complete in reasonable time
         # (not necessarily faster due to I/O bound operations, but not much slower)
         assert total_concurrent_time < sequential_time * 2
-        
+
         # Individual thread performance should be reasonable
         max_thread_duration = max(result["duration"] for result in results)
         assert max_thread_duration < sequential_time * 1.5
@@ -584,7 +579,7 @@ class TestPerformance:
                     name=f"entity_{i}",
                     type="foreign" if i > 0 else "primary",
                     expr=f"entity_field_{i}",
-                    description=f"Entity {i} with detailed description: " + "x" * 200
+                    description=f"Entity {i} with detailed description: " + "x" * 200,
                 )
                 for i in range(10)
             ],
@@ -593,16 +588,18 @@ class TestPerformance:
                     name=f"dimension_{i}",
                     type=DimensionType.CATEGORICAL,
                     expr=f"CASE WHEN complex_condition_{i} THEN 'value_{i}' ELSE 'default_{i}' END",
-                    description=f"Dimension {i}: " + "Long description " * 50
+                    description=f"Dimension {i}: " + "Long description " * 50,
                 )
                 for i in range(200)  # 200 dimensions
-            ] + [
+            ]
+            + [
                 Dimension(
                     name=f"time_dimension_{i}",
                     type=DimensionType.TIME,
                     type_params={"time_granularity": "day"},
                     expr=f"timestamp_field_{i}::date",
-                    description=f"Time dimension {i}: " + "Detailed time description " * 20
+                    description=f"Time dimension {i}: "
+                    + "Detailed time description " * 20,
                 )
                 for i in range(20)  # 20 time dimensions
             ],
@@ -611,35 +608,35 @@ class TestPerformance:
                     name=f"measure_{i}",
                     agg=AggregationType.SUM,
                     expr=f"CASE WHEN active_{i} THEN amount_{i} * rate_{i} ELSE 0 END",
-                    description=f"Measure {i}: " + "Complex measure description " * 30
+                    description=f"Measure {i}: " + "Complex measure description " * 30,
                 )
                 for i in range(100)  # 100 measures
-            ]
+            ],
         )
-        
+
         generator = LookMLGenerator()
-        
+
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            
+
             start_time = time.time()
             generated_files, validation_errors = generator.generate_lookml_files(
                 [large_model], output_dir
             )
             generation_time = time.time() - start_time
-            
+
             # Should handle large file generation efficiently (less than 5 seconds)
             assert generation_time < 5.0
             assert len(validation_errors) == 0
-            
+
             # Verify large file was created
             view_file = output_dir / "large_file_test.view.lkml"
             assert view_file.exists()
-            
+
             # File should be quite large
             file_size = view_file.stat().st_size
             assert file_size > 100000  # Should be over 100KB
-            
+
             # Verify content is complete
             content = view_file.read_text()
             assert content.count("dimension:") >= 200
@@ -649,46 +646,50 @@ class TestPerformance:
     def test_benchmark_against_baseline(self) -> None:
         """Benchmark current performance against expected baseline."""
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
-        
-        parser = SemanticModelParser()
+
+        parser = DbtParser()
         generator = LookMLGenerator(validate_syntax=True)
-        
+
         # Measure end-to-end performance
         start_time = time.time()
-        
+
         semantic_models = parser.parse_directory(semantic_models_dir)
         parse_time = time.time() - start_time
-        
+
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            
+
             generation_start = time.time()
             generated_files, validation_errors = generator.generate_lookml_files(
                 semantic_models, output_dir
             )
             generation_time = time.time() - generation_start
-        
+
         total_time = time.time() - start_time
-        
+
         # Expected performance baselines (adjust based on typical hardware)
         expected_parse_time = 2.0  # 2 seconds for parsing
         expected_generation_time = 5.0  # 5 seconds for generation
         expected_total_time = 7.0  # 7 seconds total
-        
+
         # Performance should meet baseline expectations
         assert parse_time < expected_parse_time, f"Parsing too slow: {parse_time:.2f}s"
-        assert generation_time < expected_generation_time, f"Generation too slow: {generation_time:.2f}s"
-        assert total_time < expected_total_time, f"Total time too slow: {total_time:.2f}s"
-        
+        assert generation_time < expected_generation_time, (
+            f"Generation too slow: {generation_time:.2f}s"
+        )
+        assert total_time < expected_total_time, (
+            f"Total time too slow: {total_time:.2f}s"
+        )
+
         # Verify results are complete
         assert len(semantic_models) >= 6
         assert len(generated_files) >= 7
         assert len(validation_errors) == 0
-        
+
         # Performance metrics for monitoring
         models_per_second = len(semantic_models) / total_time
         files_per_second = len(generated_files) / total_time
-        
+
         # Should achieve reasonable throughput
         assert models_per_second > 0.5  # At least 0.5 models per second
-        assert files_per_second > 0.5   # At least 0.5 files per second
+        assert files_per_second > 0.5  # At least 0.5 files per second

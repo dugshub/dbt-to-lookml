@@ -75,7 +75,12 @@ explores.lkml
 uv.lock  # Exclude lock file for libraries
 .uv-cache/
 
-# Claude Code
-.claude/
+# Claude Code (except commands)
+.claude/*
+!.claude/commands/
 .mcp.json
 AGENTS.md
+
+# Task Management (track everything except temp files)
+.tasks/**/*.tmp
+.tasks/**/*.backup

@@ -90,7 +90,11 @@ Test markers: `unit`, `integration`, `golden`, `cli`, `performance`, `error_hand
 
 ### Semantic Model → LookML Conversion
 
-1. **Entities** → dimensions with `primary_key: yes` for primary entities
+1. **Entities** → dimensions with `hidden: yes` (all entity types are hidden by default since they typically represent surrogate keys)
+   - **Primary entities**: Get `primary_key: yes` + `hidden: yes`
+   - **Foreign entities**: Get `hidden: yes` (used for join relationships)
+   - **Unique entities**: Get `hidden: yes`
+   - Natural keys should be exposed as regular dimensions instead
 2. **Dimensions** → dimensions or dimension_groups (for time dimensions)
 3. **Measures** → measures with aggregation type mapping (see `types.py:LOOKML_TYPE_MAP`)
 4. **Time dimensions**: Automatically generate appropriate timeframes based on `type_params.time_granularity`

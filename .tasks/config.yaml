@@ -1,0 +1,72 @@
+project:
+  name: dbt-to-lookml
+  prefix: DTL
+  next_id: 6
+  repository: dugshub/dbt-to-lookml
+labels:
+  stack:
+  - backend
+  - frontend
+  - fullstack
+  type:
+  - epic
+  - feature
+  - bug
+  - chore
+  - patch
+  layer:
+  - atoms
+  - features
+  - molecules
+  - organisms
+  priority:
+  - low
+  - medium
+  - high
+  state:
+  - awaiting-strategy-review
+  - strategy-approved
+  - spec-ready
+statuses:
+- todo
+- refinement
+- awaiting-strategy-review
+- strategy-approved
+- ready
+- in-progress
+- in-review
+- done
+- blocked
+- cancelled
+status_transitions:
+  todo:
+  - refinement
+  - cancelled
+  refinement:
+  - awaiting-strategy-review
+  - cancelled
+  awaiting-strategy-review:
+  - strategy-approved
+  - refinement
+  - cancelled
+  strategy-approved:
+  - ready
+  - refinement
+  - cancelled
+  ready:
+  - in-progress
+  - cancelled
+  in-progress:
+  - in-review
+  - blocked
+  - ready
+  - cancelled
+  in-review:
+  - done
+  - in-progress
+  - cancelled
+  blocked:
+  - in-progress
+  - cancelled
+  done: []
+  cancelled: []

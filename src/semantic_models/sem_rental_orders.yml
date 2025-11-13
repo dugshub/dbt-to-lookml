@@ -1,0 +1,53 @@
+semantic_models:
+  - name: rental_orders
+    model: ref('fct_rental')
+    description: Rental transaction fact table
+
+    entities:
+      - name: rental_sk
+        type: primary
+        expr: rental_sk
+        description: Primary surrogate key for rental transactions
+
+      - name: user_sk
+        type: foreign
+        expr: renter_sk
+        description: Foreign key to users dimension
+
+      - name: search_sk
+        type: foreign
+        expr: search_sk
+        description: Foreign key to searches dimension
+
+    dimensions:
+      - name: booking_status
+        type: categorical
+        expr: status
+        description: Current booking status (confirmed, cancelled, completed)
+
+      - name: rental_date
+        type: time
+        expr: booking_date
+        type_params:
+          time_granularity: day
+        description: Date of rental booking
+
+      - name: payment_method
+        type: categorical
+        expr: payment_type
+        description: Method of payment used
+
+    measures:
+      - name: rental_count
+        agg: count
+        description: Total number of rentals
+
+      - name: total_revenue
+        agg: sum
+        expr: checkout_amount
+        description: Total rental revenue
+
+      - name: avg_rental_value
+        agg: average
+        expr: checkout_amount
+        description: Average revenue per rental
