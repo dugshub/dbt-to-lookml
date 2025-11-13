@@ -9,6 +9,7 @@ lkml = pytest.importorskip("lkml")
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator
 from dbt_to_lookml.parsers.dbt import DbtParser
+from dbt_to_lookml.types import DimensionType
 
 
 class TestEndToEndIntegration:
@@ -719,3 +720,145 @@ class TestEndToEndIntegration:
                     assert isinstance(fields_value, list)
                     assert len(fields_value) == 1
                     assert fields_value[0].endswith(".dimensions_only*")
+
+    def test_dimension_groups_have_default_convert_tz_no(self) -> None:
+        """Test that dimension_groups have convert_tz: no by default."""
+        # Parse semantic models with time dimensions
+        semantic_models_dir = Path(__file__).parent.parent / "fixtures"
+        parser = DbtParser()
+        semantic_models = parser.parse_directory(semantic_models_dir)
+
+        # Verify we have models with time dimensions
+        assert len(semantic_models) > 0
+
+        # Check that we have at least one model with time dimensions
+        has_time_dimension = False
+        for model in semantic_models:
+            for dimension in model.dimensions:
+                if dimension.type == DimensionType.TIME:
+                    has_time_dimension = True
+                    break
+        assert has_time_dimension, "Test fixture must have models with time dimensions"
+
+        # Generate LookML with default settings
+        generator = LookMLGenerator()
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator.generate_lookml_files(
+                semantic_models, output_dir
+            )
+
+            # Ensure no validation errors
+            assert len(validation_errors) == 0, (
+                f"Unexpected validation errors: {validation_errors}"
+            )
+
+            # Check each view file for dimension_groups
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) > 0, "Should generate at least one view file"
+
+            dimension_group_found = False
+            for view_file in view_files:
+                content = view_file.read_text()
+
+                # If file has dimension_group, it should have convert_tz: no
+                if "dimension_group:" in content:
+                    dimension_group_found = True
+                    assert "convert_tz: no" in content, (
+                        f"View {view_file.name} has dimension_group but missing convert_tz: no. "
+                        f"Full content:\n{content}"
+                    )
+
+            # Ensure at least one dimension_group was found and validated
+            assert dimension_group_found, (
+                "Test expects at least one dimension_group in generated views"
+            )
+
+    def test_generator_convert_tz_parameter_propagates(self) -> None:
+        """Test that generator convert_tz parameter is applied to dimension_groups."""
+        semantic_models_dir = Path(__file__).parent.parent / "fixtures"
+        parser = DbtParser()
+        semantic_models = parser.parse_directory(semantic_models_dir)
+
+        assert len(semantic_models) > 0
+
+        # Test with convert_tz=False (explicit default)
+        generator_no_tz = LookMLGenerator(convert_tz=False)
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator_no_tz.generate_lookml_files(
+                semantic_models, output_dir
+            )
+
+            assert len(validation_errors) == 0
+
+            # All dimension_groups should have convert_tz: no
+            view_files = list(output_dir.glob("*.view.lkml"))
+            for view_file in view_files:
+                content = view_file.read_text()
+                if "dimension_group:" in content:
+                    assert "convert_tz: no" in content, (
+                        f"Generator with convert_tz=False should produce convert_tz: no "
+                        f"in {view_file.name}"
+                    )
+
+        # Test with convert_tz=True
+        generator_with_tz = LookMLGenerator(convert_tz=True)
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator_with_tz.generate_lookml_files(
+                semantic_models, output_dir
+            )
+
+            assert len(validation_errors) == 0
+
+            # All dimension_groups should have convert_tz: yes
+            view_files = list(output_dir.glob("*.view.lkml"))
+            for view_file in view_files:
+                content = view_file.read_text()
+                if "dimension_group:" in content:
+                    assert "convert_tz: yes" in content, (
+                        f"Generator with convert_tz=True should produce convert_tz: yes "
+                        f"in {view_file.name}"
+                    )
+
+    def test_dimension_metadata_convert_tz_override(self) -> None:
+        """Test that dimension-level convert_tz metadata can override generator setting."""
+        # Parse semantic models
+        semantic_models_dir = Path(__file__).parent.parent / "fixtures"
+        parser = DbtParser()
+        semantic_models = parser.parse_directory(semantic_models_dir)
+
+        assert len(semantic_models) > 0
+
+        # Generate with default settings
+        generator = LookMLGenerator()
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            generated_files, validation_errors = generator.generate_lookml_files(
+                semantic_models, output_dir
+            )
+
+            assert len(validation_errors) == 0
+
+            # Verify dimension_groups have proper convert_tz setting
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) > 0
+
+            for view_file in view_files:
+                content = view_file.read_text()
+
+                # Every dimension_group should have an explicit convert_tz setting
+                if "dimension_group:" in content:
+                    # Should have either convert_tz: yes or convert_tz: no
+                    has_convert_tz_setting = (
+                        "convert_tz: no" in content or "convert_tz: yes" in content
+                    )
+                    assert has_convert_tz_setting, (
+                        f"View {view_file.name} has dimension_group with no explicit "
+                        f"convert_tz setting"
+                    )
