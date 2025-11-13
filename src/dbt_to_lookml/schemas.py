@@ -33,6 +33,7 @@ class ConfigMeta(BaseModel):
     subject: str | None = None
     category: str | None = None
     hierarchy: Hierarchy | None = None
+    convert_tz: bool | None = None
 
 
 class Config(BaseModel):
@@ -106,7 +107,7 @@ class Entity(BaseModel):
                 result["group_label"] = "Join Keys"
 
         # Hide all entities (typically surrogate keys) - natural keys should be defined as dimensions
-        result['hidden'] = 'yes'
+        result["hidden"] = "yes"
 
         if self.description:
             result["description"] = self.description
@@ -184,8 +185,21 @@ class Dimension(BaseModel):
 
         return result
 
-    def _to_dimension_group_dict(self) -> dict[str, Any]:
-        """Convert time dimension to LookML dimension_group."""
+    def _to_dimension_group_dict(
+        self, default_convert_tz: bool | None = None
+    ) -> dict[str, Any]:
+        """Convert time dimension to LookML dimension_group.
+
+        Args:
+            default_convert_tz: Default timezone conversion setting to use if not
+                overridden at dimension level. Precedence: dimension meta >
+                parameter default > False (hardcoded default).
+
+        Returns:
+            Dictionary representation of LookML dimension_group with all required
+            fields (name, type, timeframes, sql) and optional fields (description,
+            label, view_label, group_label, convert_tz).
+        """
         # Determine timeframes based on granularity
         timeframes = ["date", "week", "month", "quarter", "year"]
 
@@ -220,6 +234,18 @@ class Dimension(BaseModel):
             result["view_label"] = view_label
         if group_label:
             result["group_label"] = group_label
+
+        # Determine convert_tz with three-tier precedence:
+        # 1. Dimension-level meta.convert_tz (highest priority if present)
+        # 2. default_convert_tz parameter (if provided)
+        # 3. Hardcoded default: False (lowest priority, explicit and safe)
+        convert_tz = False  # Default
+        if default_convert_tz is not None:
+            convert_tz = default_convert_tz
+        if self.config and self.config.meta and self.config.meta.convert_tz is not None:
+            convert_tz = self.config.meta.convert_tz
+
+        result["convert_tz"] = "yes" if convert_tz else "no"
 
         return result
 
@@ -368,8 +394,19 @@ class SemanticModel(BaseModel):
             if dim.type == DimensionType.TIME:
                 # Determine timeframes (same logic as to_dimension_group_dict)
                 timeframes = ["date", "week", "month", "quarter", "year"]
-                if dim.type_params and dim.type_params.get("time_granularity") in ["hour", "minute"]:
-                    timeframes = ["time", "hour", "date", "week", "month", "quarter", "year"]
+                if dim.type_params and dim.type_params.get("time_granularity") in [
+                    "hour",
+                    "minute",
+                ]:
+                    timeframes = [
+                        "time",
+                        "hour",
+                        "date",
+                        "week",
+                        "month",
+                        "quarter",
+                        "year",
+                    ]
 
                 # Add each expanded timeframe field
                 for timeframe in timeframes:

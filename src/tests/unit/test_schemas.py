@@ -251,6 +251,188 @@ class TestDimension:
         assert "ELSE 'other'" in dimension.expr
 
 
+class TestDimensionConvertTz:
+    """Test cases for convert_tz support in Dimension and ConfigMeta."""
+
+    def test_configmeta_convert_tz_field_exists(self) -> None:
+        """Test that ConfigMeta accepts convert_tz field."""
+        # Test with True
+        meta_true = ConfigMeta(convert_tz=True)
+        assert meta_true.convert_tz is True
+
+        # Test with False
+        meta_false = ConfigMeta(convert_tz=False)
+        assert meta_false.convert_tz is False
+
+        # Test with None (default)
+        meta_none = ConfigMeta()
+        assert meta_none.convert_tz is None
+
+    def test_convert_tz_precedence_meta_override(self) -> None:
+        """Test that dimension-level meta.convert_tz takes precedence over parameter."""
+        # Arrange: Create dimension with convert_tz=True in meta
+        dimension = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(
+                meta=ConfigMeta(subject="events", category="timing", convert_tz=True)
+            ),
+        )
+
+        # Act: Call with different parameter value
+        result = dimension._to_dimension_group_dict(default_convert_tz=False)
+
+        # Assert: Meta value wins
+        assert result["convert_tz"] == "yes"
+
+    def test_convert_tz_precedence_default_parameter(self) -> None:
+        """Test that default_convert_tz parameter is used when meta is None."""
+        # Arrange: Create dimension without convert_tz in meta
+        dimension = Dimension(
+            name="updated_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(subject="events")),
+        )
+
+        # Act: Call with default_convert_tz=True
+        result = dimension._to_dimension_group_dict(default_convert_tz=True)
+
+        # Assert: Parameter value is used
+        assert result["convert_tz"] == "yes"
+
+    def test_convert_tz_hardcoded_default(self) -> None:
+        """Test that hardcoded default is False when no meta or parameter."""
+        # Arrange: Create dimension with minimal config
+        dimension = Dimension(
+            name="registered_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+        )
+
+        # Act: Call without parameter (uses hardcoded default)
+        result = dimension._to_dimension_group_dict()
+
+        # Assert: Default is "no"
+        assert result["convert_tz"] == "no"
+
+    def test_convert_tz_false_meta_overrides_true_parameter(self) -> None:
+        """Test that meta.convert_tz=False overrides default_convert_tz=True."""
+        # Arrange: Create dimension with explicit convert_tz=False
+        dimension = Dimension(
+            name="deleted_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(subject="events", convert_tz=False)),
+        )
+
+        # Act: Call with default_convert_tz=True
+        result = dimension._to_dimension_group_dict(default_convert_tz=True)
+
+        # Assert: Meta False overrides parameter True
+        assert result["convert_tz"] == "no"
+
+    def test_convert_tz_none_meta_uses_parameter(self) -> None:
+        """Test that None meta.convert_tz allows parameter to be used."""
+        # Arrange: Create dimension with None meta.convert_tz
+        dimension = Dimension(
+            name="started_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(
+                meta=ConfigMeta(
+                    subject="events",
+                    convert_tz=None,  # Explicit None
+                )
+            ),
+        )
+
+        # Act: Call with default_convert_tz=True
+        result = dimension._to_dimension_group_dict(default_convert_tz=True)
+
+        # Assert: Parameter used when meta is None
+        assert result["convert_tz"] == "yes"
+
+    def test_convert_tz_in_dimension_group_dict(self) -> None:
+        """Test that convert_tz field appears in router method output."""
+        # Arrange: Create TIME dimension
+        dimension = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Act: Call router method to_lookml_dict()
+        result = dimension.to_lookml_dict()
+
+        # Assert: convert_tz is in output
+        assert "convert_tz" in result
+        assert result["convert_tz"] == "yes"
+
+    def test_convert_tz_with_all_optional_fields(self) -> None:
+        """Test convert_tz coexists properly with other optional fields."""
+        # Arrange: Create comprehensive dimension
+        dimension = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "hour"},
+            description="When the event was created",
+            label="Created Date",
+            expr="created_timestamp",
+            config=Config(
+                meta=ConfigMeta(subject="events", category="timing", convert_tz=True)
+            ),
+        )
+
+        # Act: Generate LookML dict
+        result = dimension._to_dimension_group_dict()
+
+        # Assert: All fields present and correct
+        assert result["name"] == "created_at"
+        assert result["type"] == "time"
+        assert "time" in result["timeframes"]
+        assert result["sql"] == "created_timestamp"
+        assert result["description"] == "When the event was created"
+        assert result["label"] == "Created Date"
+        assert result["view_label"] == "Events"  # Formatted from subject
+        assert result["group_label"] == "Timing"  # Formatted from category
+        assert result["convert_tz"] == "yes"
+
+    def test_convert_tz_no_config_uses_parameter(self) -> None:
+        """Test that missing config doesn't break precedence chain."""
+        # Arrange: Create dimension with no config
+        dimension = Dimension(
+            name="timestamp_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            # No config parameter
+        )
+
+        # Act: Call with default_convert_tz=True
+        result = dimension._to_dimension_group_dict(default_convert_tz=True)
+
+        # Assert: Parameter used when config is None
+        assert result["convert_tz"] == "yes"
+
+    def test_convert_tz_categorical_dimension_not_affected(self) -> None:
+        """Test that convert_tz doesn't affect categorical dimensions."""
+        # Arrange: Create categorical dimension with convert_tz config
+        dimension = Dimension(
+            name="status",
+            type=DimensionType.CATEGORICAL,
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Act: Call to_lookml_dict() which routes to _to_dimension_dict()
+        result = dimension.to_lookml_dict()
+
+        # Assert: convert_tz not in categorical dimension output
+        assert "convert_tz" not in result
+        assert result["type"] == "string"
+
+
 class TestMeasure:
     """Test cases for Measure model."""
 
