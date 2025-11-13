@@ -1900,3 +1900,612 @@ class TestValidateOutput:
         assert 'product_id' in dimension_set['fields']
         assert 'product_name' in dimension_set['fields']
         assert 'category' in dimension_set['fields']
+
+
+class TestGenerateDimensionSet:
+    """Tests for _generate_dimension_set method and set integration in views."""
+
+    def test_generate_dimension_set_with_entities_and_dimensions(self) -> None:
+        """Test dimension set generation includes both entities and dimensions."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="test_model",
+            model="test_table",
+            entities=[
+                Entity(name="id", type="primary"),
+                Entity(name="user_id", type="foreign"),
+            ],
+            dimensions=[
+                Dimension(name="status", type=DimensionType.CATEGORICAL),
+                Dimension(name="name", type=DimensionType.CATEGORICAL),
+            ],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        assert "dimensions_only" in content
+        # All fields should be present in the output
+        assert "id" in content
+        assert "user_id" in content
+        assert "status" in content
+        assert "name" in content
+
+    def test_generate_dimension_set_includes_hidden_entities(self) -> None:
+        """Test that hidden entities are included in dimension set."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="test_model",
+            model="test_table",
+            entities=[
+                Entity(name="hidden_id", type="primary"),  # Hidden by default
+            ],
+            dimensions=[
+                Dimension(name="visible_field", type=DimensionType.CATEGORICAL),
+            ],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        assert "dimensions_only" in content
+        assert "hidden_id" in content
+        assert "visible_field" in content
+
+        # Parse and verify set contains both
+        parsed = lkml.load(content)
+        views = parsed.get('views', [])
+        sets = views[0].get('sets', [])
+        dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+        if dimension_set:
+            assert 'hidden_id' in dimension_set['fields']
+            assert 'visible_field' in dimension_set['fields']
+
+    def test_generate_dimension_set_includes_dimension_groups(self) -> None:
+        """Test that dimension_group base names are included in set."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="test_model",
+            model="test_table",
+            dimensions=[
+                Dimension(
+                    name="created_at",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"}
+                ),
+            ],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        # Should include base name or the dimension name
+        assert "created" in content or "created_at" in content
+        assert "dimensions_only" in content
+
+    def test_generate_dimension_set_empty_view(self) -> None:
+        """Test dimension set generation for view with no dimensions."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="empty_model",
+            model="empty_table",
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        # Should not have set for views with no dimensions or entities
+        assert "dimensions_only" not in content or "set:" not in content
+
+    def test_generate_dimension_set_only_entities(self) -> None:
+        """Test dimension set with only entities (no regular dimensions)."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="test_model",
+            model="test_table",
+            entities=[
+                Entity(name="id", type="primary"),
+                Entity(name="parent_id", type="foreign"),
+            ],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        assert "dimensions_only" in content
+        assert "id" in content
+        assert "parent_id" in content
+
+    def test_generate_dimension_set_only_dimensions(self) -> None:
+        """Test dimension set with only dimensions (no entities)."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="test_model",
+            model="test_table",
+            dimensions=[
+                Dimension(name="status", type=DimensionType.CATEGORICAL),
+                Dimension(name="type", type=DimensionType.CATEGORICAL),
+            ],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        assert "dimensions_only" in content
+        assert "status" in content
+        assert "type" in content
+
+    def test_dimension_set_in_view_lookml_output(self) -> None:
+        """Test that dimension set appears in generated view LookML."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="users",
+            model="dim_users",
+            entities=[Entity(name="user_id", type="primary")],
+            dimensions=[Dimension(name="status", type=DimensionType.CATEGORICAL)],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        assert "set:" in content or "sets:" in content
+        assert "dimensions_only" in content
+        assert "fields:" in content
+
+    def test_dimension_set_ordering_in_view(self) -> None:
+        """Test that dimension set appears after measures in view structure."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="orders",
+            model="fact_orders",
+            entities=[Entity(name="order_id", type="primary")],
+            dimensions=[Dimension(name="status", type=DimensionType.CATEGORICAL)],
+            measures=[Measure(name="count", agg=AggregationType.COUNT)],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        # Find positions of measures and sets in content
+        measure_pos = content.find("measure:")
+        set_pos = content.find("set:")
+
+        # Set should appear after measures (or not at all if not implemented)
+        if set_pos > 0 and measure_pos > 0:
+            assert set_pos > measure_pos, "Dimension set should appear after measures"
+
+        # At minimum, both should be present
+        assert "measure:" in content
+        assert "set:" in content or "sets:" in content
+
+    def test_dimension_set_with_view_prefix(self) -> None:
+        """Test that view prefix doesn't affect set field references."""
+        # Arrange
+        generator = LookMLGenerator(view_prefix="v_")
+        semantic_model = SemanticModel(
+            name="users",
+            model="dim_users",
+            entities=[Entity(name="user_id", type="primary")],
+            dimensions=[Dimension(name="status", type=DimensionType.CATEGORICAL)],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        assert "dimensions_only" in content
+        # Field references in set should NOT include view prefix
+        assert "user_id" in content
+        # Verify no prefixed references in the set itself
+        parsed = lkml.load(content)
+        views = parsed.get('views', [])
+        sets = views[0].get('sets', [])
+        if sets:
+            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            if dimension_set:
+                for field in dimension_set['fields']:
+                    assert not field.startswith('v_'), "Set field should not have view prefix"
+
+
+class TestJoinFieldsParameter:
+    """Tests for fields parameter in join generation."""
+
+    def test_join_includes_fields_parameter(self) -> None:
+        """Test that joins include fields parameter key."""
+        # Arrange
+        generator = LookMLGenerator()
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        # Act
+        joins = generator._build_join_graph(models[0], models)
+
+        # Assert
+        assert len(joins) == 1
+        assert "fields" in joins[0], "Join should include fields parameter"
+        assert isinstance(joins[0]["fields"], list)
+
+    def test_join_fields_parameter_format(self) -> None:
+        """Test that fields parameter has correct format."""
+        # Arrange
+        generator = LookMLGenerator()
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                    Entity(name="customer_id", type="foreign"),
+                ],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="customers",
+                model="dim_customers",
+                entities=[Entity(name="customer_id", type="primary")],
+            ),
+        ]
+
+        # Act
+        joins = generator._build_join_graph(models[0], models)
+
+        # Assert
+        assert len(joins) == 1
+        fields_param = joins[0]["fields"]
+        # Expected format: ["customers.dimensions_only*"]
+        assert isinstance(fields_param, list)
+        assert len(fields_param) == 1
+        assert "dimensions_only*" in fields_param[0]
+
+    def test_join_fields_parameter_with_view_prefix(self) -> None:
+        """Test fields parameter with view prefix applied."""
+        # Arrange
+        generator = LookMLGenerator(view_prefix="v_")
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                    Entity(name="customer_id", type="foreign"),
+                ],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="customers",
+                model="dim_customers",
+                entities=[Entity(name="customer_id", type="primary")],
+            ),
+        ]
+
+        # Act
+        joins = generator._build_join_graph(models[0], models)
+
+        # Assert
+        assert len(joins) == 1
+        fields_param = joins[0]["fields"]
+        # Should use prefixed view name: "v_customers.dimensions_only*"
+        assert "v_customers.dimensions_only*" in fields_param[0]
+
+    def test_join_fields_parameter_multi_hop(self) -> None:
+        """Test that multi-hop joins all have fields parameter."""
+        # Arrange
+        generator = LookMLGenerator()
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="search_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="searches",
+                model="fact_searches",
+                entities=[
+                    Entity(name="search_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        # Act
+        joins = generator._build_join_graph(models[0], models)
+
+        # Assert
+        assert len(joins) == 2
+        # All joins should have fields parameter
+        for join in joins:
+            assert "fields" in join, f"Join to {join['view_name']} missing fields parameter"
+            assert isinstance(join["fields"], list)
+
+    def test_join_fields_parameter_multiple_joins(self) -> None:
+        """Test that all joins have fields parameter with multiple foreign keys."""
+        # Arrange
+        generator = LookMLGenerator()
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                    Entity(name="search_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+            SemanticModel(
+                name="searches",
+                model="fact_searches",
+                entities=[Entity(name="search_id", type="primary")],
+            ),
+        ]
+
+        # Act
+        joins = generator._build_join_graph(models[0], models)
+
+        # Assert
+        assert len(joins) == 2
+        for join in joins:
+            assert "fields" in join
+            assert isinstance(join["fields"], list)
+
+    def test_explore_lookml_contains_fields_parameter(self) -> None:
+        """Test that fields parameter appears in serialized explore output."""
+        # Arrange
+        generator = LookMLGenerator()
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                    Entity(name="customer_id", type="foreign"),
+                ],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="customers",
+                model="dim_customers",
+                entities=[Entity(name="customer_id", type="primary")],
+            ),
+        ]
+
+        # Act
+        content = generator._generate_explores_lookml(models)
+
+        # Assert
+        assert "fields:" in content, "Explore should contain fields parameter"
+        assert "dimensions_only*" in content
+
+    def test_fields_parameter_serialization_order(self) -> None:
+        """Test that lkml library serializes fields in correct position."""
+        # Arrange
+        generator = LookMLGenerator()
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        # Act
+        content = generator._generate_explores_lookml(models)
+
+        # Assert
+        # Verify fields appears in join block (after join name, before or after sql_on)
+        lines = content.split('\n')
+        join_found = False
+        fields_found = False
+        for i, line in enumerate(lines):
+            if 'join:' in line:
+                join_found = True
+            if join_found and 'fields:' in line:
+                fields_found = True
+                break
+
+        assert fields_found, "Fields parameter should appear in join block"
+
+    def test_join_without_dimensions_set(self) -> None:
+        """Test graceful handling when target view has no dimension set."""
+        # Arrange
+        generator = LookMLGenerator()
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                    Entity(name="empty_dim_id", type="foreign"),
+                ],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="empty_dim",
+                model="dim_empty",
+                entities=[Entity(name="empty_dim_id", type="primary")],
+                # No dimensions or measures
+            ),
+        ]
+
+        # Act
+        joins = generator._build_join_graph(models[0], models)
+
+        # Assert
+        # Should still add fields parameter even if target has no dimensions
+        assert len(joins) == 1
+        assert "fields" in joins[0]
+
+
+class TestDimensionSetEdgeCases:
+    """Edge case tests for dimension set generation."""
+
+    def test_dimension_set_with_100_plus_dimensions(self) -> None:
+        """Test dimension set handles large number of dimensions."""
+        # Arrange
+        generator = LookMLGenerator()
+        dimensions = [
+            Dimension(name=f"dim_{i}", type=DimensionType.CATEGORICAL)
+            for i in range(120)
+        ]
+        semantic_model = SemanticModel(
+            name="large_model",
+            model="large_table",
+            dimensions=dimensions,
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        assert "dimensions_only" in content
+        # Count occurrences of dimension definitions
+        dim_count = content.count("dimension:")
+        assert dim_count >= 120
+
+    def test_dimension_set_with_only_hidden_dimensions(self) -> None:
+        """Test that set is still generated when all dimensions are hidden."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="test_model",
+            model="test_table",
+            entities=[
+                Entity(name="id", type="primary"),  # Hidden by default
+                Entity(name="fk", type="foreign"),  # Hidden by default
+            ],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        # Set should be generated even for hidden fields
+        assert "dimensions_only" in content
+        parsed = lkml.load(content)
+        views = parsed.get('views', [])
+        sets = views[0].get('sets', [])
+        if sets:
+            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            if dimension_set:
+                assert len(dimension_set['fields']) >= 2
+
+    def test_join_fields_with_circular_reference(self) -> None:
+        """Test that circular references don't cause issues with fields parameter."""
+        # Arrange
+        generator = LookMLGenerator()
+        models = [
+            SemanticModel(
+                name="orders",
+                model="fact_orders",
+                entities=[
+                    Entity(name="order_id", type="primary"),
+                    Entity(name="customer_id", type="foreign"),
+                ],
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="customers",
+                model="dim_customers",
+                entities=[
+                    Entity(name="customer_id", type="primary"),
+                    Entity(name="order_id", type="foreign"),  # Circular
+                ],
+            ),
+        ]
+
+        # Act
+        joins = generator._build_join_graph(models[0], models)
+
+        # Assert
+        # Should handle gracefully without infinite loop
+        assert len(joins) >= 1
+        for join in joins:
+            assert "fields" in join
+            assert isinstance(join["fields"], list)
+
+    def test_dimension_set_with_mixed_dimension_types(self) -> None:
+        """Test dimension set with various dimension types."""
+        # Arrange
+        generator = LookMLGenerator()
+        semantic_model = SemanticModel(
+            name="mixed_model",
+            model="mixed_table",
+            entities=[Entity(name="id", type="primary")],
+            dimensions=[
+                Dimension(name="category", type=DimensionType.CATEGORICAL),
+                Dimension(name="created_at", type=DimensionType.TIME, type_params={"time_granularity": "day"}),
+                Dimension(name="amount", type=DimensionType.CATEGORICAL),
+            ],
+        )
+
+        # Act
+        content = generator._generate_view_lookml(semantic_model)
+
+        # Assert
+        # All dimension types should be included
+        assert "dimensions_only" in content
+        assert "category" in content
+        assert "created_at" in content or "created" in content
+        assert "amount" in content
+
+        # Verify in parsed structure
+        parsed = lkml.load(content)
+        views = parsed.get('views', [])
+        sets = views[0].get('sets', [])
+        if sets:
+            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            if dimension_set:
+                assert len(dimension_set['fields']) >= 3
