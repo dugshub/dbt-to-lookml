@@ -1,6 +1,7 @@
 """Command-line interface for dbt-to-lookml."""
 
 from pathlib import Path
+from typing import Optional
 
 import click
 from rich.console import Console
@@ -90,7 +91,18 @@ def cli() -> None:
     "-m",
     type=str,
     default="semantic_model",
-    help="Name for the generated model file without extension (default: semantic_model)",
+    help="Name for the generated model file without extension "
+    "(default: semantic_model)",
+)
+@click.option(
+    "--convert-tz",
+    is_flag=True,
+    help="Convert time dimensions to UTC (mutually exclusive with --no-convert-tz)",
+)
+@click.option(
+    "--no-convert-tz",
+    is_flag=True,
+    help="Don't convert time dimensions to UTC (mutually exclusive with --convert-tz)",
 )
 def generate(
     input_dir: Path,
@@ -104,6 +116,8 @@ def generate(
     show_summary: bool,
     connection: str,
     model_name: str,
+    convert_tz: bool,
+    no_convert_tz: bool,
 ) -> None:
     """Generate LookML views and explores from semantic models."""
     if not GENERATOR_AVAILABLE:
@@ -112,6 +126,16 @@ def generate(
         )
         console.print("Please install required dependencies: pip install lkml")
         raise click.ClickException("Missing dependencies for LookML generation")
+
+    # Validate mutual exclusivity of timezone flags
+    if convert_tz and no_convert_tz:
+        console.print(
+            "[bold red]Error: --convert-tz and --no-convert-tz are "
+            "mutually exclusive[/bold red]"
+        )
+        raise click.ClickException(
+            "--convert-tz and --no-convert-tz cannot be used together"
+        )
 
     try:
         # Show configuration
@@ -184,6 +208,16 @@ def generate(
                 f"[bold yellow]Previewing LookML generation for {output_dir}[/bold yellow]"
             )
 
+        # Determine convert_tz value for generator
+        # If neither flag specified: None (use generator default)
+        # If --convert-tz specified: True
+        # If --no-convert-tz specified: False
+        convert_tz_value: Optional[bool] = None
+        if convert_tz:
+            convert_tz_value = True
+        elif no_convert_tz:
+            convert_tz_value = False
+
         # Configure generator
         generator = LookMLGenerator(
             view_prefix=view_prefix,
@@ -193,6 +227,7 @@ def generate(
             schema=schema,
             connection=connection,
             model_name=model_name,
+            convert_tz=convert_tz_value,
         )
 
         # Generate files

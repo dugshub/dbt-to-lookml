@@ -1190,3 +1190,120 @@ measures:
         assert "--input-dir" in result.output
         assert "--strict" in result.output
         assert "--verbose" in result.output
+
+    def test_generate_with_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command with --convert-tz flag."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Parsing semantic models" in result.output
+            assert (
+                "Generating LookML files" in result.output
+                or "Previewing" in result.output
+            )
+
+    def test_generate_with_no_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command with --no-convert-tz flag."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--no-convert-tz",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Parsing semantic models" in result.output
+            assert (
+                "Generating LookML files" in result.output
+                or "Previewing" in result.output
+            )
+
+    def test_generate_without_timezone_flags(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command without timezone flags (default behavior)."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Parsing semantic models" in result.output
+            assert (
+                "Generating LookML files" in result.output
+                or "Previewing" in result.output
+            )
+
+    def test_generate_with_mutually_exclusive_flags(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --convert-tz and --no-convert-tz are mutually exclusive."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                    "--no-convert-tz",
+                ],
+            )
+
+            assert result.exit_code != 0
+            assert "mutually exclusive" in result.output
+
+    def test_generate_help_includes_timezone_flags(self, runner: CliRunner) -> None:
+        """Test that help text documents new timezone flags."""
+        result = runner.invoke(cli, ["generate", "--help"])
+
+        assert result.exit_code == 0
+        assert "--convert-tz" in result.output
+        assert "--no-convert-tz" in result.output
+        assert "mutually exclusive" in result.output
