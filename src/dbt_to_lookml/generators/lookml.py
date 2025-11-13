@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import lkml
 from rich.console import Console
@@ -140,7 +140,7 @@ class LookMLGenerator(Generator):
         self,
         fact_model: SemanticModel,
         all_models: List[SemanticModel]
-    ) -> List[Dict[str, str]]:
+    ) -> List[Dict[str, Any]]:
         """Build a complete join graph for a fact table including multi-hop joins.
 
         This method traverses foreign key relationships to build a complete join graph.
@@ -152,7 +152,7 @@ class LookMLGenerator(Generator):
             all_models: All available semantic models.
 
         Returns:
-            List of join dictionaries with keys: view_name, sql_on, relationship, type.
+            List of join dictionaries with keys: view_name, sql_on, relationship, type, fields.
         """
         joins = []
         visited = set()  # Track models we've already joined to avoid cycles
@@ -237,7 +237,8 @@ class LookMLGenerator(Generator):
                     'view_name': target_view_name,
                     'sql_on': sql_on,
                     'relationship': relationship,
-                    'type': 'left_outer'
+                    'type': 'left_outer',
+                    'fields': [f'{target_view_name}.dimensions_only*']
                 }
 
                 joins.append(join)
@@ -428,7 +429,7 @@ class LookMLGenerator(Generator):
             explore_name = f"{self.explore_prefix}{fact_model.name}"
             view_name = f"{self.view_prefix}{fact_model.name}"
 
-            explore_dict = {
+            explore_dict: Dict[str, Any] = {
                 'name': explore_name,
                 'from': view_name,
             }
@@ -449,7 +450,8 @@ class LookMLGenerator(Generator):
                         'name': join['view_name'],
                         'sql_on': join['sql_on'],
                         'relationship': join['relationship'],
-                        'type': join['type']
+                        'type': join['type'],
+                        'fields': join['fields']
                     }
                     explore_dict['joins'].append(join_dict)
 

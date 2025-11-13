@@ -1051,6 +1051,7 @@ class TestBuildJoinGraph:
         assert "${users.user_id}" in joins[0]["sql_on"]
         assert joins[0]["relationship"] == "many_to_one"
         assert joins[0]["type"] == "left_outer"
+        assert joins[0]["fields"] == ["users.dimensions_only*"]
 
     def test_build_join_graph_multi_hop(self) -> None:
         """Test building a join graph with multi-hop relationships."""
@@ -1265,6 +1266,107 @@ class TestBuildJoinGraph:
         # level3 should not be included (depth limit reached)
         assert "level3" not in view_names
 
+    def test_build_join_graph_includes_fields_parameter(self) -> None:
+        """Test that join dictionaries include fields parameter."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        assert len(joins) == 1
+        assert "fields" in joins[0]
+        assert joins[0]["fields"] == ["users.dimensions_only*"]
+
+    def test_build_join_graph_fields_with_view_prefix(self) -> None:
+        """Test that fields parameter uses correct view prefix."""
+        generator = LookMLGenerator(view_prefix="v_")
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        assert len(joins) == 1
+        assert joins[0]["fields"] == ["v_users.dimensions_only*"]
+
+    def test_build_join_graph_multi_hop_includes_fields(self) -> None:
+        """Test that multi-hop joins include fields parameter at all levels."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="search_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="searches",
+                model="fact_searches",
+                entities=[
+                    Entity(name="search_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        # Should have joins to searches and users
+        assert len(joins) == 2
+
+        # All joins should have fields parameter
+        for join in joins:
+            assert "fields" in join
+            assert join["fields"][0].endswith(".dimensions_only*")
+
+        # Verify specific view names
+        view_names = {j["view_name"] for j in joins}
+        assert view_names == {"searches", "users"}
+
+        # Verify fields match view names
+        for join in joins:
+            expected_fields = f"{join['view_name']}.dimensions_only*"
+            assert join["fields"] == [expected_fields]
+
 
 class TestGenerateExploreslookml:
     """Tests for _generate_explores_lookml method."""
@@ -1408,6 +1510,41 @@ class TestGenerateExploreslookml:
 
         # Should have joins in the explore
         assert "join:" in content or "joins:" in content or "relationship:" in content
+
+    def test_generate_explores_includes_fields_in_joins(self) -> None:
+        """Test that generated explores include fields parameter in join blocks."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="user_id", type="foreign"),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+            ),
+        ]
+
+        content = generator._generate_explores_lookml(models)
+
+        # Verify fields parameter appears in output
+        assert "fields:" in content
+        assert "users.dimensions_only*" in content
+
+        # Verify it's within a join block context
+        assert "join:" in content or "joins:" in content
+
+        # Validate syntax by parsing with lkml library
+        import lkml
+        parsed = lkml.load(content)
+        assert parsed is not None
 
 
 class TestJoinGraphEdgeCases:
