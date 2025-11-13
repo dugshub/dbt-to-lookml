@@ -108,6 +108,15 @@ class Entity(BaseModel):
         # Hide all entities (typically surrogate keys) - natural keys should be defined as dimensions
         result["hidden"] = "yes"
 
+            # Add view_label and group_label for primary entities in fact tables
+            if is_fact_table:
+                if view_label:
+                    result['view_label'] = view_label
+                result['group_label'] = 'Join Keys'
+
+        # Hide all entities (typically surrogate keys) - natural keys should be defined as dimensions
+        result['hidden'] = 'yes'
+
         if self.description:
             result["description"] = self.description
 

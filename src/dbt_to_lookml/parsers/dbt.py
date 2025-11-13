@@ -235,6 +235,15 @@ class DbtParser(Parser):
                                     category=meta_data.get("category"),
                                     subcategory=meta_data.get("subcategory"),
                                 )
+                            elif 'entity' in meta_data or 'subject' in meta_data or 'category' in meta_data:
+                                # Flat structure: meta.subject/entity and meta.category
+                                # Use 'subject' if present, otherwise fall back to 'entity'
+                                entity_value = meta_data.get('subject') or meta_data.get('entity')
+                                hierarchy = Hierarchy(
+                                    entity=entity_value,
+                                    category=meta_data.get('category'),
+                                    subcategory=meta_data.get('subcategory'),
+                                )
                             config_meta = ConfigMeta(
                                 domain=meta_data.get("domain"),
                                 owner=meta_data.get("owner"),
@@ -302,6 +311,15 @@ class DbtParser(Parser):
                                     entity=entity_value,
                                     category=meta_data.get("category"),
                                     subcategory=meta_data.get("subcategory"),
+                                )
+                            elif 'entity' in meta_data or 'subject' in meta_data or 'category' in meta_data:
+                                # Flat structure: meta.subject/entity and meta.category
+                                # Use 'subject' if present, otherwise fall back to 'entity'
+                                entity_value = meta_data.get('subject') or meta_data.get('entity')
+                                hierarchy = Hierarchy(
+                                    entity=entity_value,
+                                    category=meta_data.get('category'),
+                                    subcategory=meta_data.get('subcategory'),
                                 )
                             config_meta = ConfigMeta(
                                 domain=meta_data.get("domain"),
