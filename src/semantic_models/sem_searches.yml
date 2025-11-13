@@ -1,0 +1,48 @@
+semantic_models:
+  - name: searches
+    model: ref('dim_searches')
+    description: Search dimension table for search analytics
+
+    entities:
+      - name: search_sk
+        type: primary
+        expr: search_sk
+        description: Primary surrogate key for searches
+
+      - name: user_sk
+        type: foreign
+        expr: user_sk
+        description: Foreign key to users dimension
+
+    dimensions:
+      - name: search_query
+        type: categorical
+        expr: search_query_text
+        description: User search query text
+
+      - name: results_count
+        type: categorical
+        expr: "CAST(num_results AS VARCHAR)"
+        description: Number of search results returned
+
+      - name: search_date
+        type: time
+        expr: searched_at
+        type_params:
+          time_granularity: day
+        description: Date when search was performed
+
+      - name: result_quality
+        type: categorical
+        expr: "CASE WHEN num_results > 0 THEN 'with_results' ELSE 'no_results' END"
+        description: Quality indicator for search results
+
+    measures:
+      - name: search_count
+        agg: count
+        description: Total number of searches
+
+      - name: searches_with_results
+        agg: count_distinct
+        expr: "CASE WHEN num_results > 0 THEN search_sk END"
+        description: Count of searches that returned results

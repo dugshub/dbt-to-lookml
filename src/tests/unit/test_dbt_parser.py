@@ -1,28 +1,18 @@
 """Unit tests for DbtParser using new architecture."""
 
+import threading
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from unittest.mock import patch
-import threading
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
-from dbt_to_lookml.types import (
-    AggregationType,
-    DimensionType,
-    TimeGranularity,
-)
-from dbt_to_lookml.schemas import (
-    ConfigMeta,
-    Config,
-    Dimension,
-    Entity,
-    Measure,
-    SemanticModel,
-)
 from dbt_to_lookml.parsers.dbt import DbtParser
+from dbt_to_lookml.types import (
+    DimensionType,
+)
 
 
 class TestDbtParser:
@@ -32,7 +22,7 @@ class TestDbtParser:
         """Test parsing an empty YAML file."""
         parser = DbtParser()
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump({}, f)
             temp_path = Path(f.name)
 
@@ -50,18 +40,12 @@ class TestDbtParser:
             "name": "users",
             "model": "dim_users",
             "description": "User dimension table",
-            "entities": [
-                {"name": "user_id", "type": "primary"}
-            ],
-            "dimensions": [
-                {"name": "status", "type": "categorical"}
-            ],
-            "measures": [
-                {"name": "user_count", "agg": "count"}
-            ]
+            "entities": [{"name": "user_id", "type": "primary"}],
+            "dimensions": [{"name": "status", "type": "categorical"}],
+            "measures": [{"name": "user_count", "agg": "count"}],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -90,19 +74,19 @@ class TestDbtParser:
                     "model": "dim_users",
                     "entities": [{"name": "user_id", "type": "primary"}],
                     "dimensions": [],
-                    "measures": []
+                    "measures": [],
                 },
                 {
                     "name": "orders",
                     "model": "fct_orders",
                     "entities": [{"name": "order_id", "type": "primary"}],
                     "dimensions": [],
-                    "measures": []
-                }
+                    "measures": [],
+                },
             ]
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(models_data, f)
             temp_path = Path(f.name)
 
@@ -131,7 +115,7 @@ class TestDbtParser:
             # Missing 'model' field
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -153,16 +137,16 @@ class TestDbtParser:
                     "model": "dim_valid",
                     "entities": [],
                     "dimensions": [],
-                    "measures": []
+                    "measures": [],
                 },
                 {
                     "name": "invalid_model",
                     # Missing 'model' field
-                }
+                },
             ]
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(models_data, f)
             temp_path = Path(f.name)
 
@@ -190,24 +174,22 @@ class TestDbtParser:
                             "domain": "sales",
                             "owner": "Analytics Team",
                             "contains_pii": True,
-                            "update_frequency": "hourly"
+                            "update_frequency": "hourly",
                         }
                     },
-                    "defaults": {
-                        "agg_time_dimension": "created_date"
-                    },
+                    "defaults": {"agg_time_dimension": "created_date"},
                     "entities": [
                         {
                             "name": "primary_key",
                             "type": "primary",
                             "expr": "id",
-                            "description": "Primary entity"
+                            "description": "Primary entity",
                         },
                         {
                             "name": "foreign_key",
                             "type": "foreign",
-                            "expr": "customer_id"
-                        }
+                            "expr": "customer_id",
+                        },
                     ],
                     "dimensions": [
                         {
@@ -215,63 +197,49 @@ class TestDbtParser:
                             "type": "categorical",
                             "expr": "status",
                             "description": "Order status",
-                            "label": "Order Status"
+                            "label": "Order Status",
                         },
                         {
                             "name": "created_date",
                             "type": "time",
-                            "type_params": {
-                                "time_granularity": "day"
-                            },
+                            "type_params": {"time_granularity": "day"},
                             "expr": "created_at::date",
-                            "description": "Creation date"
+                            "description": "Creation date",
                         },
                         {
                             "name": "derived_field",
                             "type": "categorical",
                             "expr": "CASE WHEN amount > 100 THEN 'high' ELSE 'low' END",
-                            "label": "Amount Category"
-                        }
+                            "label": "Amount Category",
+                        },
                     ],
                     "measures": [
                         {
                             "name": "total_count",
                             "agg": "count",
-                            "description": "Total record count"
+                            "description": "Total record count",
                         },
                         {
                             "name": "unique_customers",
                             "agg": "count_distinct",
                             "expr": "customer_id",
-                            "label": "Unique Customers"
+                            "label": "Unique Customers",
                         },
                         {
                             "name": "total_revenue",
                             "agg": "sum",
                             "expr": "amount",
-                            "create_metric": True
+                            "create_metric": True,
                         },
-                        {
-                            "name": "avg_order_value",
-                            "agg": "average",
-                            "expr": "amount"
-                        },
-                        {
-                            "name": "max_amount",
-                            "agg": "max",
-                            "expr": "amount"
-                        },
-                        {
-                            "name": "min_amount",
-                            "agg": "min",
-                            "expr": "amount"
-                        }
-                    ]
+                        {"name": "avg_order_value", "agg": "average", "expr": "amount"},
+                        {"name": "max_amount", "agg": "max", "expr": "amount"},
+                        {"name": "min_amount", "agg": "min", "expr": "amount"},
+                    ],
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(complex_model_data, f)
             temp_path = Path(f.name)
 
@@ -337,7 +305,7 @@ class TestDbtParser:
                         "model": "table1",
                         "entities": [],
                         "dimensions": [],
-                        "measures": []
+                        "measures": [],
                     }
                 ]
             }
@@ -347,13 +315,15 @@ class TestDbtParser:
                 "model": "table2",
                 "entities": [],
                 "dimensions": [],
-                "measures": []
+                "measures": [],
             }
 
             # Write files
             (temp_path / "model1.yml").write_text(yaml.dump(model1_data))
             (temp_path / "model2.yml").write_text(yaml.dump(model2_data))
-            (temp_path / "model3.yaml").write_text(yaml.dump({"name": "model3", "model": "table3"}))
+            (temp_path / "model3.yaml").write_text(
+                yaml.dump({"name": "model3", "model": "table3"})
+            )
             # Add a non-YAML file that should be ignored
             (temp_path / "readme.txt").write_text("This is not a YAML file")
 
@@ -368,7 +338,7 @@ class TestDbtParser:
 
         invalid_yaml = "invalid: yaml: content: ["
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write(invalid_yaml)
             temp_path = Path(f.name)
 
@@ -390,18 +360,18 @@ class TestDbtParser:
             {
                 "name": "test",
                 "model": "table1",
-                "measures": [{"name": "test_measure", "agg": "invalid_agg"}]
+                "measures": [{"name": "test_measure", "agg": "invalid_agg"}],
             },
             # Invalid dimension type
             {
                 "name": "test",
                 "model": "table1",
-                "dimensions": [{"name": "test_dim", "type": "invalid_type"}]
+                "dimensions": [{"name": "test_dim", "type": "invalid_type"}],
             },
         ]
 
         for i, invalid_data in enumerate(test_cases):
-            with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
                 yaml.dump(invalid_data, f)
                 temp_path = Path(f.name)
 
@@ -437,11 +407,11 @@ class TestDbtParser:
         """Test parser behavior when file cannot be read."""
         parser = DbtParser()
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump({"name": "test", "model": "table"}, f)
             temp_path = Path(f.name)
 
-        with patch('builtins.open') as mock_open:
+        with patch("builtins.open") as mock_open:
             mock_open.side_effect = PermissionError("Permission denied")
 
             try:
@@ -462,12 +432,12 @@ class TestDbtParser:
                     "model": "dim_table",
                     "entities": [],
                     "dimensions": [],
-                    "measures": []
+                    "measures": [],
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -489,29 +459,29 @@ class TestDbtParser:
                 {
                     "name": "case_when_dimension",
                     "type": "categorical",
-                    "expr": "CASE WHEN status = 'active' AND created_at > '2023-01-01' THEN 'new_active' ELSE 'other' END"
+                    "expr": "CASE WHEN status = 'active' AND created_at > '2023-01-01' THEN 'new_active' ELSE 'other' END",
                 },
                 {
                     "name": "extract_dimension",
                     "type": "categorical",
-                    "expr": "EXTRACT(YEAR FROM created_at)::text"
-                }
+                    "expr": "EXTRACT(YEAR FROM created_at)::text",
+                },
             ],
             "measures": [
                 {
                     "name": "conditional_sum",
                     "agg": "sum",
-                    "expr": "CASE WHEN status = 'completed' THEN amount ELSE 0 END"
+                    "expr": "CASE WHEN status = 'completed' THEN amount ELSE 0 END",
                 },
                 {
                     "name": "filtered_count",
                     "agg": "count",
-                    "expr": "CASE WHEN amount > 0 THEN id END"
-                }
-            ]
+                    "expr": "CASE WHEN amount > 0 THEN id END",
+                },
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -559,7 +529,7 @@ class TestDbtParser:
                     "name": f"dim_{i}",
                     "type": "categorical",
                     "expr": f"field_{i}",
-                    "description": f"Dimension {i}"
+                    "description": f"Dimension {i}",
                 }
                 for i in range(50)
             ],
@@ -568,13 +538,13 @@ class TestDbtParser:
                     "name": f"measure_{i}",
                     "agg": "sum",
                     "expr": f"amount_{i}",
-                    "description": f"Measure {i}"
+                    "description": f"Measure {i}",
                 }
                 for i in range(30)
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(large_model_data, f)
             temp_path = Path(f.name)
 
@@ -607,11 +577,9 @@ class TestDbtParser:
                             "properties": {
                                 "nested_prop": {
                                     "deep_value": "test",
-                                    "deeper": {
-                                        "deepest": "value"
-                                    }
+                                    "deeper": {"deepest": "value"},
                                 }
-                            }
+                            },
                         }
                     },
                     "dimensions": [
@@ -622,16 +590,16 @@ class TestDbtParser:
                                 "time_granularity": "day",
                                 "custom_formats": {
                                     "date_format": "yyyy-MM-dd",
-                                    "time_format": "HH:mm:ss"
-                                }
-                            }
+                                    "time_format": "HH:mm:ss",
+                                },
+                            },
                         }
-                    ]
+                    ],
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(nested_model_data, f)
             temp_path = Path(f.name)
 
@@ -658,12 +626,14 @@ class TestDbtParser:
                     "name": "状态",  # Chinese
                     "type": "categorical",
                     "description": "État du utilisateur",  # French
-                    "expr": "status_émoji_🔥"  # Emoji
+                    "expr": "status_émoji_🔥",  # Emoji
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False, encoding='utf-8') as f:
+        with NamedTemporaryFile(
+            mode="w", suffix=".yml", delete=False, encoding="utf-8"
+        ) as f:
             yaml.dump(unicode_model_data, f, allow_unicode=True)
             temp_path = Path(f.name)
 
@@ -684,22 +654,24 @@ class TestDbtParser:
         parser = DbtParser()
 
         long_description = "A" * 10000  # Very long description
-        long_expr = "CASE " + " ".join([f"WHEN field_{i} = 'value_{i}' THEN 'result_{i}'" for i in range(100)]) + " ELSE 'default' END"
+        long_expr = (
+            "CASE "
+            + " ".join(
+                [f"WHEN field_{i} = 'value_{i}' THEN 'result_{i}'" for i in range(100)]
+            )
+            + " ELSE 'default' END"
+        )
 
         long_string_model = {
             "name": "long_string_model",
             "model": "test_table",
             "description": long_description,
             "dimensions": [
-                {
-                    "name": "complex_case",
-                    "type": "categorical",
-                    "expr": long_expr
-                }
-            ]
+                {"name": "complex_case", "type": "categorical", "expr": long_expr}
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(long_string_model, f)
             temp_path = Path(f.name)
 
@@ -742,7 +714,7 @@ semantic_models:
         expr: "updated_timestamp"
 """
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write(yaml_with_anchors)
             temp_path = Path(f.name)
 
@@ -765,26 +737,14 @@ semantic_models:
             "name": "model-with_special.chars",
             "model": "table$with%special&chars",
             "dimensions": [
-                {
-                    "name": "field-with-dashes",
-                    "type": "categorical"
-                },
-                {
-                    "name": "field_with_underscores",
-                    "type": "categorical"
-                },
-                {
-                    "name": "field.with.dots",
-                    "type": "categorical"
-                },
-                {
-                    "name": "field123with456numbers",
-                    "type": "categorical"
-                }
-            ]
+                {"name": "field-with-dashes", "type": "categorical"},
+                {"name": "field_with_underscores", "type": "categorical"},
+                {"name": "field.with.dots", "type": "categorical"},
+                {"name": "field123with456numbers", "type": "categorical"},
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(special_chars_model, f)
             temp_path = Path(f.name)
 
@@ -812,19 +772,13 @@ semantic_models:
                     "name": "test_dim",
                     "type": "categorical",
                     "expr": None,
-                    "description": None
+                    "description": None,
                 }
             ],
-            "measures": [
-                {
-                    "name": "test_measure",
-                    "agg": "count",
-                    "expr": None
-                }
-            ]
+            "measures": [{"name": "test_measure", "agg": "count", "expr": None}],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(null_values_model, f)
             temp_path = Path(f.name)
 
@@ -848,10 +802,10 @@ semantic_models:
             "model": "empty_table",
             "entities": [],
             "dimensions": [],
-            "measures": []
+            "measures": [],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(empty_lists_model, f)
             temp_path = Path(f.name)
 
@@ -899,17 +853,16 @@ semantic_models:
 
     def test_parse_concurrent_access(self) -> None:
         """Test concurrent parsing of the same file."""
-        import threading
 
         parser = DbtParser()
 
         model_data = {
             "name": "concurrent_model",
             "model": "concurrent_table",
-            "entities": [{"name": "id", "type": "primary"}]
+            "entities": [{"name": "id", "type": "primary"}],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -950,7 +903,9 @@ semantic_models:
         }
 
         # Test UTF-8 encoding (default)
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False, encoding='utf-8') as f:
+        with NamedTemporaryFile(
+            mode="w", suffix=".yml", delete=False, encoding="utf-8"
+        ) as f:
             yaml.dump(model_data, f, allow_unicode=True)
             temp_path = Path(f.name)
 
@@ -974,8 +929,12 @@ semantic_models:
                     "name": f"model_{i:03d}",
                     "model": f"table_{i:03d}",
                     "entities": [{"name": "id", "type": "primary"}],
-                    "dimensions": [{"name": f"field_{j}", "type": "categorical"} for j in range(5)],
-                    "measures": [{"name": f"measure_{j}", "agg": "count"} for j in range(3)]
+                    "dimensions": [
+                        {"name": f"field_{j}", "type": "categorical"} for j in range(5)
+                    ],
+                    "measures": [
+                        {"name": f"measure_{j}", "agg": "count"} for j in range(3)
+                    ],
                 }
 
                 file_path = temp_path / f"model_{i:03d}.yml"
@@ -1002,18 +961,18 @@ semantic_models:
                 "model": "table1",
                 "entities": [],
                 "dimensions": [],
-                "measures": []
+                "measures": [],
             },
             {
                 "name": "list_model_2",
                 "model": "table2",
                 "entities": [],
                 "dimensions": [],
-                "measures": []
-            }
+                "measures": [],
+            },
         ]
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(models_list, f)
             temp_path = Path(f.name)
 
@@ -1029,7 +988,7 @@ semantic_models:
         """Test parsing with scalar YAML content raises error."""
         parser = DbtParser()
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             # Write a scalar value instead of dict/list
             f.write("just a string")
             temp_path = Path(f.name)
@@ -1053,7 +1012,7 @@ semantic_models:
                 "model": "yaml_table",
                 "entities": [],
                 "dimensions": [],
-                "measures": []
+                "measures": [],
             }
             (temp_path / "model.yaml").write_text(yaml.dump(yaml_model))
 
@@ -1065,45 +1024,28 @@ semantic_models:
         """Test validate() method with semantic_models key structure."""
         parser = DbtParser()
 
-        content = {
-            "semantic_models": [
-                {
-                    "name": "test",
-                    "model": "table"
-                }
-            ]
-        }
+        content = {"semantic_models": [{"name": "test", "model": "table"}]}
         assert parser.validate(content) is True
 
     def test_validate_method_with_direct_model(self) -> None:
         """Test validate() method with direct model structure."""
         parser = DbtParser()
 
-        content = {
-            "name": "test",
-            "model": "table"
-        }
+        content = {"name": "test", "model": "table"}
         assert parser.validate(content) is True
 
     def test_validate_method_with_list_of_models(self) -> None:
         """Test validate() method with list of models."""
         parser = DbtParser()
 
-        content = [
-            {
-                "name": "test",
-                "model": "table"
-            }
-        ]
+        content = [{"name": "test", "model": "table"}]
         assert parser.validate(content) is True
 
     def test_validate_method_with_invalid_semantic_models_structure(self) -> None:
         """Test validate() method with non-list semantic_models."""
         parser = DbtParser()
 
-        content = {
-            "semantic_models": "not_a_list"
-        }
+        content = {"semantic_models": "not_a_list"}
         assert parser.validate(content) is False
 
     def test_validate_method_with_empty_content(self) -> None:
@@ -1138,7 +1080,9 @@ semantic_models:
         parser = DbtParser()
 
         # Valid structure
-        assert parser._validate_model_structure({"name": "test", "model": "table"}) is True
+        assert (
+            parser._validate_model_structure({"name": "test", "model": "table"}) is True
+        )
 
         # Missing name
         assert parser._validate_model_structure({"model": "table"}) is False
@@ -1165,15 +1109,15 @@ semantic_models:
                             "hierarchy": {
                                 "entity": "user",
                                 "category": "profile",
-                                "subcategory": "account_status"
+                                "subcategory": "account_status",
                             }
                         }
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1206,14 +1150,14 @@ semantic_models:
                         "meta": {
                             "subject": "customer",
                             "category": "demographics",
-                            "subcategory": "geo"
+                            "subcategory": "geo",
                         }
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1244,17 +1188,12 @@ semantic_models:
                 {
                     "name": "order_status",
                     "type": "categorical",
-                    "config": {
-                        "meta": {
-                            "entity": "order",
-                            "category": "details"
-                        }
-                    }
+                    "config": {"meta": {"entity": "order", "category": "details"}},
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1288,14 +1227,14 @@ semantic_models:
                             "owner": "analytics_team",
                             "contains_pii": True,
                             "update_frequency": "daily",
-                            "category": "demographics"
+                            "category": "demographics",
                         }
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1328,15 +1267,15 @@ semantic_models:
                             "hierarchy": {
                                 "entity": "order",
                                 "category": "financials",
-                                "subcategory": "revenue"
+                                "subcategory": "revenue",
                             }
                         }
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1366,16 +1305,13 @@ semantic_models:
                     "name": "order_count",
                     "agg": "count",
                     "config": {
-                        "meta": {
-                            "subject": "transaction",
-                            "category": "counts"
-                        }
-                    }
+                        "meta": {"subject": "transaction", "category": "counts"}
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1403,17 +1339,12 @@ semantic_models:
                     "name": "unique_users",
                     "agg": "count_distinct",
                     "expr": "user_id",
-                    "config": {
-                        "meta": {
-                            "entity": "user",
-                            "category": "engagement"
-                        }
-                    }
+                    "config": {"meta": {"entity": "user", "category": "engagement"}},
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1446,14 +1377,14 @@ semantic_models:
                             "owner": "finance_team",
                             "contains_pii": False,
                             "update_frequency": "hourly",
-                            "category": "metrics"
+                            "category": "metrics",
                         }
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1482,10 +1413,10 @@ semantic_models:
                     "type": "primary",
                     # Missing 'name' field
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1507,10 +1438,10 @@ semantic_models:
                     "name": "my_id",
                     # Missing 'type' field
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1532,10 +1463,10 @@ semantic_models:
                     "type": "categorical",
                     # Missing 'name' field
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1557,10 +1488,10 @@ semantic_models:
                     "name": "test_dim",
                     "type": "invalid_dimension_type",
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1582,10 +1513,10 @@ semantic_models:
                     "agg": "count",
                     # Missing 'name' field
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1607,10 +1538,10 @@ semantic_models:
                     "name": "bad_measure",
                     "agg": "invalid_aggregation",
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1631,12 +1562,12 @@ semantic_models:
                 {
                     "name": "complex_case",
                     "type": "categorical",
-                    "expr": "  \n  CASE WHEN amount > 1000 THEN 'high'\n       WHEN amount > 100 THEN 'medium'\n       ELSE 'low' END  \n  "
+                    "expr": "  \n  CASE WHEN amount > 1000 THEN 'high'\n       WHEN amount > 100 THEN 'medium'\n       ELSE 'low' END  \n  ",
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1664,12 +1595,12 @@ semantic_models:
                 {
                     "name": "conditional_sum",
                     "agg": "sum",
-                    "expr": "  \n  CASE WHEN status = 'completed'\n       THEN amount ELSE 0 END  \n  "
+                    "expr": "  \n  CASE WHEN status = 'completed'\n       THEN amount ELSE 0 END  \n  ",
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1714,17 +1645,12 @@ semantic_models:
                 {
                     "name": "simple_dim",
                     "type": "categorical",
-                    "config": {
-                        "meta": {
-                            "domain": "test",
-                            "owner": "test_owner"
-                        }
-                    }
+                    "config": {"meta": {"domain": "test", "owner": "test_owner"}},
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1752,17 +1678,12 @@ semantic_models:
                 {
                     "name": "simple_measure",
                     "agg": "count",
-                    "config": {
-                        "meta": {
-                            "domain": "metrics",
-                            "owner": "analytics"
-                        }
-                    }
+                    "config": {"meta": {"domain": "metrics", "owner": "analytics"}},
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1788,10 +1709,10 @@ semantic_models:
             "config": {
                 "other_field": "value"
                 # No 'meta' section
-            }
+            },
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1819,12 +1740,12 @@ semantic_models:
                     "config": {
                         "other_field": "value"
                         # No 'meta' section
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1852,12 +1773,12 @@ semantic_models:
                     "config": {
                         "other_field": "value"
                         # No 'meta' section
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1885,10 +1806,10 @@ semantic_models:
                     "expr": "status",
                     # No 'config' section
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1914,10 +1835,10 @@ semantic_models:
                     "agg": "count",
                     # No 'config' section
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1937,16 +1858,10 @@ semantic_models:
         model_data = {
             "name": "dim_none_expr",
             "model": "base_table",
-            "dimensions": [
-                {
-                    "name": "test_dim",
-                    "type": "categorical",
-                    "expr": None
-                }
-            ]
+            "dimensions": [{"name": "test_dim", "type": "categorical", "expr": None}],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -1966,16 +1881,10 @@ semantic_models:
         model_data = {
             "name": "measure_none_expr",
             "model": "fact_table",
-            "measures": [
-                {
-                    "name": "test_measure",
-                    "agg": "count",
-                    "expr": None
-                }
-            ]
+            "measures": [{"name": "test_measure", "agg": "count", "expr": None}],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -2004,12 +1913,12 @@ semantic_models:
                             "category": "demographics"
                             # Only category, no entity or subject
                         }
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -2042,12 +1951,12 @@ semantic_models:
                             "category": "metrics"
                             # Only category, no entity or subject
                         }
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -2074,12 +1983,12 @@ semantic_models:
                 {
                     "name": "test_dim",
                     "type": "categorical",
-                    "expr": ""  # Empty string
+                    "expr": "",  # Empty string
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 
@@ -2104,12 +2013,12 @@ semantic_models:
                 {
                     "name": "test_measure",
                     "agg": "count",
-                    "expr": ""  # Empty string
+                    "expr": "",  # Empty string
                 }
-            ]
+            ],
         }
 
-        with NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(model_data, f)
             temp_path = Path(f.name)
 

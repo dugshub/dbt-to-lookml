@@ -38,13 +38,13 @@ class TimeGranularity(str, Enum):
 
 # Type mapping from dbt aggregation types to LookML measure types
 LOOKML_TYPE_MAP = {
-    AggregationType.COUNT: 'count',
-    AggregationType.COUNT_DISTINCT: 'count_distinct',
-    AggregationType.SUM: 'sum',
-    AggregationType.AVERAGE: 'average',
-    AggregationType.MIN: 'min',
-    AggregationType.MAX: 'max',
-    AggregationType.MEDIAN: 'median',
-    AggregationType.SUM_BOOLEAN: 'sum',
-    AggregationType.PERCENTILE: 'percentile',
+    AggregationType.COUNT: "count",
+    AggregationType.COUNT_DISTINCT: "count_distinct",
+    AggregationType.SUM: "sum",
+    AggregationType.AVERAGE: "average",
+    AggregationType.MIN: "min",
+    AggregationType.MAX: "max",
+    AggregationType.MEDIAN: "median",
+    AggregationType.SUM_BOOLEAN: "sum",
+    AggregationType.PERCENTILE: "percentile",
 }
