@@ -512,12 +512,12 @@ class TestSemanticModel:
         assert "dimension_groups" in view
         assert len(view["dimension_groups"]) > 0
 
-        # Verify dimension set includes time dimension base name
+        # Verify dimension set includes time dimension with wildcard
         dimension_set = next(
             (s for s in view["sets"] if s["name"] == "dimensions_only"), None
         )
         assert dimension_set is not None
-        assert "created_at" in dimension_set["fields"]
+        assert "created_at*" in dimension_set["fields"]  # Wildcard for dimension_group
         assert "event_type" in dimension_set["fields"]
         assert "event_id" in dimension_set["fields"]
 

@@ -363,7 +363,12 @@ class SemanticModel(BaseModel):
         for entity in self.entities:
             dimension_field_names.append(entity.name)
         for dim in self.dimensions:
-            dimension_field_names.append(dim.name)
+            # Time dimensions become dimension_groups which expand to multiple fields
+            # Use wildcard syntax to reference all expanded fields (e.g., "date_day*")
+            if dim.type == DimensionType.TIME:
+                dimension_field_names.append(f"{dim.name}*")
+            else:
+                dimension_field_names.append(dim.name)
 
         # Build the view dict
         view_dict: dict[str, Any] = {
