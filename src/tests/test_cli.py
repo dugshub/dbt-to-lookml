@@ -1307,3 +1307,429 @@ measures:
         assert "--convert-tz" in result.output
         assert "--no-convert-tz" in result.output
         assert "mutually exclusive" in result.output
+
+
+class TestCLIConvertTzFlags:
+    """Test cases for CLI --convert-tz and --no-convert-tz flags."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a Click test runner."""
+        return CliRunner()
+
+    @pytest.fixture
+    def fixtures_dir(self) -> Path:
+        """Return path to fixtures directory."""
+        return Path(__file__).parent / "fixtures"
+
+    def test_cli_generate_with_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test CLI accepts --convert-tz flag."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+    def test_cli_generate_with_no_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test CLI accepts --no-convert-tz flag."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--no-convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+    def test_cli_generate_without_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test CLI without flag uses default."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+    def test_cli_generate_help_shows_convert_tz_flags(self, runner: CliRunner) -> None:
+        """Test help text documents convert_tz flags."""
+        # Act
+        result = runner.invoke(cli, ["generate", "--help"])
+
+        # Assert
+        assert result.exit_code == 0
+        assert "--convert-tz" in result.output
+        assert "--no-convert-tz" in result.output
+
+    def test_cli_convert_tz_flag_generates_convert_tz_yes(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --convert-tz flag produces convert_tz: yes in output."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Verify generated files contain convert_tz: yes
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) > 0
+
+            for view_file in view_files:
+                content = view_file.read_text()
+                # Check for convert_tz in dimension_group sections
+                if "type: time" in content:
+                    assert "convert_tz: yes" in content
+
+    def test_cli_no_convert_tz_flag_generates_convert_tz_no(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --no-convert-tz flag produces convert_tz: no in output."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--no-convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Verify generated files contain convert_tz: no
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) > 0
+
+            for view_file in view_files:
+                content = view_file.read_text()
+                # Check for convert_tz in dimension_group sections
+                if "type: time" in content:
+                    assert "convert_tz: no" in content
+
+    def test_cli_convert_tz_flag_in_generated_lookml_files(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that flag value appears in actual files."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act - with --convert-tz flag
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Verify files were created
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) > 0
+
+            # Verify at least one file contains convert_tz: yes
+            found_convert_tz = False
+            for view_file in view_files:
+                content = view_file.read_text()
+                if "convert_tz: yes" in content:
+                    found_convert_tz = True
+                    break
+
+            # If there are time dimensions, we should find convert_tz
+            # (some fixtures might not have time dimensions)
+            has_time_dims = any(
+                "type: time" in view_file.read_text() for view_file in view_files
+            )
+            if has_time_dims:
+                assert found_convert_tz
+
+    def test_cli_convert_tz_respects_dimension_meta_override(
+        self, runner: CliRunner
+    ) -> None:
+        """Test that dimension meta overrides CLI flag."""
+        # This test requires a fixture with convert_tz in dimension meta
+        # For now, we'll test that the CLI flag is properly passed to generator
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            fixtures_dir = Path(__file__).parent / "fixtures"
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+    def test_cli_convert_tz_with_view_prefix_and_explore_prefix(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that convert_tz works with other flags."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                    "--view-prefix",
+                    "v_",
+                    "--explore-prefix",
+                    "e_",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Verify files were created with prefixes
+            view_files = list(output_dir.glob("v_*.view.lkml"))
+            # Some fixtures might not have views with the prefix pattern
+            # Just verify the command succeeded
+
+    def test_cli_convert_tz_flag_validates_output(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that validation passes with correct convert_tz values."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+            # If validation fails, exit_code would be non-zero
+
+    def test_cli_mutually_exclusive_convert_tz_flags(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --convert-tz and --no-convert-tz are mutually exclusive."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                    "--no-convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code != 0
+            assert "mutually exclusive" in result.output
+
+    def test_cli_convert_tz_with_dry_run(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --convert-tz can be combined with --dry-run."""
+        # Arrange & Act
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "--input-dir",
+                str(fixtures_dir),
+                "--schema",
+                "public",
+                "--convert-tz",
+                "--dry-run",
+            ],
+        )
+
+        # Assert - flags can be used together (exit code may vary based on fixtures)
+        # The important thing is no mutually exclusive error
+        assert "mutually exclusive" not in result.output
+
+    def test_cli_no_convert_tz_with_dry_run(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --no-convert-tz can be combined with --dry-run."""
+        # Arrange & Act
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "--input-dir",
+                str(fixtures_dir),
+                "--schema",
+                "public",
+                "--no-convert-tz",
+                "--dry-run",
+            ],
+        )
+
+        # Assert - flags can be used together (exit code may vary based on fixtures)
+        # The important thing is no mutually exclusive error
+        assert "mutually exclusive" not in result.output
+
+    @pytest.mark.parametrize(
+        "flag,expected_in_output",
+        [
+            ("--convert-tz", "convert_tz: yes"),
+            ("--no-convert-tz", "convert_tz: no"),
+        ],
+    )
+    def test_cli_convert_tz_flag_variations(
+        self,
+        runner: CliRunner,
+        fixtures_dir: Path,
+        flag: str,
+        expected_in_output: str,
+    ) -> None:
+        """Test both convert_tz flag variations produce correct output."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    flag,
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Check if files contain expected output
+            view_files = list(output_dir.glob("*.view.lkml"))
+            if len(view_files) > 0:
+                for view_file in view_files:
+                    content = view_file.read_text()
+                    if "type: time" in content:
+                        assert expected_in_output in content

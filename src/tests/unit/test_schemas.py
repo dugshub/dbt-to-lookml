@@ -1179,3 +1179,287 @@ class TestLookMLSet:
         assert result["name"] == "status"
         # Categorical dims don't have convert_tz
         assert "convert_tz" not in result
+
+
+class TestDimensionConvertTzComprehensive:
+    """Test cases for comprehensive Dimension convert_tz handling."""
+
+    @pytest.mark.parametrize(
+        "convert_tz_value,expected_lookml",
+        [
+            (True, "yes"),
+            (False, "no"),
+            (None, "no"),  # Default is False
+        ],
+    )
+    def test_dimension_group_convert_tz_output(
+        self, convert_tz_value: bool | None, expected_lookml: str
+    ) -> None:
+        """Test convert_tz appears in LookML output with correct value."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            config=Config(meta=ConfigMeta(convert_tz=convert_tz_value))
+            if convert_tz_value is not None
+            else None,
+            type_params={"time_granularity": "day"},
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert
+        assert result.get("convert_tz") == expected_lookml
+
+    def test_dimension_group_convert_tz_default_false(self) -> None:
+        """Test that default convert_tz is False when not specified."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert
+        assert result.get("convert_tz") == "no"
+
+    def test_dimension_convert_tz_ignored_for_non_time_dimensions(self) -> None:
+        """Test that convert_tz in meta for categorical dimensions is ignored."""
+        # Arrange
+        dim = Dimension(
+            name="status",
+            type=DimensionType.CATEGORICAL,
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert - categorical dimensions should not have convert_tz
+        assert "convert_tz" not in result
+
+    def test_dimension_group_convert_tz_with_custom_timeframes(self) -> None:
+        """Test that convert_tz works with custom time granularity."""
+        # Arrange - hour granularity should include additional timeframes
+        dim = Dimension(
+            name="event_timestamp",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "hour"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert
+        assert result.get("convert_tz") == "yes"
+        # Verify timeframes are correctly set for hour granularity
+        assert "timeframes" in result
+        assert "time" in result["timeframes"]
+        assert "hour" in result["timeframes"]
+
+    def test_dimension_group_convert_tz_precedence_meta_overrides_default(
+        self,
+    ) -> None:
+        """Test that dimension meta convert_tz overrides default."""
+        # Arrange - meta says True
+        dim_true = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Act - even with default_convert_tz=False
+        result_true = dim_true.to_lookml_dict(default_convert_tz=False)
+
+        # Assert - meta should win
+        assert result_true.get("convert_tz") == "yes"
+
+        # Arrange - meta says False
+        dim_false = Dimension(
+            name="updated_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=False)),
+        )
+
+        # Act - even with default_convert_tz=True
+        result_false = dim_false.to_lookml_dict(default_convert_tz=True)
+
+        # Assert - meta should win
+        assert result_false.get("convert_tz") == "no"
+
+    def test_dimension_group_convert_tz_serialization(self) -> None:
+        """Test that convert_tz is serialized as string, not boolean."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert - must be string "yes", not boolean True
+        assert result.get("convert_tz") == "yes"
+        assert isinstance(result.get("convert_tz"), str)
+        assert result.get("convert_tz") is not True
+
+    def test_multiple_dimensions_different_convert_tz_settings(self) -> None:
+        """Test multiple dimensions with different convert_tz values."""
+        # Arrange
+        dim1 = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        dim2 = Dimension(
+            name="updated_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=False)),
+        )
+
+        dim3 = Dimension(
+            name="deleted_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            # No convert_tz in config - uses default
+        )
+
+        # Act
+        result1 = dim1.to_lookml_dict()
+        result2 = dim2.to_lookml_dict()
+        result3 = dim3.to_lookml_dict()
+
+        # Assert - each respects its own setting
+        assert result1.get("convert_tz") == "yes"
+        assert result2.get("convert_tz") == "no"
+        assert result3.get("convert_tz") == "no"
+
+    def test_dimension_group_convert_tz_with_minute_granularity(self) -> None:
+        """Test convert_tz with minute granularity includes time timeframe."""
+        # Arrange
+        dim = Dimension(
+            name="precise_timestamp",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "minute"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert
+        assert result.get("convert_tz") == "yes"
+        assert "timeframes" in result
+        # Minute granularity uses hour granularity timeframes
+        assert "time" in result["timeframes"]
+        assert "hour" in result["timeframes"]
+
+    def test_dimension_group_convert_tz_explicit_true(self) -> None:
+        """Test dimension with meta.convert_tz=True."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert
+        assert "convert_tz" in result
+        assert result["convert_tz"] == "yes"
+
+    def test_dimension_group_convert_tz_explicit_false(self) -> None:
+        """Test dimension with meta.convert_tz=False."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=False)),
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert
+        assert "convert_tz" in result
+        assert result["convert_tz"] == "no"
+
+    def test_dimension_group_convert_tz_none(self) -> None:
+        """Test dimension with no convert_tz uses default."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert
+        assert "convert_tz" in result
+        assert result["convert_tz"] == "no"
+
+    def test_dimension_group_convert_tz_in_lookml_output(self) -> None:
+        """Test convert_tz appears correctly in dimension_group dict."""
+        # Arrange
+        dim_yes = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        dim_no = Dimension(
+            name="updated_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=False)),
+        )
+
+        # Act
+        result_yes = dim_yes.to_lookml_dict()
+        result_no = dim_no.to_lookml_dict()
+
+        # Assert
+        assert result_yes.get("convert_tz") == "yes"
+        assert result_no.get("convert_tz") == "no"
+
+    def test_dimension_convert_tz_with_categorical_dimension_multiple(self) -> None:
+        """Test that categorical dimensions ignore convert_tz consistently."""
+        # Arrange
+        dim1 = Dimension(
+            name="status",
+            type=DimensionType.CATEGORICAL,
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        dim2 = Dimension(
+            name="category",
+            type=DimensionType.CATEGORICAL,
+            config=Config(meta=ConfigMeta(convert_tz=False)),
+        )
+
+        # Act
+        result1 = dim1.to_lookml_dict()
+        result2 = dim2.to_lookml_dict()
+
+        # Assert - categorical dimensions should never have convert_tz
+        assert "convert_tz" not in result1
+        assert "convert_tz" not in result2
