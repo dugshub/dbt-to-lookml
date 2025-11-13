@@ -1068,3 +1068,114 @@ class TestLookMLSet:
         """Test that LookMLSet validation fails without fields."""
         with pytest.raises(ValidationError):
             LookMLSet(name="test_set")  # Missing fields
+
+    def test_semantic_model_to_lookml_dict_with_convert_tz(self) -> None:
+        """Test that SemanticModel.to_lookml_dict() accepts convert_tz
+        parameter."""
+        model = SemanticModel(
+            name="test_model",
+            model="test_table",
+            dimensions=[
+                Dimension(
+                    name="created_at",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                )
+            ],
+        )
+
+        # Test with None (default)
+        result_none = model.to_lookml_dict(schema="public", convert_tz=None)
+        assert isinstance(result_none, dict)
+        assert "views" in result_none
+
+        # Test with True
+        result_true = model.to_lookml_dict(schema="public", convert_tz=True)
+        assert isinstance(result_true, dict)
+        assert "views" in result_true
+        # Verify convert_tz is propagated
+        views = result_true["views"]
+        dimension_groups = views[0].get("dimension_groups", [])
+        assert len(dimension_groups) > 0
+        assert dimension_groups[0].get("convert_tz") == "yes"
+
+        # Test with False
+        result_false = model.to_lookml_dict(schema="public", convert_tz=False)
+        assert isinstance(result_false, dict)
+        views = result_false["views"]
+        dimension_groups = views[0].get("dimension_groups", [])
+        assert dimension_groups[0].get("convert_tz") == "no"
+
+        # Test backward compatibility (no convert_tz parameter)
+        result_compat = model.to_lookml_dict(schema="public")
+        assert isinstance(result_compat, dict)
+
+    def test_dimension_to_lookml_dict_with_default_convert_tz(self) -> None:
+        """Test that Dimension.to_lookml_dict() accepts default_convert_tz
+        parameter."""
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+        )
+
+        # Test with None (default)
+        result_none = dim.to_lookml_dict(default_convert_tz=None)
+        assert isinstance(result_none, dict)
+        assert result_none["name"] == "created_at"
+        assert result_none.get("convert_tz") == "no"
+
+        # Test with True
+        result_true = dim.to_lookml_dict(default_convert_tz=True)
+        assert isinstance(result_true, dict)
+        assert result_true.get("convert_tz") == "yes"
+
+        # Test with False
+        result_false = dim.to_lookml_dict(default_convert_tz=False)
+        assert isinstance(result_false, dict)
+        assert result_false.get("convert_tz") == "no"
+
+        # Test backward compatibility (no parameter)
+        result_compat = dim.to_lookml_dict()
+        assert isinstance(result_compat, dict)
+        assert result_compat.get("convert_tz") == "no"
+
+    def test_dimension_convert_tz_precedence(self) -> None:
+        """Test that dimension-level convert_tz takes precedence over
+        default."""
+        from dbt_to_lookml.schemas import Config, ConfigMeta
+
+        # Dimension with explicit convert_tz=True in meta
+        dim_true = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Even if default is False, dimension meta should win
+        result = dim_true.to_lookml_dict(default_convert_tz=False)
+        assert result.get("convert_tz") == "yes"
+
+        # Dimension with explicit convert_tz=False in meta
+        dim_false = Dimension(
+            name="updated_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=False)),
+        )
+
+        # Even if default is True, dimension meta should win
+        result = dim_false.to_lookml_dict(default_convert_tz=True)
+        assert result.get("convert_tz") == "no"
+
+    def test_categorical_dimension_ignores_convert_tz(self) -> None:
+        """Test that categorical dimensions ignore convert_tz parameter."""
+        dim = Dimension(name="status", type=DimensionType.CATEGORICAL)
+
+        # Convert_tz should be ignored for categorical dimensions
+        result = dim.to_lookml_dict(default_convert_tz=True)
+        assert isinstance(result, dict)
+        assert result["name"] == "status"
+        # Categorical dims don't have convert_tz
+        assert "convert_tz" not in result

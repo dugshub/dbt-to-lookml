@@ -21,7 +21,8 @@ class LookMLValidationError(Exception):
 
 
 class LookMLGenerator(Generator):
-    """Generates LookML files from semantic models with validation and advanced features."""
+    """Generates LookML files from semantic models with validation and advanced
+    features."""
 
     def __init__(
         self,
@@ -32,6 +33,7 @@ class LookMLGenerator(Generator):
         schema: str = "",
         connection: str = "redshift_test",
         model_name: str = "semantic_model",
+        convert_tz: bool | None = None,
     ) -> None:
         """Initialize the generator.
 
@@ -42,7 +44,11 @@ class LookMLGenerator(Generator):
             format_output: Whether to format LookML output for readability.
             schema: Database schema name for sql_table_name.
             connection: Looker connection name for the model file.
-            model_name: Name for the generated model file (without .model.lkml extension).
+            model_name: Name for the generated model file (without
+                .model.lkml extension).
+            convert_tz: Optional timezone conversion setting for time
+                dimensions. None means use dimension-level defaults, True
+                converts to UTC, False disables conversion.
         """
         super().__init__(
             validate_syntax=validate_syntax,
@@ -56,6 +62,7 @@ class LookMLGenerator(Generator):
         self.schema = schema
         self.connection = connection
         self.model_name = model_name
+        self.convert_tz = convert_tz
 
         # Backward compatibility attribute
         class MapperCompat:
@@ -376,9 +383,13 @@ class LookMLGenerator(Generator):
                         if k != "name"
                     },
                 )
-                view_dict = prefixed_model.to_lookml_dict(schema=self.schema)
+                view_dict = prefixed_model.to_lookml_dict(
+                    schema=self.schema, convert_tz=self.convert_tz
+                )
             else:
-                view_dict = semantic_model.to_lookml_dict(schema=self.schema)
+                view_dict = semantic_model.to_lookml_dict(
+                    schema=self.schema, convert_tz=self.convert_tz
+                )
         else:
             raise TypeError(
                 f"Expected SemanticModel or LookMLView, got {type(semantic_model)}"

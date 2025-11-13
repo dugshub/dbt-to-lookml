@@ -2480,3 +2480,116 @@ class TestDimensionSetEdgeCases:
             )
             if dimension_set:
                 assert len(dimension_set["fields"]) >= 3
+
+    def test_generator_initialization_with_convert_tz(self) -> None:
+        """Test that LookMLGenerator accepts convert_tz parameter."""
+        # Test None (default)
+        gen_none = LookMLGenerator(convert_tz=None)
+        assert gen_none.convert_tz is None
+
+        # Test True
+        gen_true = LookMLGenerator(convert_tz=True)
+        assert gen_true.convert_tz is True
+
+        # Test False
+        gen_false = LookMLGenerator(convert_tz=False)
+        assert gen_false.convert_tz is False
+
+        # Test backward compatibility (no convert_tz parameter)
+        gen_default = LookMLGenerator()
+        assert gen_default.convert_tz is None
+
+    def test_generator_backward_compatibility_initialization(self) -> None:
+        """Test that existing code without convert_tz still works."""
+        # Old-style initialization should work
+        generator = LookMLGenerator(
+            view_prefix="v_",
+            explore_prefix="e_",
+            schema="public",
+            validate_syntax=True,
+            format_output=True,
+        )
+        assert generator.convert_tz is None
+        assert generator.view_prefix == "v_"
+        assert generator.schema == "public"
+
+    def test_convert_tz_propagation_to_semantic_model(self) -> None:
+        """Test that convert_tz is passed to SemanticModel.to_lookml_dict()."""
+        generator = LookMLGenerator(convert_tz=True)
+
+        # Create a semantic model with a time dimension
+        model = SemanticModel(
+            name="events",
+            model="events",
+            dimensions=[
+                Dimension(
+                    name="created_at",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                )
+            ],
+        )
+
+        # Generate view LookML
+        content = generator._generate_view_lookml(model)
+
+        # Verify content is valid and contains expected elements
+        assert isinstance(content, str)
+        assert len(content) > 0
+        assert "dimension_group:" in content
+        assert "created_at" in content
+
+        # Verify convert_tz appears in the output when True
+        parsed = lkml.load(content)
+        views = parsed.get("views", [])
+        assert len(views) > 0
+        dimension_groups = views[0].get("dimension_groups", [])
+        assert len(dimension_groups) > 0
+        # The convert_tz should be "yes" when passed as True
+        assert dimension_groups[0].get("convert_tz") == "yes"
+
+    def test_convert_tz_false_propagation(self) -> None:
+        """Test that convert_tz=False is properly propagated."""
+        generator = LookMLGenerator(convert_tz=False)
+
+        model = SemanticModel(
+            name="events",
+            model="events",
+            dimensions=[
+                Dimension(
+                    name="created_at",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                )
+            ],
+        )
+
+        content = generator._generate_view_lookml(model)
+        parsed = lkml.load(content)
+        views = parsed.get("views", [])
+        dimension_groups = views[0].get("dimension_groups", [])
+        # The convert_tz should be "no" when passed as False
+        assert dimension_groups[0].get("convert_tz") == "no"
+
+    def test_convert_tz_none_uses_dimension_default(self) -> None:
+        """Test that convert_tz=None uses dimension-level defaults."""
+        generator = LookMLGenerator(convert_tz=None)
+
+        model = SemanticModel(
+            name="events",
+            model="events",
+            dimensions=[
+                Dimension(
+                    name="created_at",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                )
+            ],
+        )
+
+        content = generator._generate_view_lookml(model)
+        parsed = lkml.load(content)
+        views = parsed.get("views", [])
+        dimension_groups = views[0].get("dimension_groups", [])
+        # When None is passed, dimension should use its own default (False/no)
+        assert dimension_groups[0].get("convert_tz") == "no"

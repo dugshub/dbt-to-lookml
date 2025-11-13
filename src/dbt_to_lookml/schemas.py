@@ -126,10 +126,15 @@ class Dimension(BaseModel):
     type_params: dict[str, Any] | None = None
     config: Config | None = None
 
-    def to_lookml_dict(self) -> dict[str, Any]:
-        """Convert dimension to LookML format."""
+    def to_lookml_dict(self, default_convert_tz: bool | None = None) -> dict[str, Any]:
+        """Convert dimension to LookML format.
+
+        Args:
+            default_convert_tz: Optional default timezone conversion setting
+                for time dimensions.
+        """
         if self.type == DimensionType.TIME:
-            return self._to_dimension_group_dict()
+            return self._to_dimension_group_dict(default_convert_tz=default_convert_tz)
         else:
             return self._to_dimension_dict()
 
@@ -332,11 +337,16 @@ class SemanticModel(BaseModel):
     dimensions: list[Dimension] = Field(default_factory=list)
     measures: list[Measure] = Field(default_factory=list)
 
-    def to_lookml_dict(self, schema: str = "") -> dict[str, Any]:
+    def to_lookml_dict(
+        self, schema: str = "", convert_tz: bool | None = None
+    ) -> dict[str, Any]:
         """Convert entire semantic model to lkml views format.
 
         Args:
             schema: Optional database schema name to prepend to table name.
+            convert_tz: Optional timezone conversion setting. Passed to time
+                dimensions as default_convert_tz. None means use
+                dimension-level defaults.
 
         Returns:
             Dictionary in LookML views format.
@@ -373,7 +383,12 @@ class SemanticModel(BaseModel):
 
         # Convert dimensions (separate regular dims from time dims)
         for dim in self.dimensions:
-            dim_dict = dim.to_lookml_dict()
+            # Pass convert_tz to time dimensions to propagate generator default
+            if dim.type == DimensionType.TIME:
+                dim_dict = dim.to_lookml_dict(default_convert_tz=convert_tz)
+            else:
+                dim_dict = dim.to_lookml_dict()
+
             if dim.type == DimensionType.TIME:
                 dimension_groups.append(dim_dict)
             else:
