@@ -65,12 +65,18 @@ class TestCLI:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "Parsing semantic models" in result.output
@@ -91,14 +97,22 @@ class TestCLI:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--view-prefix", "v_",
-                "--explore-prefix", "e_"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--view-prefix",
+                    "v_",
+                    "--explore-prefix",
+                    "e_",
+                ],
+            )
 
             assert result.exit_code == 0
 
@@ -112,20 +126,24 @@ class TestCLI:
                 content = explores_file.read_text()
                 assert "e_" in content
 
-    def test_generate_dry_run(
-        self, runner: CliRunner, fixtures_dir: Path
-    ) -> None:
+    def test_generate_dry_run(self, runner: CliRunner, fixtures_dir: Path) -> None:
         """Test generate command with dry run."""
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--dry-run"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--dry-run",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "DRY RUN MODE" in result.output
@@ -142,31 +160,41 @@ class TestCLI:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--no-validation"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--no-validation",
+                ],
+            )
 
             assert result.exit_code == 0
             # Should still complete successfully even with validation disabled
 
-    def test_generate_show_summary(
-        self, runner: CliRunner, fixtures_dir: Path
-    ) -> None:
+    def test_generate_show_summary(self, runner: CliRunner, fixtures_dir: Path) -> None:
         """Test generate command with summary."""
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--show-summary"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--show-summary",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "LookML Generation Summary" in result.output
@@ -179,12 +207,18 @@ class TestCLI:
             output_dir = Path(temp_dir)
             invalid_input = Path("/nonexistent/directory")
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(invalid_input),
-                "--output-dir", str(output_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(invalid_input),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
 
             assert result.exit_code != 0
 
@@ -197,12 +231,18 @@ class TestCLI:
             # Create a non-YAML file
             (input_dir / "readme.txt").write_text("Not a semantic model")
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(input_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(input_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
 
             assert result.exit_code != 0
             assert "No semantic models found" in result.output
@@ -218,12 +258,18 @@ class TestCLI:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(semantic_models_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "analytics"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(semantic_models_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "analytics",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "✓ LookML generation completed successfully" in result.output
@@ -236,49 +282,41 @@ class TestCLI:
         self, runner: CliRunner, fixtures_dir: Path
     ) -> None:
         """Test basic validate command success."""
-        result = runner.invoke(cli, [
-            "validate",
-            "--input-dir", str(fixtures_dir)
-        ])
-        
+        result = runner.invoke(cli, ["validate", "--input-dir", str(fixtures_dir)])
+
         assert result.exit_code == 0
         assert "Validating semantic models" in result.output
         assert "✓ Validated" in result.output
 
-    def test_validate_strict_mode(
-        self, runner: CliRunner, fixtures_dir: Path
-    ) -> None:
+    def test_validate_strict_mode(self, runner: CliRunner, fixtures_dir: Path) -> None:
         """Test validate command in strict mode."""
-        result = runner.invoke(cli, [
-            "validate",
-            "--input-dir", str(fixtures_dir),
-            "--strict"
-        ])
-        
+        result = runner.invoke(
+            cli, ["validate", "--input-dir", str(fixtures_dir), "--strict"]
+        )
+
         assert result.exit_code == 0
         # Strict mode should still pass with valid fixtures
 
-    def test_validate_verbose(
-        self, runner: CliRunner, fixtures_dir: Path
-    ) -> None:
+    def test_validate_verbose(self, runner: CliRunner, fixtures_dir: Path) -> None:
         """Test validate command with verbose output."""
-        result = runner.invoke(cli, [
-            "validate",
-            "--input-dir", str(fixtures_dir),
-            "--verbose"
-        ])
-        
+        result = runner.invoke(
+            cli, ["validate", "--input-dir", str(fixtures_dir), "--verbose"]
+        )
+
         assert result.exit_code == 0
         # Verbose mode should show more details
-        assert "entities" in result.output or "dimensions" in result.output or "measures" in result.output
+        assert (
+            "entities" in result.output
+            or "dimensions" in result.output
+            or "measures" in result.output
+        )
 
     def test_validate_invalid_input_dir(self, runner: CliRunner) -> None:
         """Test validate command with invalid input directory."""
-        result = runner.invoke(cli, [
-            "validate",
-            "--input-dir", "/nonexistent/directory"
-        ])
-        
+        result = runner.invoke(
+            cli, ["validate", "--input-dir", "/nonexistent/directory"]
+        )
+
         assert result.exit_code != 0
 
     def test_validate_with_real_semantic_models(
@@ -289,11 +327,9 @@ class TestCLI:
         if not semantic_models_dir.exists():
             pytest.skip("Semantic models directory not found")
 
-        result = runner.invoke(cli, [
-            "validate",
-            "--input-dir", str(semantic_models_dir),
-            "--verbose"
-        ])
+        result = runner.invoke(
+            cli, ["validate", "--input-dir", str(semantic_models_dir), "--verbose"]
+        )
 
         assert result.exit_code == 0
         assert "✓ Validated" in result.output
@@ -325,12 +361,18 @@ class TestCLI:
             # Create an invalid YAML file
             (input_dir / "invalid.yml").write_text("invalid: yaml: content: [")
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(input_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(input_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
 
             # Should still succeed with the valid model
             assert result.exit_code == 0
@@ -345,18 +387,26 @@ class TestCLI:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--view-prefix", "test_",
-                "--explore-prefix", "exp_",
-                "--no-validation",
-                "--no-formatting",
-                "--show-summary",
-                "--dry-run"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--view-prefix",
+                    "test_",
+                    "--explore-prefix",
+                    "exp_",
+                    "--no-validation",
+                    "--no-formatting",
+                    "--show-summary",
+                    "--dry-run",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "DRY RUN MODE" in result.output
@@ -382,12 +432,18 @@ class TestCLI:
             output_dir.chmod(0o444)  # Make read-only
 
             try:
-                result = runner.invoke(cli, [
-                    "generate",
-                    "--input-dir", str(fixtures_dir),
-                    "--output-dir", str(output_dir),
-                    "--schema", "public"
-                ])
+                result = runner.invoke(
+                    cli,
+                    [
+                        "generate",
+                        "--input-dir",
+                        str(fixtures_dir),
+                        "--output-dir",
+                        str(output_dir),
+                        "--schema",
+                        "public",
+                    ],
+                )
 
                 # May fail with permission error (OS-dependent)
                 if result.exit_code != 0:
@@ -395,7 +451,7 @@ class TestCLI:
             finally:
                 output_dir.chmod(0o755)  # Restore permissions
 
-    @patch('dbt_to_lookml.__main__.GENERATOR_AVAILABLE', False)
+    @patch("dbt_to_lookml.__main__.GENERATOR_AVAILABLE", False)
     def test_generate_missing_dependencies(
         self, runner: CliRunner, fixtures_dir: Path
     ) -> None:
@@ -403,12 +459,18 @@ class TestCLI:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
 
             assert result.exit_code != 0
             assert "dependencies not available" in result.output
@@ -417,15 +479,12 @@ class TestCLI:
         """Test validate command with malformed files."""
         with TemporaryDirectory() as temp_input:
             input_dir = Path(temp_input)
-            
+
             # Create a malformed YAML file
             (input_dir / "malformed.yml").write_text("invalid: yaml: [unclosed")
-            
-            result = runner.invoke(cli, [
-                "validate",
-                "--input-dir", str(input_dir)
-            ])
-            
+
+            result = runner.invoke(cli, ["validate", "--input-dir", str(input_dir)])
+
             # Should show validation error
             assert "✗" in result.output
             assert "malformed.yml" in result.output
@@ -434,7 +493,7 @@ class TestCLI:
         """Test that strict mode fails on invalid models."""
         with TemporaryDirectory() as temp_input:
             input_dir = Path(temp_input)
-            
+
             # Create an incomplete model (missing required fields)
             invalid_model = """
             name: incomplete_model
@@ -444,20 +503,13 @@ class TestCLI:
                 type: categorical
             """
             (input_dir / "incomplete.yml").write_text(invalid_model)
-            
+
             # Non-strict should continue
-            result_non_strict = runner.invoke(cli, [
-                "validate",
-                "--input-dir", str(input_dir)
-            ])
+            runner.invoke(cli, ["validate", "--input-dir", str(input_dir)])
             # May pass or fail depending on validation logic
-            
+
             # Strict mode should be more stringent
-            result_strict = runner.invoke(cli, [
-                "validate",
-                "--input-dir", str(input_dir),
-                "--strict"
-            ])
+            runner.invoke(cli, ["validate", "--input-dir", str(input_dir), "--strict"])
             # Should show validation issues
 
     def test_output_directory_creation(
@@ -469,12 +521,18 @@ class TestCLI:
             output_dir = Path(temp_dir) / "nested" / "output"
             assert not output_dir.exists()
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
 
             assert result.exit_code == 0
             assert output_dir.exists()
@@ -488,33 +546,44 @@ class TestCLI:
 
             # Test with environment variable (if your CLI supports them)
             env = os.environ.copy()
-            env['DBT_LOOKML_DEBUG'] = '1'  # Example debug flag
+            env["DBT_LOOKML_DEBUG"] = "1"  # Example debug flag
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public"
-            ], env=env)
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+                env=env,
+            )
 
             # Should still work normally
             assert result.exit_code == 0
 
-    def test_cli_unicode_paths(
-        self, runner: CliRunner, fixtures_dir: Path
-    ) -> None:
+    def test_cli_unicode_paths(self, runner: CliRunner, fixtures_dir: Path) -> None:
         """Test CLI with Unicode characters in paths."""
         with TemporaryDirectory() as temp_dir:
             # Create directory with Unicode characters
             unicode_dir = Path(temp_dir) / "test_unicode_测试"
             unicode_dir.mkdir()
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(unicode_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(unicode_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
 
             # Should handle Unicode paths correctly
             assert result.exit_code == 0
@@ -524,12 +593,9 @@ class TestCLI:
         with TemporaryDirectory() as temp_input:
             input_dir = Path(temp_input)
             # Empty directory
-            
-            result = runner.invoke(cli, [
-                "validate",
-                "--input-dir", str(input_dir)
-            ])
-            
+
+            result = runner.invoke(cli, ["validate", "--input-dir", str(input_dir)])
+
             assert result.exit_code == 0
             assert "Validated 0 semantic models" in result.output
 
@@ -541,18 +607,27 @@ class TestCLI:
             output_dir = Path(temp_dir)
 
             # Mock validation to simulate errors
-            with patch('lkml.load') as mock_lkml:
+            with patch("lkml.load") as mock_lkml:
                 mock_lkml.side_effect = Exception("Validation error")
 
-                result = runner.invoke(cli, [
-                    "generate",
-                    "--input-dir", str(fixtures_dir),
-                    "--output-dir", str(output_dir),
-                    "--schema", "public"
-                ])
+                result = runner.invoke(
+                    cli,
+                    [
+                        "generate",
+                        "--input-dir",
+                        str(fixtures_dir),
+                        "--output-dir",
+                        str(output_dir),
+                        "--schema",
+                        "public",
+                    ],
+                )
 
                 # Should complete but show validation errors
-                assert "validation errors" in result.output.lower() or "syntax error" in result.output.lower()
+                assert (
+                    "validation errors" in result.output.lower()
+                    or "syntax error" in result.output.lower()
+                )
 
     def test_cli_keyboard_interrupt(
         self, runner: CliRunner, fixtures_dir: Path
@@ -562,15 +637,21 @@ class TestCLI:
             output_dir = Path(temp_dir)
 
             # Simulate keyboard interrupt during processing
-            with patch('dbt_to_lookml.parsers.dbt.DbtParser.parse_file') as mock_parse:
+            with patch("dbt_to_lookml.parsers.dbt.DbtParser.parse_file") as mock_parse:
                 mock_parse.side_effect = KeyboardInterrupt()
 
-                result = runner.invoke(cli, [
-                    "generate",
-                    "--input-dir", str(fixtures_dir),
-                    "--output-dir", str(output_dir),
-                    "--schema", "public"
-                ])
+                result = runner.invoke(
+                    cli,
+                    [
+                        "generate",
+                        "--input-dir",
+                        str(fixtures_dir),
+                        "--output-dir",
+                        str(output_dir),
+                        "--schema",
+                        "public",
+                    ],
+                )
 
                 # Should handle the interrupt gracefully
                 assert result.exit_code != 0
@@ -585,14 +666,22 @@ class TestCLI:
             # Very long prefix
             long_prefix = "very_long_prefix_" * 10
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--view-prefix", long_prefix,
-                "--explore-prefix", long_prefix
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--view-prefix",
+                    long_prefix,
+                    "--explore-prefix",
+                    long_prefix,
+                ],
+            )
 
             # Should handle long arguments
             assert result.exit_code == 0
@@ -616,11 +705,9 @@ class TestCLIValidateOptions:
         self, runner: CliRunner, fixtures_dir: Path
     ) -> None:
         """Test validate with --strict flag on valid models."""
-        result = runner.invoke(cli, [
-            "validate",
-            "--input-dir", str(fixtures_dir),
-            "--strict"
-        ])
+        result = runner.invoke(
+            cli, ["validate", "--input-dir", str(fixtures_dir), "--strict"]
+        )
 
         assert result.exit_code == 0
         assert "✓ Validated" in result.output
@@ -629,11 +716,9 @@ class TestCLIValidateOptions:
         self, runner: CliRunner, fixtures_dir: Path
     ) -> None:
         """Test validate with --verbose flag shows model details."""
-        result = runner.invoke(cli, [
-            "validate",
-            "--input-dir", str(fixtures_dir),
-            "--verbose"
-        ])
+        result = runner.invoke(
+            cli, ["validate", "--input-dir", str(fixtures_dir), "--verbose"]
+        )
 
         assert result.exit_code == 0
         # Verbose output should show more details
@@ -643,28 +728,21 @@ class TestCLIValidateOptions:
         self, runner: CliRunner, fixtures_dir: Path
     ) -> None:
         """Test validate with both --strict and --verbose flags."""
-        result = runner.invoke(cli, [
-            "validate",
-            "--input-dir", str(fixtures_dir),
-            "--strict",
-            "--verbose"
-        ])
+        result = runner.invoke(
+            cli, ["validate", "--input-dir", str(fixtures_dir), "--strict", "--verbose"]
+        )
 
         assert result.exit_code == 0
         assert "✓" in result.output
 
-    def test_validate_missing_input_dir_argument(
-        self, runner: CliRunner
-    ) -> None:
+    def test_validate_missing_input_dir_argument(self, runner: CliRunner) -> None:
         """Test validate command fails without --input-dir."""
         result = runner.invoke(cli, ["validate"])
 
         assert result.exit_code != 0
         assert "Missing option" in result.output or "required" in result.output.lower()
 
-    def test_validate_with_mixed_yml_yaml_extensions(
-        self, runner: CliRunner
-    ) -> None:
+    def test_validate_with_mixed_yml_yaml_extensions(self, runner: CliRunner) -> None:
         """Test validate handles both .yml and .yaml file extensions."""
         with TemporaryDirectory() as temp_input:
             input_dir = Path(temp_input)
@@ -683,10 +761,7 @@ dimensions:
             (input_dir / "model1.yml").write_text(model_content)
             (input_dir / "model2.yaml").write_text(model_content)
 
-            result = runner.invoke(cli, [
-                "validate",
-                "--input-dir", str(input_dir)
-            ])
+            result = runner.invoke(cli, ["validate", "--input-dir", str(input_dir)])
 
             assert result.exit_code == 0
             assert "✓" in result.output
@@ -710,11 +785,16 @@ class TestCLIGenerateOptions:
     ) -> None:
         """Test generate command fails when --schema is missing."""
         with TemporaryDirectory() as temp_dir:
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(temp_dir)
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(temp_dir),
+                ],
+            )
 
             assert result.exit_code != 0
             assert "Missing option" in result.output or "--schema" in result.output
@@ -726,13 +806,20 @@ class TestCLIGenerateOptions:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--view-prefix", "dim_"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--view-prefix",
+                    "dim_",
+                ],
+            )
 
             assert result.exit_code == 0
             # Check that view files have the prefix
@@ -746,13 +833,20 @@ class TestCLIGenerateOptions:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--explore-prefix", "exp_"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--explore-prefix",
+                    "exp_",
+                ],
+            )
 
             assert result.exit_code == 0
             explores_file = output_dir / "explores.lkml"
@@ -767,13 +861,19 @@ class TestCLIGenerateOptions:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--no-formatting"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--no-formatting",
+                ],
+            )
 
             assert result.exit_code == 0
             # Files should still be created without formatting
@@ -787,15 +887,23 @@ class TestCLIGenerateOptions:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--dry-run",
-                "--view-prefix", "tmp_",
-                "--explore-prefix", "test_"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--dry-run",
+                    "--view-prefix",
+                    "tmp_",
+                    "--explore-prefix",
+                    "test_",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "DRY RUN MODE" in result.output
@@ -810,15 +918,23 @@ class TestCLIGenerateOptions:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--view-prefix", "v_",
-                "--explore-prefix", "e_",
-                "--show-summary"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--view-prefix",
+                    "v_",
+                    "--explore-prefix",
+                    "e_",
+                    "--show-summary",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "LookML Generation Summary" in result.output
@@ -832,13 +948,19 @@ class TestCLIGenerateOptions:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--no-validation"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--no-validation",
+                ],
+            )
 
             assert result.exit_code == 0
             # Should complete even without validation
@@ -852,14 +974,22 @@ class TestCLIGenerateOptions:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--view-prefix", "",
-                "--explore-prefix", ""
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--view-prefix",
+                    "",
+                    "--explore-prefix",
+                    "",
+                ],
+            )
 
             assert result.exit_code == 0
             # Should generate files without prefixes
@@ -873,14 +1003,22 @@ class TestCLIGenerateOptions:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public",
-                "--view-prefix", "my-view_",
-                "--explore-prefix", "my-explore_"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--view-prefix",
+                    "my-view_",
+                    "--explore-prefix",
+                    "my-explore_",
+                ],
+            )
 
             assert result.exit_code == 0
 
@@ -907,12 +1045,18 @@ class TestCLIErrorHandling:
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir) / "a" / "b" / "c" / "d" / "output"
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(fixtures_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
 
             # Should succeed and create directories
             assert result.exit_code == 0
@@ -921,28 +1065,29 @@ class TestCLIErrorHandling:
         self, runner: CliRunner, fixtures_dir: Path
     ) -> None:
         """Test validate with all available options."""
-        result = runner.invoke(cli, [
-            "validate",
-            "--input-dir", str(fixtures_dir),
-            "--strict",
-            "--verbose"
-        ])
+        result = runner.invoke(
+            cli, ["validate", "--input-dir", str(fixtures_dir), "--strict", "--verbose"]
+        )
 
         assert result.exit_code == 0
 
-    def test_cli_short_options(
-        self, runner: CliRunner, fixtures_dir: Path
-    ) -> None:
+    def test_cli_short_options(self, runner: CliRunner, fixtures_dir: Path) -> None:
         """Test CLI commands using short option flags."""
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
-            result = runner.invoke(cli, [
-                "generate",
-                "-i", str(fixtures_dir),
-                "-o", str(output_dir),
-                "-s", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "-i",
+                    str(fixtures_dir),
+                    "-o",
+                    str(output_dir),
+                    "-s",
+                    "public",
+                ],
+            )
 
             assert result.exit_code == 0
 
@@ -950,11 +1095,7 @@ class TestCLIErrorHandling:
         self, runner: CliRunner, fixtures_dir: Path
     ) -> None:
         """Test validate using short option flags."""
-        result = runner.invoke(cli, [
-            "validate",
-            "-i", str(fixtures_dir),
-            "-v"
-        ])
+        result = runner.invoke(cli, ["validate", "-i", str(fixtures_dir), "-v"])
 
         assert result.exit_code == 0
 
@@ -987,28 +1128,30 @@ measures:
             (input_dir / "invalid2.yaml").write_text("bad:\n  - unclosed")
             (input_dir / "invalid3.yml").write_text("{invalid json")
 
-            result = runner.invoke(cli, [
-                "generate",
-                "--input-dir", str(input_dir),
-                "--output-dir", str(output_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(input_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
 
             # Should still succeed with valid model
             assert result.exit_code == 0
             assert "✓" in result.output
             assert "✗" in result.output
 
-    def test_generate_missing_input_dir_argument(
-        self, runner: CliRunner
-    ) -> None:
+    def test_generate_missing_input_dir_argument(self, runner: CliRunner) -> None:
         """Test generate fails when --input-dir is missing."""
         with TemporaryDirectory() as temp_dir:
-            result = runner.invoke(cli, [
-                "generate",
-                "--output-dir", str(temp_dir),
-                "--schema", "public"
-            ])
+            result = runner.invoke(
+                cli, ["generate", "--output-dir", str(temp_dir), "--schema", "public"]
+            )
 
             assert result.exit_code != 0
             assert "Missing option" in result.output
@@ -1017,11 +1160,9 @@ measures:
         self, runner: CliRunner, fixtures_dir: Path
     ) -> None:
         """Test generate fails when --output-dir is missing."""
-        result = runner.invoke(cli, [
-            "generate",
-            "--input-dir", str(fixtures_dir),
-            "--schema", "public"
-        ])
+        result = runner.invoke(
+            cli, ["generate", "--input-dir", str(fixtures_dir), "--schema", "public"]
+        )
 
         assert result.exit_code != 0
         assert "Missing option" in result.output

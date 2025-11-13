@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import yaml
 
@@ -22,7 +22,7 @@ class Parser(ABC):
         self.strict_mode = strict_mode
 
     @abstractmethod
-    def parse_file(self, path: Path) -> List[SemanticModel]:
+    def parse_file(self, path: Path) -> list[SemanticModel]:
         """Parse a single file into semantic models.
 
         Args:
@@ -34,7 +34,7 @@ class Parser(ABC):
         pass
 
     @abstractmethod
-    def parse_directory(self, path: Path) -> List[SemanticModel]:
+    def parse_directory(self, path: Path) -> list[SemanticModel]:
         """Parse all files in a directory.
 
         Args:
@@ -46,7 +46,7 @@ class Parser(ABC):
         pass
 
     @abstractmethod
-    def validate(self, content: Dict[str, Any]) -> bool:
+    def validate(self, content: dict[str, Any]) -> bool:
         """Validate format-specific schema.
 
         Args:
@@ -58,7 +58,7 @@ class Parser(ABC):
         pass
 
     # Common utility methods
-    def read_yaml(self, path: Path) -> Dict[str, Any]:
+    def read_yaml(self, path: Path) -> dict[str, Any]:
         """Shared YAML reading logic.
 
         Args:
@@ -67,7 +67,7 @@ class Parser(ABC):
         Returns:
             Parsed YAML content as dictionary.
         """
-        with open(path, encoding='utf-8') as f:
+        with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f)
 
     def handle_error(self, error: Exception, context: str = "") -> None:

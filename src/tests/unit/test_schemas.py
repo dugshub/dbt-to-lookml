@@ -3,11 +3,6 @@
 import pytest
 from pydantic import ValidationError
 
-from dbt_to_lookml.types import (
-    AggregationType,
-    DimensionType,
-    TimeGranularity,
-)
 from dbt_to_lookml.schemas import (
     Config,
     ConfigMeta,
@@ -21,6 +16,10 @@ from dbt_to_lookml.schemas import (
     LookMLView,
     Measure,
     SemanticModel,
+)
+from dbt_to_lookml.types import (
+    AggregationType,
+    DimensionType,
 )
 
 
@@ -64,7 +63,7 @@ class TestEntity:
             name="composite_key",
             type="primary",
             expr="CONCAT(customer_id, '_', order_id)",
-            description="Composite primary key"
+            description="Composite primary key",
         )
         assert entity.expr == "CONCAT(customer_id, '_', order_id)"
         assert entity.description == "Composite primary key"
@@ -84,104 +83,98 @@ class TestEntity:
         entity = Entity(name="user_id", type="primary", description="User identifier")
         lookml_dict = entity.to_lookml_dict(is_fact_table=False)
 
-        assert lookml_dict['name'] == "user_id"
-        assert lookml_dict['type'] == "string"
-        assert lookml_dict['primary_key'] == "yes"
-        assert lookml_dict['hidden'] == "yes"
-        assert lookml_dict['sql'] == "${TABLE}.user_id"
+        assert lookml_dict["name"] == "user_id"
+        assert lookml_dict["type"] == "string"
+        assert lookml_dict["primary_key"] == "yes"
+        assert lookml_dict["hidden"] == "yes"
+        assert lookml_dict["sql"] == "${TABLE}.user_id"
 
     def test_entity_to_lookml_foreign_hidden(self) -> None:
         """Test that foreign entities are hidden in LookML output."""
         entity = Entity(name="customer_id", type="foreign", description="Foreign key")
         lookml_dict = entity.to_lookml_dict(is_fact_table=False)
 
-        assert lookml_dict['name'] == "customer_id"
-        assert lookml_dict['type'] == "string"
-        assert lookml_dict['hidden'] == "yes"
-        assert 'primary_key' not in lookml_dict
+        assert lookml_dict["name"] == "customer_id"
+        assert lookml_dict["type"] == "string"
+        assert lookml_dict["hidden"] == "yes"
+        assert "primary_key" not in lookml_dict
 
     def test_entity_to_lookml_unique_hidden(self) -> None:
         """Test that unique entities are hidden in LookML output."""
         entity = Entity(name="email", type="unique", description="Unique email")
         lookml_dict = entity.to_lookml_dict(is_fact_table=False)
 
-        assert lookml_dict['name'] == "email"
-        assert lookml_dict['type'] == "string"
-        assert lookml_dict['hidden'] == "yes"
-        assert 'primary_key' not in lookml_dict
+        assert lookml_dict["name"] == "email"
+        assert lookml_dict["type"] == "string"
+        assert lookml_dict["hidden"] == "yes"
+        assert "primary_key" not in lookml_dict
 
     def test_entity_to_lookml_with_custom_expr(self) -> None:
         """Test that entities with custom expressions are hidden."""
         entity = Entity(
-            name="composite_key",
-            type="primary",
-            expr="CONCAT(user_id, '_', order_id)"
+            name="composite_key", type="primary", expr="CONCAT(user_id, '_', order_id)"
         )
         lookml_dict = entity.to_lookml_dict(is_fact_table=True, view_label="Orders")
 
-        assert lookml_dict['sql'] == "CONCAT(user_id, '_', order_id)"
-        assert lookml_dict['hidden'] == "yes"
-        assert lookml_dict['primary_key'] == "yes"
+        assert lookml_dict["sql"] == "CONCAT(user_id, '_', order_id)"
+        assert lookml_dict["hidden"] == "yes"
+        assert lookml_dict["primary_key"] == "yes"
 
     def test_entity_expr_qualification_simple_column(self) -> None:
         """Test that simple column names in expr get qualified with ${TABLE}."""
         # Simple column name should be qualified
         entity = Entity(name="facility_sk", type="foreign", expr="id")
         lookml_dict = entity.to_lookml_dict()
-        assert lookml_dict['sql'] == "${TABLE}.id"
+        assert lookml_dict["sql"] == "${TABLE}.id"
 
         # Column with underscores should also be qualified
         entity2 = Entity(name="user_key", type="foreign", expr="facility_sk")
         lookml_dict2 = entity2.to_lookml_dict()
-        assert lookml_dict2['sql'] == "${TABLE}.facility_sk"
+        assert lookml_dict2["sql"] == "${TABLE}.facility_sk"
 
     def test_entity_expr_qualification_already_qualified(self) -> None:
         """Test that expressions already containing ${TABLE} are unchanged."""
         entity = Entity(name="user_id", type="primary", expr="${TABLE}.id")
         lookml_dict = entity.to_lookml_dict()
-        assert lookml_dict['sql'] == "${TABLE}.id"
+        assert lookml_dict["sql"] == "${TABLE}.id"
 
         # With other LookML references
         entity2 = Entity(name="ref_id", type="foreign", expr="${other_view.id}")
         lookml_dict2 = entity2.to_lookml_dict()
-        assert lookml_dict2['sql'] == "${other_view.id}"
+        assert lookml_dict2["sql"] == "${other_view.id}"
 
     def test_entity_expr_qualification_none_default(self) -> None:
         """Test that None expr defaults to ${TABLE}.{name}."""
         entity = Entity(name="user_id", type="primary")
         lookml_dict = entity.to_lookml_dict()
-        assert lookml_dict['sql'] == "${TABLE}.user_id"
+        assert lookml_dict["sql"] == "${TABLE}.user_id"
 
     def test_entity_expr_qualification_complex_expression(self) -> None:
         """Test that complex expressions are left as-is."""
         # Expression with functions
         entity = Entity(
-            name="full_name",
-            type="unique",
-            expr="CONCAT(first_name, ' ', last_name)"
+            name="full_name", type="unique", expr="CONCAT(first_name, ' ', last_name)"
         )
         lookml_dict = entity.to_lookml_dict()
         # Complex expressions with spaces and functions are not auto-qualified
-        assert lookml_dict['sql'] == "CONCAT(first_name, ' ', last_name)"
+        assert lookml_dict["sql"] == "CONCAT(first_name, ' ', last_name)"
 
         # Expression with CASE statement
         entity2 = Entity(
             name="status_code",
             type="primary",
-            expr="CASE WHEN active THEN 1 ELSE 0 END"
+            expr="CASE WHEN active THEN 1 ELSE 0 END",
         )
         lookml_dict2 = entity2.to_lookml_dict()
-        assert lookml_dict2['sql'] == "CASE WHEN active THEN 1 ELSE 0 END"
+        assert lookml_dict2["sql"] == "CASE WHEN active THEN 1 ELSE 0 END"
 
     def test_entity_expr_qualification_with_cast(self) -> None:
         """Test expressions with CAST are left as-is."""
         entity = Entity(
-            name="user_id_str",
-            type="primary",
-            expr="CAST(user_id AS VARCHAR)"
+            name="user_id_str", type="primary", expr="CAST(user_id AS VARCHAR)"
         )
         lookml_dict = entity.to_lookml_dict()
-        assert lookml_dict['sql'] == "CAST(user_id AS VARCHAR)"
+        assert lookml_dict["sql"] == "CAST(user_id AS VARCHAR)"
 
 
 class TestDimension:
@@ -212,7 +205,7 @@ class TestDimension:
             expr="UPPER(status)",
             description="User account status",
             label="User Status",
-            type_params={"custom_param": "value"}
+            type_params={"custom_param": "value"},
         )
         assert dimension.name == "user_status"
         assert dimension.type == DimensionType.CATEGORICAL
@@ -226,10 +219,7 @@ class TestDimension:
         dimension = Dimension(
             name="created_at",
             type=DimensionType.TIME,
-            type_params={
-                "time_granularity": "day",
-                "format": "yyyy-MM-dd"
-            }
+            type_params={"time_granularity": "day", "format": "yyyy-MM-dd"},
         )
         assert dimension.type == DimensionType.TIME
         assert dimension.type_params["time_granularity"] == "day"
@@ -254,9 +244,7 @@ class TestDimension:
         END"""
 
         dimension = Dimension(
-            name="status_category",
-            type=DimensionType.CATEGORICAL,
-            expr=case_expr
+            name="status_category", type=DimensionType.CATEGORICAL, expr=case_expr
         )
         assert "CASE" in dimension.expr
         assert "WHEN status = 'active'" in dimension.expr
@@ -292,7 +280,7 @@ class TestMeasure:
             description="Total revenue calculation",
             label="Total Revenue",
             create_metric=True,
-            non_additive_dimension={"name": "customer_id", "window_choice": "max"}
+            non_additive_dimension={"name": "customer_id", "window_choice": "max"},
         )
         assert measure.name == "total_revenue"
         assert measure.agg == AggregationType.SUM
@@ -306,7 +294,11 @@ class TestMeasure:
         """Test measures with all aggregation types."""
         measures = [
             Measure(name="count_all", agg=AggregationType.COUNT),
-            Measure(name="unique_customers", agg=AggregationType.COUNT_DISTINCT, expr="customer_id"),
+            Measure(
+                name="unique_customers",
+                agg=AggregationType.COUNT_DISTINCT,
+                expr="customer_id",
+            ),
             Measure(name="total_amount", agg=AggregationType.SUM, expr="amount"),
             Measure(name="avg_amount", agg=AggregationType.AVERAGE, expr="amount"),
             Measure(name="min_amount", agg=AggregationType.MIN, expr="amount"),
@@ -339,7 +331,7 @@ class TestMeasure:
             name="active_user_count",
             agg=AggregationType.COUNT,
             expr="CASE WHEN status = 'active' THEN user_id END",
-            description="Count of active users only"
+            description="Count of active users only",
         )
         assert "CASE WHEN status = 'active'" in measure.expr
         assert measure.description == "Count of active users only"
@@ -385,7 +377,7 @@ class TestSemanticModel:
             name="sales_orders",
             model="ref('fact_orders')",
             description="Sales order semantic model",
-            config=config
+            config=config,
         )
         assert model.config is not None
         assert model.config.meta.domain == "sales"
@@ -396,7 +388,7 @@ class TestSemanticModel:
         model = SemanticModel(
             name="events",
             model="fact_events",
-            defaults={"agg_time_dimension": "created_at"}
+            defaults={"agg_time_dimension": "created_at"},
         )
         assert model.defaults is not None
         assert model.defaults["agg_time_dimension"] == "created_at"
@@ -415,7 +407,7 @@ class TestSemanticModel:
         """Test complex semantic model with all components."""
         entities = [
             Entity(name="order_id", type="primary", expr="id"),
-            Entity(name="customer_id", type="foreign")
+            Entity(name="customer_id", type="foreign"),
         ]
 
         dimensions = [
@@ -423,26 +415,28 @@ class TestSemanticModel:
             Dimension(
                 name="created_date",
                 type=DimensionType.TIME,
-                type_params={"time_granularity": "day"}
+                type_params={"time_granularity": "day"},
             ),
             Dimension(
                 name="category",
                 type=DimensionType.CATEGORICAL,
-                expr="CASE WHEN amount > 100 THEN 'high_value' ELSE 'standard' END"
-            )
+                expr="CASE WHEN amount > 100 THEN 'high_value' ELSE 'standard' END",
+            ),
         ]
 
         measures = [
             Measure(name="order_count", agg=AggregationType.COUNT),
             Measure(name="total_revenue", agg=AggregationType.SUM, expr="amount"),
-            Measure(name="unique_customers", agg=AggregationType.COUNT_DISTINCT, expr="customer_id")
+            Measure(
+                name="unique_customers",
+                agg=AggregationType.COUNT_DISTINCT,
+                expr="customer_id",
+            ),
         ]
 
-        config = Config(meta=ConfigMeta(
-            domain="commerce",
-            owner="Data Team",
-            contains_pii=False
-        ))
+        config = Config(
+            meta=ConfigMeta(domain="commerce", owner="Data Team", contains_pii=False)
+        )
 
         model = SemanticModel(
             name="order_analytics",
@@ -452,7 +446,7 @@ class TestSemanticModel:
             entities=entities,
             dimensions=dimensions,
             measures=measures,
-            defaults={"agg_time_dimension": "created_date"}
+            defaults={"agg_time_dimension": "created_date"},
         )
 
         assert len(model.entities) == 2
@@ -478,19 +472,21 @@ class TestSemanticModel:
         lookml_dict = model.to_lookml_dict()
 
         # Verify sets are present in the output
-        assert 'views' in lookml_dict
-        assert len(lookml_dict['views']) == 1
-        view = lookml_dict['views'][0]
-        assert 'sets' in view
-        assert len(view['sets']) > 0
+        assert "views" in lookml_dict
+        assert len(lookml_dict["views"]) == 1
+        view = lookml_dict["views"][0]
+        assert "sets" in view
+        assert len(view["sets"]) > 0
 
         # Verify dimensions_only set exists
-        dimension_set = next((s for s in view['sets'] if s['name'] == 'dimensions_only'), None)
+        dimension_set = next(
+            (s for s in view["sets"] if s["name"] == "dimensions_only"), None
+        )
         assert dimension_set is not None
 
         # Verify all dimension fields are in the set
-        assert 'user_id' in dimension_set['fields']  # entity
-        assert 'status' in dimension_set['fields']  # dimension
+        assert "user_id" in dimension_set["fields"]  # entity
+        assert "status" in dimension_set["fields"]  # dimension
 
     def test_semantic_model_dimension_set_with_time_dimensions(self) -> None:
         """Test dimension set includes time dimension names (dimension_groups)."""
@@ -498,7 +494,7 @@ class TestSemanticModel:
         time_dim = Dimension(
             name="created_at",
             type=DimensionType.TIME,
-            type_params={'time_granularity': 'day'}
+            type_params={"time_granularity": "day"},
         )
         regular_dim = Dimension(name="event_type", type=DimensionType.CATEGORICAL)
 
@@ -510,18 +506,20 @@ class TestSemanticModel:
         )
 
         lookml_dict = model.to_lookml_dict()
-        view = lookml_dict['views'][0]
+        view = lookml_dict["views"][0]
 
         # Verify dimension_groups are in the view
-        assert 'dimension_groups' in view
-        assert len(view['dimension_groups']) > 0
+        assert "dimension_groups" in view
+        assert len(view["dimension_groups"]) > 0
 
         # Verify dimension set includes time dimension base name
-        dimension_set = next((s for s in view['sets'] if s['name'] == 'dimensions_only'), None)
+        dimension_set = next(
+            (s for s in view["sets"] if s["name"] == "dimensions_only"), None
+        )
         assert dimension_set is not None
-        assert 'created_at' in dimension_set['fields']
-        assert 'event_type' in dimension_set['fields']
-        assert 'event_id' in dimension_set['fields']
+        assert "created_at" in dimension_set["fields"]
+        assert "event_type" in dimension_set["fields"]
+        assert "event_id" in dimension_set["fields"]
 
     def test_semantic_model_no_dimension_set_when_no_dimensions(self) -> None:
         """Test that no dimension set is generated when there are no dimensions."""
@@ -534,10 +532,10 @@ class TestSemanticModel:
         )
 
         lookml_dict = model.to_lookml_dict()
-        view = lookml_dict['views'][0]
+        view = lookml_dict["views"][0]
 
         # Verify no sets when no dimensions
-        assert 'sets' not in view or len(view.get('sets', [])) == 0
+        assert "sets" not in view or len(view.get("sets", [])) == 0
 
     def test_semantic_model_dimension_set_includes_hidden_entities(self) -> None:
         """Test that dimension set includes all entity types including foreign and unique."""
@@ -555,15 +553,17 @@ class TestSemanticModel:
         )
 
         lookml_dict = model.to_lookml_dict()
-        view = lookml_dict['views'][0]
+        view = lookml_dict["views"][0]
 
         # Verify all entities are in the dimension set
-        dimension_set = next((s for s in view['sets'] if s['name'] == 'dimensions_only'), None)
+        dimension_set = next(
+            (s for s in view["sets"] if s["name"] == "dimensions_only"), None
+        )
         assert dimension_set is not None
-        assert 'order_id' in dimension_set['fields']
-        assert 'customer_id' in dimension_set['fields']
-        assert 'tracking_id' in dimension_set['fields']
-        assert 'order_status' in dimension_set['fields']
+        assert "order_id" in dimension_set["fields"]
+        assert "customer_id" in dimension_set["fields"]
+        assert "tracking_id" in dimension_set["fields"]
+        assert "order_status" in dimension_set["fields"]
 
     def test_semantic_model_dimension_set_with_schema(self) -> None:
         """Test that dimension set is generated correctly when schema is provided."""
@@ -580,16 +580,18 @@ class TestSemanticModel:
         # Generate with schema
         lookml_dict = model.to_lookml_dict(schema="analytics")
 
-        view = lookml_dict['views'][0]
+        view = lookml_dict["views"][0]
 
         # Verify schema is applied to table name
-        assert view['sql_table_name'] == "analytics.dim_users"
+        assert view["sql_table_name"] == "analytics.dim_users"
 
         # Verify dimension set is still generated
-        dimension_set = next((s for s in view['sets'] if s['name'] == 'dimensions_only'), None)
+        dimension_set = next(
+            (s for s in view["sets"] if s["name"] == "dimensions_only"), None
+        )
         assert dimension_set is not None
-        assert 'user_id' in dimension_set['fields']
-        assert 'status' in dimension_set['fields']
+        assert "user_id" in dimension_set["fields"]
+        assert "status" in dimension_set["fields"]
 
 
 class TestConfigMeta:
@@ -609,7 +611,7 @@ class TestConfigMeta:
             domain="sales",
             owner="Analytics Team",
             contains_pii=True,
-            update_frequency="daily"
+            update_frequency="daily",
         )
         assert meta.domain == "sales"
         assert meta.owner == "Analytics Team"
@@ -645,7 +647,7 @@ class TestLookMLModels:
             sql="${TABLE}.user_id",
             description="User identifier",
             primary_key=True,
-            hidden=False
+            hidden=False,
         )
         assert dimension.name == "user_id"
         assert dimension.type == "string"
@@ -661,7 +663,7 @@ class TestLookMLModels:
             timeframes=["date", "week", "month", "year"],
             sql="${TABLE}.created_at",
             description="Creation timestamp",
-            label="Created At"
+            label="Created At",
         )
         assert dim_group.name == "created"
         assert dim_group.type == "time"
@@ -676,7 +678,7 @@ class TestLookMLModels:
             type="count",
             sql="1",
             description="Total record count",
-            hidden=False
+            hidden=False,
         )
         assert measure.name == "total_count"
         assert measure.type == "count"
@@ -685,19 +687,15 @@ class TestLookMLModels:
 
     def test_lookml_view_creation(self) -> None:
         """Test LookML view creation."""
-        dimensions = [
-            LookMLDimension(name="id", type="string", sql="${TABLE}.id")
-        ]
-        measures = [
-            LookMLMeasure(name="count", type="count", sql="1")
-        ]
+        dimensions = [LookMLDimension(name="id", type="string", sql="${TABLE}.id")]
+        measures = [LookMLMeasure(name="count", type="count", sql="1")]
 
         view = LookMLView(
             name="users",
             sql_table_name="dim_users",
             description="User dimension",
             dimensions=dimensions,
-            measures=measures
+            measures=measures,
         )
 
         assert view.name == "users"
@@ -713,7 +711,7 @@ class TestLookMLModels:
             view_name="users",
             description="User data exploration",
             type="table",
-            joins=[]
+            joins=[],
         )
 
         assert explore.name == "user_analysis"
@@ -728,14 +726,14 @@ class TestLookMLModels:
                 name="created",
                 type="time",
                 timeframes=["date", "month"],
-                sql="${TABLE}.created_at"
+                sql="${TABLE}.created_at",
             )
         ]
 
         view = LookMLView(
             name="events",
             sql_table_name="fact_events",
-            dimension_groups=dimension_groups
+            dimension_groups=dimension_groups,
         )
 
         assert len(view.dimension_groups) == 1
@@ -757,17 +755,15 @@ class TestLookMLModels:
         """Test LookML view creation with sets."""
         sets = [
             LookMLSet(name="dimension_set", fields=["dim1", "dim2"]),
-            LookMLSet(name="another_set", fields=["dim3"])
+            LookMLSet(name="another_set", fields=["dim3"]),
         ]
-        dimensions = [
-            LookMLDimension(name="dim1", type="string", sql="${TABLE}.dim1")
-        ]
+        dimensions = [LookMLDimension(name="dim1", type="string", sql="${TABLE}.dim1")]
 
         view = LookMLView(
             name="test_view",
             sql_table_name="schema.table",
             sets=sets,
-            dimensions=dimensions
+            dimensions=dimensions,
         )
 
         assert len(view.sets) == 2
@@ -776,10 +772,7 @@ class TestLookMLModels:
 
     def test_lookml_view_without_sets_backward_compatibility(self) -> None:
         """Test LookML view creation without sets (backward compatibility)."""
-        view = LookMLView(
-            name="test_view",
-            sql_table_name="schema.table"
-        )
+        view = LookMLView(name="test_view", sql_table_name="schema.table")
 
         assert len(view.sets) == 0
         assert view.sets == []
@@ -788,35 +781,28 @@ class TestLookMLModels:
         """Test to_lookml_dict() includes sets in output."""
         sets = [
             LookMLSet(name="dimension_set", fields=["dim1", "dim2"]),
-            LookMLSet(name="another_set", fields=["dim3"])
+            LookMLSet(name="another_set", fields=["dim3"]),
         ]
-        view = LookMLView(
-            name="test_view",
-            sql_table_name="schema.table",
-            sets=sets
-        )
+        view = LookMLView(name="test_view", sql_table_name="schema.table", sets=sets)
 
         result = view.to_lookml_dict()
-        view_dict = result['views'][0]
+        view_dict = result["views"][0]
 
-        assert 'sets' in view_dict
-        assert len(view_dict['sets']) == 2
-        assert view_dict['sets'][0]['name'] == "dimension_set"
-        assert view_dict['sets'][0]['fields'] == ["dim1", "dim2"]
-        assert view_dict['sets'][1]['name'] == "another_set"
-        assert view_dict['sets'][1]['fields'] == ["dim3"]
+        assert "sets" in view_dict
+        assert len(view_dict["sets"]) == 2
+        assert view_dict["sets"][0]["name"] == "dimension_set"
+        assert view_dict["sets"][0]["fields"] == ["dim1", "dim2"]
+        assert view_dict["sets"][1]["name"] == "another_set"
+        assert view_dict["sets"][1]["fields"] == ["dim3"]
 
     def test_lookml_view_to_lookml_dict_without_sets(self) -> None:
         """Test to_lookml_dict() omits sets when empty."""
-        view = LookMLView(
-            name="test_view",
-            sql_table_name="schema.table"
-        )
+        view = LookMLView(name="test_view", sql_table_name="schema.table")
 
         result = view.to_lookml_dict()
-        view_dict = result['views'][0]
+        view_dict = result["views"][0]
 
-        assert 'sets' not in view_dict
+        assert "sets" not in view_dict
 
     def test_lookml_view_to_lookml_dict_sets_ordering(self) -> None:
         """Test that sets appear in correct order in to_lookml_dict() output."""
@@ -830,43 +816,39 @@ class TestLookMLModels:
             description="Test view",
             sets=sets,
             dimensions=dimensions,
-            measures=measures
+            measures=measures,
         )
 
         result = view.to_lookml_dict()
-        view_dict = result['views'][0]
+        view_dict = result["views"][0]
 
         # Get dict keys in order
         keys = list(view_dict.keys())
 
         # Verify order: name -> sql_table_name -> description -> sets -> dimensions -> measures
-        assert keys.index('name') < keys.index('sql_table_name')
-        assert keys.index('sql_table_name') < keys.index('description')
-        assert keys.index('description') < keys.index('sets')
-        assert keys.index('sets') < keys.index('dimensions')
-        assert keys.index('dimensions') < keys.index('measures')
+        assert keys.index("name") < keys.index("sql_table_name")
+        assert keys.index("sql_table_name") < keys.index("description")
+        assert keys.index("description") < keys.index("sets")
+        assert keys.index("sets") < keys.index("dimensions")
+        assert keys.index("dimensions") < keys.index("measures")
 
     def test_lookml_view_to_lookml_dict_multiple_sets(self) -> None:
         """Test to_lookml_dict() with multiple sets."""
         sets = [
             LookMLSet(name="set1", fields=["f1", "f2"]),
             LookMLSet(name="set2", fields=["f3"]),
-            LookMLSet(name="set3", fields=["f4", "f5", "f6"])
+            LookMLSet(name="set3", fields=["f4", "f5", "f6"]),
         ]
-        view = LookMLView(
-            name="test_view",
-            sql_table_name="schema.table",
-            sets=sets
-        )
+        view = LookMLView(name="test_view", sql_table_name="schema.table", sets=sets)
 
         result = view.to_lookml_dict()
-        view_dict = result['views'][0]
+        view_dict = result["views"][0]
 
-        assert len(view_dict['sets']) == 3
-        assert view_dict['sets'][0]['name'] == "set1"
-        assert view_dict['sets'][1]['name'] == "set2"
-        assert view_dict['sets'][2]['name'] == "set3"
-        assert len(view_dict['sets'][2]['fields']) == 3
+        assert len(view_dict["sets"]) == 3
+        assert view_dict["sets"][0]["name"] == "set1"
+        assert view_dict["sets"][1]["name"] == "set2"
+        assert view_dict["sets"][2]["name"] == "set3"
+        assert len(view_dict["sets"][2]["fields"]) == 3
 
 
 class TestLookMLSet:

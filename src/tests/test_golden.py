@@ -3,14 +3,12 @@
 import difflib
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import List, Tuple, Set
-import re
 
 import pytest
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator
-from dbt_to_lookml.types import AggregationType, DimensionType
 from dbt_to_lookml.parsers.dbt import DbtParser
+from dbt_to_lookml.types import AggregationType, DimensionType
 
 
 class TestGoldenFiles:
@@ -142,7 +140,7 @@ class TestGoldenFiles:
 
             # Files should not actually exist in dry run
             assert not any(f.exists() for f in generated_files)
-            
+
             # But there should be no validation errors
             assert len(validation_errors) == 0
 
@@ -151,7 +149,7 @@ class TestGoldenFiles:
     ) -> None:
         """Test that each individual semantic model generates valid LookML."""
         parser = DbtParser()
-        
+
         # Test each semantic model file individually
         yaml_files = list(semantic_models_dir.glob("*.yml"))
         assert len(yaml_files) > 0
@@ -170,11 +168,13 @@ class TestGoldenFiles:
 
                 # Should generate without errors
                 assert len(validation_errors) == 0
-                
+
                 # Should generate expected files
-                view_files = [f for f in generated_files if f.name.endswith(".view.lkml")]
+                view_files = [
+                    f for f in generated_files if f.name.endswith(".view.lkml")
+                ]
                 assert len(view_files) == len(semantic_models)
-                
+
                 # All view files should exist and contain valid content
                 for view_file in view_files:
                     assert view_file.exists()
@@ -201,21 +201,19 @@ class TestGoldenFiles:
 
             # Should pass validation
             assert len(validation_errors) == 0
-            
+
             users_view_file = output_dir / "users.view.lkml"
             assert users_view_file.exists()
 
             # Content should still match golden file
-            expected_content = (golden_dir / "expected_users.view.lkml").read_text()
+            (golden_dir / "expected_users.view.lkml").read_text()
             actual_content = users_view_file.read_text()
 
             # Allow for minor formatting differences but core structure should match
             assert "view: users" in actual_content
             assert "sql_table_name: dim_renter" in actual_content
 
-    def test_formatting_disabled_still_valid(
-        self, semantic_models_dir: Path
-    ) -> None:
+    def test_formatting_disabled_still_valid(self, semantic_models_dir: Path) -> None:
         """Test that disabling formatting still produces valid LookML."""
         parser = DbtParser()
         users_file = semantic_models_dir / "sem_users.yml"
@@ -232,7 +230,7 @@ class TestGoldenFiles:
 
             # Should still be valid even without formatting
             assert len(validation_errors) == 0
-            
+
             users_view_file = output_dir / "users.view.lkml"
             assert users_view_file.exists()
 
@@ -245,8 +243,8 @@ class TestGoldenFiles:
     ) -> None:
         """Assert that content matches, providing a helpful diff if not."""
         # Normalize whitespace for comparison
-        expected_lines = [line.rstrip() for line in expected.split('\n')]
-        actual_lines = [line.rstrip() for line in actual.split('\n')]
+        expected_lines = [line.rstrip() for line in expected.split("\n")]
+        actual_lines = [line.rstrip() for line in actual.split("\n")]
 
         if expected_lines != actual_lines:
             diff = list(
@@ -258,7 +256,7 @@ class TestGoldenFiles:
                     lineterm="",
                 )
             )
-            diff_text = '\n'.join(diff)
+            diff_text = "\n".join(diff)
             pytest.fail(
                 f"Generated {filename} does not match golden file:\n\n{diff_text}"
             )
@@ -273,7 +271,7 @@ class TestGoldenFiles:
         for filename in required_files:
             golden_file = golden_dir / filename
             assert golden_file.exists(), f"Golden file {filename} is missing"
-            
+
             # Verify content is not empty
             content = golden_file.read_text().strip()
             assert content, f"Golden file {filename} is empty"
@@ -281,7 +279,7 @@ class TestGoldenFiles:
     def test_golden_files_are_valid_lookml(self, golden_dir: Path) -> None:
         """Test that golden files themselves contain valid LookML."""
         generator = LookMLGenerator(validate_syntax=True)
-        
+
         golden_files = [
             golden_dir / "expected_users.view.lkml",
             golden_dir / "expected_explores.lkml",
@@ -290,12 +288,14 @@ class TestGoldenFiles:
         for golden_file in golden_files:
             if golden_file.exists():
                 content = golden_file.read_text()
-                
+
                 # Validate syntax using the generator's validation method
                 try:
                     generator._validate_lookml_syntax(content)
                 except Exception as e:
-                    pytest.fail(f"Golden file {golden_file.name} contains invalid LookML: {e}")
+                    pytest.fail(
+                        f"Golden file {golden_file.name} contains invalid LookML: {e}"
+                    )
 
     def test_regeneration_produces_identical_output(
         self, semantic_models_dir: Path
@@ -331,7 +331,7 @@ class TestGoldenFiles:
     ) -> None:
         """Test that complex features in semantic models are preserved in output."""
         parser = DbtParser()
-        
+
         # Parse users model which has complex features
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
@@ -351,83 +351,88 @@ class TestGoldenFiles:
             # Verify complex features are preserved
             assert "primary_key: yes" in content  # Primary entity
             assert "dimension_group:" in content  # Time dimensions
-            assert "timeframes:" in content       # Time dimension timeframes
-            assert "count_distinct" in content    # Different aggregation types
-            assert "SPLIT_PART(" in content       # Complex SQL expressions
-            assert "CASE WHEN" in content         # Complex SQL expressions
+            assert "timeframes:" in content  # Time dimension timeframes
+            assert "count_distinct" in content  # Different aggregation types
+            assert "SPLIT_PART(" in content  # Complex SQL expressions
+            assert "CASE WHEN" in content  # Complex SQL expressions
 
     def update_golden_files_if_requested(self, golden_dir: Path) -> None:
         """Helper method to update golden files (not a test, for development use)."""
         # This method can be called manually during development to update golden files
         # when the expected output changes due to legitimate improvements
         # It's not run as part of regular test suite
-        
+
         semantic_models_dir = Path(__file__).parent.parent / "semantic_models"
         parser = DbtParser()
-        
+
         # Update users view golden file
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
-        
+
         generator = LookMLGenerator()
-        
+
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
             generated_files, _ = generator.generate_lookml_files(
                 semantic_models, output_dir
             )
-            
+
             # Copy generated file to golden directory
             users_content = (output_dir / "users.view.lkml").read_text()
             (golden_dir / "expected_users.view.lkml").write_text(users_content)
-            
+
         # Update explores golden file
         all_models = parser.parse_directory(semantic_models_dir)
-        
+
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            generated_files, _ = generator.generate_lookml_files(
-                all_models, output_dir
-            )
-            
+            generated_files, _ = generator.generate_lookml_files(all_models, output_dir)
+
             explores_content = (output_dir / "explores.lkml").read_text()
             (golden_dir / "expected_explores.lkml").write_text(explores_content)
 
-    def test_golden_files_comprehensive_coverage(self, golden_dir: Path, semantic_models_dir: Path) -> None:
+    def test_golden_files_comprehensive_coverage(
+        self, golden_dir: Path, semantic_models_dir: Path
+    ) -> None:
         """Test that golden files provide comprehensive coverage of all models."""
         parser = DbtParser()
         generator = LookMLGenerator()
-        
+
         # Parse all semantic models
         all_models = parser.parse_directory(semantic_models_dir)
-        model_names = {model.name for model in all_models}
-        
+        {model.name for model in all_models}
+
         # Generate all files
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
             generated_files, validation_errors = generator.generate_lookml_files(
                 all_models, output_dir
             )
-            
+
             assert len(validation_errors) == 0
-            
+
             # For each model, check if we have comprehensive coverage
             for model in all_models:
                 view_file = output_dir / f"{model.name}.view.lkml"
                 content = view_file.read_text()
-                
+
                 # Verify comprehensive model elements are present
                 if model.entities:
-                    assert any("primary_key: yes" in content or "type: string" in content for _ in [1])
-                
+                    assert any(
+                        "primary_key: yes" in content or "type: string" in content
+                        for _ in [1]
+                    )
+
                 if model.dimensions:
                     assert "dimension:" in content
                     # Check for time dimensions specifically
-                    time_dims = [d for d in model.dimensions if d.type == DimensionType.TIME]
+                    time_dims = [
+                        d for d in model.dimensions if d.type == DimensionType.TIME
+                    ]
                     if time_dims:
                         assert "dimension_group:" in content
                         assert "type: time" in content
-                
+
                 if model.measures:
                     assert "measure:" in content
                     # Verify different aggregation types
@@ -438,16 +443,18 @@ class TestGoldenFiles:
                         assert "type: sum" in content
                     if AggregationType.COUNT_DISTINCT in agg_types:
                         assert "type: count_distinct" in content
-    
-    def test_golden_files_regression_protection(self, semantic_models_dir: Path) -> None:
+
+    def test_golden_files_regression_protection(
+        self, semantic_models_dir: Path
+    ) -> None:
         """Test regression protection - ensure consistent output across runs."""
         parser = DbtParser()
         generator = LookMLGenerator()
-        
+
         # Parse a specific model for regression testing
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
-        
+
         # Generate multiple times and ensure consistency
         outputs = []
         for _ in range(3):
@@ -456,14 +463,14 @@ class TestGoldenFiles:
                 generated_files, validation_errors = generator.generate_lookml_files(
                     semantic_models, output_dir
                 )
-                
+
                 assert len(validation_errors) == 0
                 content = (output_dir / "users.view.lkml").read_text()
                 outputs.append(content)
-        
+
         # All outputs should be identical
         assert all(output == outputs[0] for output in outputs)
-        
+
         # Output should contain expected structural elements
         expected_elements = [
             "view: users",
@@ -474,121 +481,159 @@ class TestGoldenFiles:
             "primary_key:",
             "type:",
         ]
-        
+
         for element in expected_elements:
             assert element in outputs[0], f"Missing expected element: {element}"
-    
+
     def test_golden_files_edge_case_handling(self, semantic_models_dir: Path) -> None:
         """Test that edge cases in semantic models are handled correctly in golden output."""
         parser = DbtParser()
         generator = LookMLGenerator()
-        
+
         # Test with all semantic models to catch edge cases
         all_models = parser.parse_directory(semantic_models_dir)
-        
+
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
             generated_files, validation_errors = generator.generate_lookml_files(
                 all_models, output_dir
             )
-            
+
             # Should handle all models without errors
             assert len(validation_errors) == 0
-            
+
             for generated_file in generated_files:
                 content = generated_file.read_text()
-                
+
                 # Should not contain common problematic patterns
                 assert "None" not in content  # No Python None values
-                assert "null" not in content.lower()  # No null values (unless intentional)
+                assert (
+                    "null" not in content.lower()
+                )  # No null values (unless intentional)
                 assert "undefined" not in content  # No undefined references
-                
+
                 # Should contain only valid LookML syntax
                 if generated_file.name.endswith(".view.lkml"):
                     assert content.count("view:") == 1  # Exactly one view definition
                     assert "sql_table_name:" in content  # Must have table reference
-                
+
                 if generated_file.name == "explores.lkml":
                     explore_count = content.count("explore:")
                     assert explore_count == len(all_models)  # One explore per model
-    
-    def test_golden_files_complex_sql_preservation(self, semantic_models_dir: Path) -> None:
+
+    def test_golden_files_complex_sql_preservation(
+        self, semantic_models_dir: Path
+    ) -> None:
         """Test that complex SQL expressions are preserved correctly in golden files."""
         parser = DbtParser()
         generator = LookMLGenerator()
-        
+
         # Parse all models to find complex SQL expressions
         all_models = parser.parse_directory(semantic_models_dir)
-        
+
         complex_expressions = []
         for model in all_models:
             # Collect complex expressions from dimensions
             for dimension in model.dimensions:
-                if dimension.expr and any(keyword in dimension.expr.lower() for keyword in 
-                    ['case', 'cast', 'nullif', 'coalesce', 'extract', 'substring']):
-                    complex_expressions.append((model.name, 'dimension', dimension.name, dimension.expr))
-            
+                if dimension.expr and any(
+                    keyword in dimension.expr.lower()
+                    for keyword in [
+                        "case",
+                        "cast",
+                        "nullif",
+                        "coalesce",
+                        "extract",
+                        "substring",
+                    ]
+                ):
+                    complex_expressions.append(
+                        (model.name, "dimension", dimension.name, dimension.expr)
+                    )
+
             # Collect complex expressions from measures
             for measure in model.measures:
-                if measure.expr and any(keyword in measure.expr.lower() for keyword in 
-                    ['case', 'cast', 'nullif', 'coalesce', 'sum(case']):
-                    complex_expressions.append((model.name, 'measure', measure.name, measure.expr))
-        
+                if measure.expr and any(
+                    keyword in measure.expr.lower()
+                    for keyword in ["case", "cast", "nullif", "coalesce", "sum(case"]
+                ):
+                    complex_expressions.append(
+                        (model.name, "measure", measure.name, measure.expr)
+                    )
+
         if complex_expressions:
             with TemporaryDirectory() as temp_dir:
                 output_dir = Path(temp_dir)
                 generated_files, validation_errors = generator.generate_lookml_files(
                     all_models, output_dir
                 )
-                
+
                 assert len(validation_errors) == 0
-                
+
                 # Verify complex expressions are preserved
-                for model_name, field_type, field_name, original_expr in complex_expressions:
+                for (
+                    model_name,
+                    field_type,
+                    field_name,
+                    original_expr,
+                ) in complex_expressions:
                     view_file = output_dir / f"{model_name}.view.lkml"
                     content = view_file.read_text()
-                    
+
                     # Key parts of the expression should be present
-                    expr_keywords = ['case', 'cast', 'nullif', 'coalesce', 'extract', 'substring']
-                    original_keywords = [kw for kw in expr_keywords if kw in original_expr.lower()]
-                    
+                    expr_keywords = [
+                        "case",
+                        "cast",
+                        "nullif",
+                        "coalesce",
+                        "extract",
+                        "substring",
+                    ]
+                    original_keywords = [
+                        kw for kw in expr_keywords if kw in original_expr.lower()
+                    ]
+
                     for keyword in original_keywords:
-                        assert keyword in content.lower(), \
+                        assert keyword in content.lower(), (
                             f"Complex SQL keyword '{keyword}' missing from {model_name}.{field_name}"
-    
+                        )
+
     def test_golden_files_unicode_handling(self, semantic_models_dir: Path) -> None:
         """Test that Unicode characters in descriptions are handled properly."""
         parser = DbtParser()
         generator = LookMLGenerator()
-        
+
         # Parse models that might contain Unicode in descriptions
         all_models = parser.parse_directory(semantic_models_dir)
-        
+
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
             generated_files, validation_errors = generator.generate_lookml_files(
                 all_models, output_dir
             )
-            
+
             assert len(validation_errors) == 0
-            
+
             # Verify all files can be read with proper encoding
             for generated_file in generated_files:
                 try:
-                    with open(generated_file, 'r', encoding='utf-8') as f:
+                    with open(generated_file, encoding="utf-8") as f:
                         content = f.read()
                     assert len(content) > 0
                 except UnicodeDecodeError:
-                    pytest.fail(f"Generated file {generated_file.name} has encoding issues")
-    
-    def test_golden_files_deterministic_ordering(self, semantic_models_dir: Path) -> None:
+                    pytest.fail(
+                        f"Generated file {generated_file.name} has encoding issues"
+                    )
+
+    def test_golden_files_deterministic_ordering(
+        self, semantic_models_dir: Path
+    ) -> None:
         """Test that generated files have deterministic ordering of elements."""
         parser = DbtParser()
         generator = LookMLGenerator()
-        
+
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
-        
+
         # Generate multiple times
         contents = []
         for _ in range(5):
@@ -597,13 +642,15 @@ class TestGoldenFiles:
                 generated_files, validation_errors = generator.generate_lookml_files(
                     semantic_models, output_dir
                 )
-                
+
                 content = (output_dir / "users.view.lkml").read_text()
                 contents.append(content)
-        
+
         # All contents should be identical (deterministic ordering)
         for content in contents[1:]:
-            assert content == contents[0], "Generated content ordering is not deterministic"
+            assert content == contents[0], (
+                "Generated content ordering is not deterministic"
+            )
 
     def test_generate_searches_view_matches_golden(
         self, golden_dir: Path, semantic_models_dir: Path
@@ -666,7 +713,9 @@ class TestGoldenFiles:
             assert rental_orders_view_file.exists()
 
             # Compare with golden file
-            expected_content = (golden_dir / "expected_rental_orders.view.lkml").read_text()
+            expected_content = (
+                golden_dir / "expected_rental_orders.view.lkml"
+            ).read_text()
             actual_content = rental_orders_view_file.read_text()
 
             self._assert_content_matches(
@@ -695,7 +744,9 @@ class TestGoldenFiles:
 
             # Check each view for field sets
             for view_model in all_models:
-                expected_golden_file = golden_dir / f"expected_{view_model.name}.view.lkml"
+                expected_golden_file = (
+                    golden_dir / f"expected_{view_model.name}.view.lkml"
+                )
                 generated_view_file = output_dir / f"{view_model.name}.view.lkml"
 
                 assert generated_view_file.exists()
@@ -712,17 +763,17 @@ class TestGoldenFiles:
                 generated_sets = generated_view.get("sets", [])
                 expected_sets = expected_view.get("sets", [])
 
-                assert (
-                    len(generated_sets) == len(expected_sets)
-                ), f"View {view_model.name} has {len(generated_sets)} sets, expected {len(expected_sets)}"
+                assert len(generated_sets) == len(expected_sets), (
+                    f"View {view_model.name} has {len(generated_sets)} sets, expected {len(expected_sets)}"
+                )
 
                 for gen_set, exp_set in zip(generated_sets, expected_sets):
-                    assert (
-                        gen_set["name"] == exp_set["name"]
-                    ), f"Set name mismatch in {view_model.name}"
-                    assert (
-                        set(gen_set["fields"]) == set(exp_set["fields"])
-                    ), f"Set fields mismatch in {view_model.name}: {gen_set['fields']} != {exp_set['fields']}"
+                    assert gen_set["name"] == exp_set["name"], (
+                        f"Set name mismatch in {view_model.name}"
+                    )
+                    assert set(gen_set["fields"]) == set(exp_set["fields"]), (
+                        f"Set fields mismatch in {view_model.name}: {gen_set['fields']} != {exp_set['fields']}"
+                    )
 
     def test_explore_join_fields_match_golden(
         self, golden_dir: Path, semantic_models_dir: Path
@@ -763,9 +814,9 @@ class TestGoldenFiles:
                     (e for e in generated_explores if e["name"] == exp_explore["name"]),
                     None,
                 )
-                assert (
-                    gen_explore is not None
-                ), f"Explore {exp_explore['name']} not found in generated content"
+                assert gen_explore is not None, (
+                    f"Explore {exp_explore['name']} not found in generated content"
+                )
 
                 gen_joins = gen_explore.get("joins", [])
                 exp_joins = exp_explore.get("joins", [])
@@ -775,14 +826,14 @@ class TestGoldenFiles:
                         (j for j in gen_joins if j["name"] == exp_join["name"]),
                         None,
                     )
-                    assert (
-                        gen_join is not None
-                    ), f"Join {exp_join['name']} not found in explore {exp_explore['name']}"
+                    assert gen_join is not None, (
+                        f"Join {exp_join['name']} not found in explore {exp_explore['name']}"
+                    )
 
                     # Verify fields parameter
-                    assert (
-                        "fields" in gen_join
-                    ), f"fields parameter missing from join {gen_join['name']}"
-                    assert (
-                        gen_join["fields"] == exp_join["fields"]
-                    ), f"Join fields mismatch for {gen_join['name']}: {gen_join['fields']} != {exp_join['fields']}"
+                    assert "fields" in gen_join, (
+                        f"fields parameter missing from join {gen_join['name']}"
+                    )
+                    assert gen_join["fields"] == exp_join["fields"], (
+                        f"Join fields mismatch for {gen_join['name']}: {gen_join['fields']} != {exp_join['fields']}"
+                    )

@@ -2,18 +2,18 @@
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 
 lkml = pytest.importorskip("lkml")
 
-from dbt_to_lookml.parsers.dbt import DbtParser
 from dbt_to_lookml.generators.lookml import LookMLGenerator
+from dbt_to_lookml.parsers.dbt import DbtParser
 
 
 def _extract_dimension_fields_from_view(
-    view_dict: Dict[str, Any],
+    view_dict: dict[str, Any],
 ) -> tuple[list[str], list[str]]:
     """Extract dimension and measure field names from parsed LookML view.
 
@@ -65,21 +65,21 @@ def _verify_set_contains_only_dimensions(
     """
     # Verify all dimensions are present
     for dim_field in dimension_fields:
-        assert (
-            dim_field in set_fields
-        ), f"Dimension {dim_field} missing from {view_name}.dimensions_only set"
+        assert dim_field in set_fields, (
+            f"Dimension {dim_field} missing from {view_name}.dimensions_only set"
+        )
 
     # Verify no measures are present
     for measure_field in measure_fields:
-        assert (
-            measure_field not in set_fields
-        ), f"Measure {measure_field} should NOT be in {view_name}.dimensions_only set"
+        assert measure_field not in set_fields, (
+            f"Measure {measure_field} should NOT be in {view_name}.dimensions_only set"
+        )
 
     # Verify set doesn't contain unexpected fields
     for field in set_fields:
-        assert (
-            field in dimension_fields
-        ), f"Unexpected field {field} in {view_name}.dimensions_only set"
+        assert field in dimension_fields, (
+            f"Unexpected field {field} in {view_name}.dimensions_only set"
+        )
 
 
 class TestJoinFieldExposure:
@@ -90,9 +90,7 @@ class TestJoinFieldExposure:
         """Return path to semantic models test fixtures."""
         return Path(__file__).parent.parent.parent / "semantic_models"
 
-    def test_single_join_has_field_constraint(
-        self, semantic_models_dir: Path
-    ) -> None:
+    def test_single_join_has_field_constraint(self, semantic_models_dir: Path) -> None:
         """Test that single join includes fields parameter with dimensions_only set.
 
         Scenario: Fact table (rental_orders) joins dimension table (users)
@@ -192,9 +190,9 @@ class TestJoinFieldExposure:
             # Verify each join has fields parameter
             for join in joins:
                 join_name = join["name"]
-                assert (
-                    "fields" in join
-                ), f"fields parameter missing from {join_name} join"
+                assert "fields" in join, (
+                    f"fields parameter missing from {join_name} join"
+                )
 
                 fields_value = join["fields"]
                 assert isinstance(fields_value, list)
@@ -202,13 +200,11 @@ class TestJoinFieldExposure:
 
                 # Should reference the joined view's dimensions_only set
                 expected_field = f"{join_name}.dimensions_only*"
-                assert (
-                    fields_value[0] == expected_field
-                ), f"Expected {expected_field}, got {fields_value[0]}"
+                assert fields_value[0] == expected_field, (
+                    f"Expected {expected_field}, got {fields_value[0]}"
+                )
 
-    def test_join_fields_exclude_measures(
-        self, semantic_models_dir: Path
-    ) -> None:
+    def test_join_fields_exclude_measures(self, semantic_models_dir: Path) -> None:
         """Test that joined views only expose dimensions, not measures.
 
         Verification: Parse generated view to extract dimension names,
@@ -219,7 +215,7 @@ class TestJoinFieldExposure:
         generator = LookMLGenerator()
 
         all_models = parser.parse_directory(semantic_models_dir)
-        users_model = next(m for m in all_models if m.name == "users")
+        next(m for m in all_models if m.name == "users")
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -250,15 +246,15 @@ class TestJoinFieldExposure:
 
             # Verify all dimensions are in the set
             for dim_field in dimension_fields:
-                assert (
-                    dim_field in set_fields
-                ), f"Dimension {dim_field} missing from dimensions_only set"
+                assert dim_field in set_fields, (
+                    f"Dimension {dim_field} missing from dimensions_only set"
+                )
 
             # Verify measures are NOT in the set
             for measure_name in measure_fields:
-                assert (
-                    measure_name not in set_fields
-                ), f"Measure {measure_name} should NOT be in dimensions_only set"
+                assert measure_name not in set_fields, (
+                    f"Measure {measure_name} should NOT be in dimensions_only set"
+                )
 
     def test_hidden_entities_included_in_dimension_sets(
         self, semantic_models_dir: Path
@@ -296,12 +292,10 @@ class TestJoinFieldExposure:
                     break
 
             assert user_sk_dim is not None, "user_sk dimension not found"
-            assert (
-                user_sk_dim.get("hidden") == "yes"
-            ), "user_sk should be hidden"
-            assert (
-                user_sk_dim.get("primary_key") == "yes"
-            ), "user_sk should be primary key"
+            assert user_sk_dim.get("hidden") == "yes", "user_sk should be hidden"
+            assert user_sk_dim.get("primary_key") == "yes", (
+                "user_sk should be primary key"
+            )
 
             # Verify it's in the dimensions_only set
             sets = view.get("sets", [])
@@ -309,9 +303,9 @@ class TestJoinFieldExposure:
                 s for s in sets if s["name"] == "dimensions_only"
             )
 
-            assert (
-                "user_sk" in dimensions_only_set["fields"]
-            ), "Hidden entity user_sk must be in dimensions_only set for joins to work"
+            assert "user_sk" in dimensions_only_set["fields"], (
+                "Hidden entity user_sk must be in dimensions_only set for joins to work"
+            )
 
     def test_comprehensive_field_exposure_validation(
         self, semantic_models_dir: Path
@@ -350,9 +344,7 @@ class TestJoinFieldExposure:
 
                 # Verify set exists
                 sets = view.get("sets", [])
-                assert (
-                    len(sets) == 1
-                ), f"View {view_name} should have exactly 1 set"
+                assert len(sets) == 1, f"View {view_name} should have exactly 1 set"
 
                 dimensions_only_set = sets[0]
                 assert dimensions_only_set["name"] == "dimensions_only"
@@ -383,21 +375,21 @@ class TestJoinFieldExposure:
                     join_name = join["name"]
 
                     # Verify fields parameter exists
-                    assert (
-                        "fields" in join
-                    ), f"Join {join_name} missing fields parameter in explore {explore['name']}"
+                    assert "fields" in join, (
+                        f"Join {join_name} missing fields parameter in explore {explore['name']}"
+                    )
 
                     # Verify correct format
                     fields_value = join["fields"]
                     expected_field = f"{join_name}.dimensions_only*"
-                    assert (
-                        fields_value == [expected_field]
-                    ), f"Join {join_name} should have fields: [{expected_field}], got {fields_value}"
+                    assert fields_value == [expected_field], (
+                        f"Join {join_name} should have fields: [{expected_field}], got {fields_value}"
+                    )
 
                     # Verify referenced view exists and has the set
-                    assert (
-                        join_name in view_sets
-                    ), f"Join references {join_name} but that view was not generated"
+                    assert join_name in view_sets, (
+                        f"Join references {join_name} but that view was not generated"
+                    )
 
     def test_two_level_join_chain_field_constraints(
         self, semantic_models_dir: Path

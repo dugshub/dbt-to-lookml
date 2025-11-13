@@ -3,42 +3,42 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from dbt_to_lookml.types import AggregationType, DimensionType, LOOKML_TYPE_MAP
-
+from dbt_to_lookml.types import LOOKML_TYPE_MAP, AggregationType, DimensionType
 
 # ============================================================================
 # Semantic Model Schemas (Input)
 # ============================================================================
 
+
 class Hierarchy(BaseModel):
     """Represents the 3-tier hierarchy for labeling."""
 
-    entity: Optional[str] = None
-    category: Optional[str] = None
-    subcategory: Optional[str] = None
+    entity: str | None = None
+    category: str | None = None
+    subcategory: str | None = None
 
 
 class ConfigMeta(BaseModel):
     """Represents metadata in a config section."""
 
-    domain: Optional[str] = None
-    owner: Optional[str] = None
-    contains_pii: Optional[bool] = None
-    update_frequency: Optional[str] = None
+    domain: str | None = None
+    owner: str | None = None
+    contains_pii: bool | None = None
+    update_frequency: str | None = None
     # Support both flat structure (subject, category) and nested (hierarchy)
-    subject: Optional[str] = None
-    category: Optional[str] = None
-    hierarchy: Optional[Hierarchy] = None
+    subject: str | None = None
+    category: str | None = None
+    hierarchy: Hierarchy | None = None
 
 
 class Config(BaseModel):
     """Represents a config section in a semantic model."""
 
-    meta: Optional[ConfigMeta] = None
+    meta: ConfigMeta | None = None
 
 
 class Entity(BaseModel):
@@ -46,10 +46,10 @@ class Entity(BaseModel):
 
     name: str
     type: str
-    expr: Optional[str] = None
-    description: Optional[str] = None
+    expr: str | None = None
+    description: str | None = None
 
-    def _qualify_sql_expression(self, expr: Optional[str], field_name: str) -> str:
+    def _qualify_sql_expression(self, expr: str | None, field_name: str) -> str:
         """Ensure SQL expressions use ${TABLE} to avoid ambiguous column references.
 
         This prevents ambiguous column errors in joins by ensuring all column references
@@ -82,9 +82,7 @@ class Entity(BaseModel):
         return expr
 
     def to_lookml_dict(
-        self,
-        view_label: Optional[str] = None,
-        is_fact_table: bool = False
+        self, view_label: str | None = None, is_fact_table: bool = False
     ) -> dict[str, Any]:
         """Convert entity to LookML dimension format.
 
@@ -93,25 +91,25 @@ class Entity(BaseModel):
             is_fact_table: Whether this entity is in a fact table (has measures).
         """
         result: dict[str, Any] = {
-            'name': self.name,
-            'type': 'string',
-            'sql': self._qualify_sql_expression(self.expr, self.name),
+            "name": self.name,
+            "type": "string",
+            "sql": self._qualify_sql_expression(self.expr, self.name),
         }
 
-        if self.type == 'primary':
-            result['primary_key'] = 'yes'
+        if self.type == "primary":
+            result["primary_key"] = "yes"
 
             # Add view_label and group_label for primary entities in fact tables
             if is_fact_table:
                 if view_label:
-                    result['view_label'] = view_label
-                result['group_label'] = 'Join Keys'
+                    result["view_label"] = view_label
+                result["group_label"] = "Join Keys"
 
         # Hide all entities (typically surrogate keys) - natural keys should be defined as dimensions
-        result['hidden'] = 'yes'
+        result["hidden"] = "yes"
 
         if self.description:
-            result['description'] = self.description
+            result["description"] = self.description
 
         return result
 
@@ -121,11 +119,11 @@ class Dimension(BaseModel):
 
     name: str
     type: DimensionType
-    expr: Optional[str] = None
-    description: Optional[str] = None
-    label: Optional[str] = None
-    type_params: Optional[dict[str, Any]] = None
-    config: Optional[Config] = None
+    expr: str | None = None
+    description: str | None = None
+    label: str | None = None
+    type_params: dict[str, Any] | None = None
+    config: Config | None = None
 
     def to_lookml_dict(self) -> dict[str, Any]:
         """Convert dimension to LookML format."""
@@ -134,7 +132,7 @@ class Dimension(BaseModel):
         else:
             return self._to_dimension_dict()
 
-    def get_dimension_labels(self) -> tuple[Optional[str], Optional[str]]:
+    def get_dimension_labels(self) -> tuple[str | None, str | None]:
         """Get view_label and group_label for dimension based on meta.
 
         Returns:
@@ -157,9 +155,9 @@ class Dimension(BaseModel):
 
             # Format with proper capitalization if present
             if view_label:
-                view_label = view_label.replace('_', ' ').title()
+                view_label = view_label.replace("_", " ").title()
             if group_label:
-                group_label = group_label.replace('_', ' ').title()
+                group_label = group_label.replace("_", " ").title()
 
             return view_label, group_label
         return None, None
@@ -167,53 +165,61 @@ class Dimension(BaseModel):
     def _to_dimension_dict(self) -> dict[str, Any]:
         """Convert categorical dimension to LookML dimension."""
         result: dict[str, Any] = {
-            'name': self.name,
-            'type': 'string',  # Most categorical dims are strings
-            'sql': self.expr or f"${{TABLE}}.{self.name}",
+            "name": self.name,
+            "type": "string",  # Most categorical dims are strings
+            "sql": self.expr or f"${{TABLE}}.{self.name}",
         }
 
         if self.description:
-            result['description'] = self.description
+            result["description"] = self.description
         if self.label:
-            result['label'] = self.label
+            result["label"] = self.label
 
         # Add hierarchy labels
         view_label, group_label = self.get_dimension_labels()
         if view_label:
-            result['view_label'] = view_label
+            result["view_label"] = view_label
         if group_label:
-            result['group_label'] = group_label
+            result["group_label"] = group_label
 
         return result
 
     def _to_dimension_group_dict(self) -> dict[str, Any]:
         """Convert time dimension to LookML dimension_group."""
         # Determine timeframes based on granularity
-        timeframes = ['date', 'week', 'month', 'quarter', 'year']
+        timeframes = ["date", "week", "month", "quarter", "year"]
 
-        if self.type_params and 'time_granularity' in self.type_params:
-            granularity = self.type_params['time_granularity']
-            if granularity in ['hour', 'minute']:
-                timeframes = ['time', 'hour', 'date', 'week', 'month', 'quarter', 'year']
+        if self.type_params and "time_granularity" in self.type_params:
+            granularity = self.type_params["time_granularity"]
+            if granularity in ["hour", "minute"]:
+                timeframes = [
+                    "time",
+                    "hour",
+                    "date",
+                    "week",
+                    "month",
+                    "quarter",
+                    "year",
+                ]
 
         result: dict[str, Any] = {
-            'name': self.name,
-            'type': 'time',
-            'timeframes': timeframes,
-            'sql': self.expr or f"${{TABLE}}.{self.name}",
+            "name": self.name,
+            "type": "time",
+            "timeframes": timeframes,
+            "sql": self.expr or f"${{TABLE}}.{self.name}",
         }
 
         if self.description:
-            result['description'] = self.description
+            result["description"] = self.description
         if self.label:
-            result['label'] = self.label
+            result["label"] = self.label
 
         # Add hierarchy labels
         view_label, group_label = self.get_dimension_labels()
         if view_label:
-            result['view_label'] = view_label
+            result["view_label"] = view_label
         if group_label:
-            result['group_label'] = group_label
+            result["group_label"] = group_label
 
         return result
 
@@ -223,14 +229,16 @@ class Measure(BaseModel):
 
     name: str
     agg: AggregationType
-    expr: Optional[str] = None
-    description: Optional[str] = None
-    label: Optional[str] = None
-    create_metric: Optional[bool] = None
-    config: Optional[Config] = None
-    non_additive_dimension: Optional[dict[str, Any]] = None  # For backward compatibility
+    expr: str | None = None
+    description: str | None = None
+    label: str | None = None
+    create_metric: bool | None = None
+    config: Config | None = None
+    non_additive_dimension: dict[str, Any] | None = None  # For backward compatibility
 
-    def get_measure_labels(self, model_name: Optional[str] = None) -> tuple[str, Optional[str]]:
+    def get_measure_labels(
+        self, model_name: str | None = None
+    ) -> tuple[str, str | None]:
         """Get view_label and group_label for measure.
 
         Returns:
@@ -247,41 +255,41 @@ class Measure(BaseModel):
             meta = self.config.meta
             # Try flat structure first
             if meta.category:
-                group_label = meta.category.replace('_', ' ').title()
+                group_label = meta.category.replace("_", " ").title()
             # Fall back to hierarchical structure
             elif meta.hierarchy and meta.hierarchy.category:
-                group_label = meta.hierarchy.category.replace('_', ' ').title()
+                group_label = meta.hierarchy.category.replace("_", " ").title()
 
         # If no group_label from meta, infer from model name
         if not group_label and model_name:
             # Convert model name to title case and add "Performance"
-            formatted_name = model_name.replace('_', ' ').title()
+            formatted_name = model_name.replace("_", " ").title()
             group_label = f"{formatted_name} Performance"
 
         return view_label, group_label
 
-    def to_lookml_dict(self, model_name: Optional[str] = None) -> dict[str, Any]:
+    def to_lookml_dict(self, model_name: str | None = None) -> dict[str, Any]:
         """Convert measure to LookML format.
 
         Args:
             model_name: Optional semantic model name for inferring group_label.
         """
         result: dict[str, Any] = {
-            'name': self.name,
-            'type': LOOKML_TYPE_MAP.get(self.agg, 'number'),
-            'sql': self.expr or f"${{TABLE}}.{self.name}",
+            "name": self.name,
+            "type": LOOKML_TYPE_MAP.get(self.agg, "number"),
+            "sql": self.expr or f"${{TABLE}}.{self.name}",
         }
 
         if self.description:
-            result['description'] = self.description
+            result["description"] = self.description
         if self.label:
-            result['label'] = self.label
+            result["label"] = self.label
 
         # Add measure labels
         view_label, group_label = self.get_measure_labels(model_name)
-        result['view_label'] = view_label
+        result["view_label"] = view_label
         if group_label:
-            result['group_label'] = group_label
+            result["group_label"] = group_label
 
         return result
 
@@ -291,9 +299,9 @@ class SemanticModel(BaseModel):
 
     name: str
     model: str
-    description: Optional[str] = None
-    config: Optional[Config] = None
-    defaults: Optional[dict[str, Any]] = None
+    description: str | None = None
+    config: Config | None = None
+    defaults: dict[str, Any] | None = None
     entities: list[Entity] = Field(default_factory=list)
     dimensions: list[Dimension] = Field(default_factory=list)
     measures: list[Measure] = Field(default_factory=list)
@@ -316,23 +324,26 @@ class SemanticModel(BaseModel):
         # Extract view_label for entities from config.meta.subject
         entity_view_label = None
         if self.config and self.config.meta and self.config.meta.subject:
-            entity_view_label = self.config.meta.subject.replace('_', ' ').title()
+            entity_view_label = self.config.meta.subject.replace("_", " ").title()
         # If not in model config, try to get from first dimension's subject
         elif self.dimensions:
             for dim in self.dimensions:
                 if dim.config and dim.config.meta and dim.config.meta.subject:
-                    entity_view_label = dim.config.meta.subject.replace('_', ' ').title()
+                    entity_view_label = dim.config.meta.subject.replace(
+                        "_", " "
+                    ).title()
                     break
         # Fall back to model name if no subject found
         if not entity_view_label:
-            entity_view_label = self.name.replace('_', ' ').title()
+            entity_view_label = self.name.replace("_", " ").title()
 
         # Convert entities to dimensions
         for entity in self.entities:
-            dimensions.append(entity.to_lookml_dict(
-                view_label=entity_view_label,
-                is_fact_table=is_fact_table
-            ))
+            dimensions.append(
+                entity.to_lookml_dict(
+                    view_label=entity_view_label, is_fact_table=is_fact_table
+                )
+            )
 
         # Convert dimensions (separate regular dims from time dims)
         for dim in self.dimensions:
@@ -343,7 +354,9 @@ class SemanticModel(BaseModel):
                 dimensions.append(dim_dict)
 
         # Convert measures (pass model name for group_label inference)
-        measures = [measure.to_lookml_dict(model_name=self.name) for measure in self.measures]
+        measures = [
+            measure.to_lookml_dict(model_name=self.name) for measure in self.measures
+        ]
 
         # Collect all dimension field names for the dimensions_only set
         dimension_field_names: list[str] = []
@@ -354,29 +367,26 @@ class SemanticModel(BaseModel):
 
         # Build the view dict
         view_dict: dict[str, Any] = {
-            'name': self.name,
-            'sql_table_name': self._extract_table_name(schema),
+            "name": self.name,
+            "sql_table_name": self._extract_table_name(schema),
         }
 
         if dimensions:
-            view_dict['dimensions'] = dimensions
+            view_dict["dimensions"] = dimensions
 
         if dimension_groups:
-            view_dict['dimension_groups'] = dimension_groups
+            view_dict["dimension_groups"] = dimension_groups
 
         if measures:
-            view_dict['measures'] = measures
+            view_dict["measures"] = measures
 
         # Add dimensions_only set if we have any dimensions
         if dimension_field_names:
-            view_dict['sets'] = [
-                {
-                    'name': 'dimensions_only',
-                    'fields': dimension_field_names
-                }
+            view_dict["sets"] = [
+                {"name": "dimensions_only", "fields": dimension_field_names}
             ]
 
-        return {'views': [view_dict]}
+        return {"views": [view_dict]}
 
     def _extract_table_name(self, schema: str = "") -> str:
         """Extract table name from dbt ref() syntax.
@@ -401,18 +411,19 @@ class SemanticModel(BaseModel):
 # LookML Schemas (Output)
 # ============================================================================
 
+
 class LookMLDimension(BaseModel):
     """Represents a LookML dimension."""
 
     name: str
     type: str
     sql: str
-    description: Optional[str] = None
-    label: Optional[str] = None
-    hidden: Optional[bool] = None
-    primary_key: Optional[bool] = None
-    view_label: Optional[str] = None
-    group_label: Optional[str] = None
+    description: str | None = None
+    label: str | None = None
+    hidden: bool | None = None
+    primary_key: bool | None = None
+    view_label: str | None = None
+    group_label: str | None = None
 
 
 class LookMLDimensionGroup(BaseModel):
@@ -420,13 +431,15 @@ class LookMLDimensionGroup(BaseModel):
 
     name: str
     type: str = "time"
-    timeframes: list[str] = Field(default_factory=lambda: ["date", "week", "month", "quarter", "year"])
+    timeframes: list[str] = Field(
+        default_factory=lambda: ["date", "week", "month", "quarter", "year"]
+    )
     sql: str
-    description: Optional[str] = None
-    label: Optional[str] = None
-    hidden: Optional[bool] = None
-    view_label: Optional[str] = None
-    group_label: Optional[str] = None
+    description: str | None = None
+    label: str | None = None
+    hidden: bool | None = None
+    view_label: str | None = None
+    group_label: str | None = None
 
 
 class LookMLMeasure(BaseModel):
@@ -435,11 +448,11 @@ class LookMLMeasure(BaseModel):
     name: str
     type: str
     sql: str
-    description: Optional[str] = None
-    label: Optional[str] = None
-    hidden: Optional[bool] = None
-    view_label: Optional[str] = None
-    group_label: Optional[str] = None
+    description: str | None = None
+    label: str | None = None
+    hidden: bool | None = None
+    view_label: str | None = None
+    group_label: str | None = None
 
 
 class LookMLSet(BaseModel):
@@ -454,7 +467,7 @@ class LookMLView(BaseModel):
 
     name: str
     sql_table_name: str
-    description: Optional[str] = None
+    description: str | None = None
     dimensions: list[LookMLDimension] = Field(default_factory=list)
     dimension_groups: list[LookMLDimensionGroup] = Field(default_factory=list)
     measures: list[LookMLMeasure] = Field(default_factory=list)
@@ -462,6 +475,7 @@ class LookMLView(BaseModel):
 
     def to_lookml_dict(self) -> dict[str, Any]:
         """Convert LookML view to dictionary format."""
+
         def convert_bools(d: dict[str, Any]) -> dict[str, Any]:
             """Convert boolean values to LookML-compatible strings."""
             result: dict[str, Any] = {}
@@ -471,40 +485,47 @@ class LookMLView(BaseModel):
                 elif isinstance(v, dict):
                     result[k] = convert_bools(v)
                 elif isinstance(v, list):
-                    result[k] = [convert_bools(item) if isinstance(item, dict) else item for item in v]
+                    result[k] = [
+                        convert_bools(item) if isinstance(item, dict) else item
+                        for item in v
+                    ]
                 else:
                     result[k] = v
             return result
 
         view_dict: dict[str, Any] = {
-            'name': self.name,
-            'sql_table_name': self.sql_table_name,
+            "name": self.name,
+            "sql_table_name": self.sql_table_name,
         }
 
         if self.description:
-            view_dict['description'] = self.description
+            view_dict["description"] = self.description
 
         if self.sets:
-            view_dict['sets'] = [
-                convert_bools(set_item.model_dump(exclude_none=True)) for set_item in self.sets
+            view_dict["sets"] = [
+                convert_bools(set_item.model_dump(exclude_none=True))
+                for set_item in self.sets
             ]
 
         if self.dimensions:
-            view_dict['dimensions'] = [
-                convert_bools(dim.model_dump(exclude_none=True)) for dim in self.dimensions
+            view_dict["dimensions"] = [
+                convert_bools(dim.model_dump(exclude_none=True))
+                for dim in self.dimensions
             ]
 
         if self.dimension_groups:
-            view_dict['dimension_groups'] = [
-                convert_bools(dg.model_dump(exclude_none=True)) for dg in self.dimension_groups
+            view_dict["dimension_groups"] = [
+                convert_bools(dg.model_dump(exclude_none=True))
+                for dg in self.dimension_groups
             ]
 
         if self.measures:
-            view_dict['measures'] = [
-                convert_bools(measure.model_dump(exclude_none=True)) for measure in self.measures
+            view_dict["measures"] = [
+                convert_bools(measure.model_dump(exclude_none=True))
+                for measure in self.measures
             ]
 
-        return {'views': [view_dict]}
+        return {"views": [view_dict]}
 
 
 class LookMLExplore(BaseModel):
@@ -512,7 +533,9 @@ class LookMLExplore(BaseModel):
 
     name: str
     view_name: str
-    type: Optional[str] = "table"  # Default type
-    description: Optional[str] = None
-    hidden: Optional[bool] = None
-    joins: list[dict[str, Any]] = Field(default_factory=list)  # For backward compatibility
+    type: str | None = "table"  # Default type
+    description: str | None = None
+    hidden: bool | None = None
+    joins: list[dict[str, Any]] = Field(
+        default_factory=list
+    )  # For backward compatibility

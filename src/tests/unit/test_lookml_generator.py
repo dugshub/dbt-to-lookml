@@ -2,26 +2,25 @@
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import pytest
 import lkml
+import pytest
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator, LookMLValidationError
-from dbt_to_lookml.types import (
-    AggregationType,
-    DimensionType,
-)
 from dbt_to_lookml.schemas import (
     Dimension,
     Entity,
     LookMLDimension,
     LookMLDimensionGroup,
-    LookMLExplore,
     LookMLMeasure,
     LookMLView,
     Measure,
     SemanticModel,
+)
+from dbt_to_lookml.types import (
+    AggregationType,
+    DimensionType,
 )
 
 
@@ -42,7 +41,7 @@ class TestLookMLGenerator:
             view_prefix="v_",
             explore_prefix="e_",
             validate_syntax=False,
-            format_output=False
+            format_output=False,
         )
         assert generator_custom.mapper.view_prefix == "v_"
         assert generator_custom.mapper.explore_prefix == "e_"
@@ -64,14 +63,14 @@ class TestLookMLGenerator:
                     type="string",
                     sql="${TABLE}.user_id",
                     description="User ID",
-                    primary_key=True
+                    primary_key=True,
                 ),
                 LookMLDimension(
                     name="status",
                     type="string",
                     sql="${TABLE}.status",
-                    description="User status"
-                )
+                    description="User status",
+                ),
             ],
             dimension_groups=[
                 LookMLDimensionGroup(
@@ -79,17 +78,14 @@ class TestLookMLGenerator:
                     type="time",
                     timeframes=["date", "week", "month", "year"],
                     sql="${TABLE}.created_at",
-                    description="Creation date"
+                    description="Creation date",
                 )
             ],
             measures=[
                 LookMLMeasure(
-                    name="count",
-                    type="count",
-                    sql="1",
-                    description="Count of users"
+                    name="count", type="count", sql="1", description="Count of users"
                 )
-            ]
+            ],
         )
 
         # Generate LookML content
@@ -106,7 +102,7 @@ class TestLookMLGenerator:
 
     def test_generate_explores_lookml(self) -> None:
         """Test generating LookML content for explores with join graphs."""
-        from dbt_to_lookml.schemas import SemanticModel, Entity, Measure
+        from dbt_to_lookml.schemas import Entity, Measure, SemanticModel
 
         generator = LookMLGenerator()
 
@@ -117,15 +113,15 @@ class TestLookMLGenerator:
                 model="ref('fct_users')",
                 description="User exploration",
                 entities=[Entity(name="user_id", type="primary")],
-                measures=[Measure(name="user_count", agg="count")]
+                measures=[Measure(name="user_count", agg="count")],
             ),
             SemanticModel(
                 name="orders",
                 model="ref('fct_orders')",
                 description="Order exploration",
                 entities=[Entity(name="order_id", type="primary")],
-                measures=[Measure(name="order_count", agg="count")]
-            )
+                measures=[Measure(name="order_count", agg="count")],
+            ),
         ]
 
         content = generator._generate_explores_lookml(models)
@@ -144,10 +140,7 @@ class TestLookMLGenerator:
         """Test generating LookML for a view with no dimensions or measures."""
         generator = LookMLGenerator()
 
-        view = LookMLView(
-            name="empty_view",
-            sql_table_name="empty_table"
-        )
+        view = LookMLView(name="empty_view", sql_table_name="empty_table")
 
         content = generator._generate_view_lookml(view)
 
@@ -167,23 +160,15 @@ class TestLookMLGenerator:
                 name="users",
                 model="dim_users",
                 description="User table",
-                entities=[
-                    Entity(name="user_id", type="primary")
-                ],
-                dimensions=[
-                    Dimension(name="status", type=DimensionType.CATEGORICAL)
-                ],
-                measures=[
-                    Measure(name="user_count", agg=AggregationType.COUNT)
-                ]
+                entities=[Entity(name="user_id", type="primary")],
+                dimensions=[Dimension(name="status", type=DimensionType.CATEGORICAL)],
+                measures=[Measure(name="user_count", agg=AggregationType.COUNT)],
             ),
             SemanticModel(
                 name="orders",
                 model="fact_orders",
-                measures=[
-                    Measure(name="order_count", agg=AggregationType.COUNT)
-                ]
-            )
+                measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+            ),
         ]
 
         with TemporaryDirectory() as temp_dir:
@@ -220,12 +205,7 @@ class TestLookMLGenerator:
         """Test generator in dry run mode."""
         generator = LookMLGenerator()
 
-        semantic_models = [
-            SemanticModel(
-                name="test_model",
-                model="test_table"
-            )
-        ]
+        semantic_models = [SemanticModel(name="test_model", model="test_table")]
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -246,9 +226,7 @@ class TestLookMLGenerator:
             SemanticModel(
                 name="valid_model",
                 model="valid_table",
-                measures=[
-                    Measure(name="count", agg=AggregationType.COUNT)
-                ]
+                measures=[Measure(name="count", agg=AggregationType.COUNT)],
             )
         ]
 
@@ -266,12 +244,7 @@ class TestLookMLGenerator:
         """Test generation with syntax validation disabled."""
         generator = LookMLGenerator(validate_syntax=False)
 
-        semantic_models = [
-            SemanticModel(
-                name="test_model",
-                model="test_table"
-            )
-        ]
+        semantic_models = [SemanticModel(name="test_model", model="test_table")]
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -284,7 +257,7 @@ class TestLookMLGenerator:
             # Should not have validation errors since validation is disabled
             assert len([e for e in validation_errors if "syntax" in e.lower()]) == 0
 
-    @patch('lkml.load')
+    @patch("lkml.load")
     def test_validation_error_handling(self, mock_load: MagicMock) -> None:
         """Test handling of LookML validation errors."""
         # Make lkml.load raise an exception to simulate validation failure
@@ -292,12 +265,7 @@ class TestLookMLGenerator:
 
         generator = LookMLGenerator(validate_syntax=True)
 
-        semantic_models = [
-            SemanticModel(
-                name="invalid_model",
-                model="invalid_table"
-            )
-        ]
+        semantic_models = [SemanticModel(name="invalid_model", model="invalid_table")]
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -322,17 +290,16 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         formatted = generator._format_lookml_content(unformatted)
 
         # Should have proper indentation
-        lines = formatted.split('\n')
-        assert any(line.startswith('  ') for line in lines)  # Should have indented lines
+        lines = formatted.split("\n")
+        assert any(
+            line.startswith("  ") for line in lines
+        )  # Should have indented lines
 
     def test_format_disabled(self) -> None:
         """Test generator with formatting disabled."""
         generator = LookMLGenerator(format_output=False)
 
-        view = LookMLView(
-            name="test_view",
-            sql_table_name="test_table"
-        )
+        view = LookMLView(name="test_view", sql_table_name="test_table")
 
         content = generator._generate_view_lookml(view)
 
@@ -368,7 +335,9 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
             SemanticModel(
                 name="users",
                 model="dim_users",
-                measures=[Measure(name="user_count", agg="count")]  # Add measure to make it a fact model
+                measures=[
+                    Measure(name="user_count", agg="count")
+                ],  # Add measure to make it a fact model
             )
         ]
 
@@ -425,9 +394,7 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         """Test model file generation with default connection and name."""
         generator = LookMLGenerator()
 
-        semantic_models = [
-            SemanticModel(name="test", model="test_table")
-        ]
+        semantic_models = [SemanticModel(name="test", model="test_table")]
 
         files = generator.generate(semantic_models)
 
@@ -443,14 +410,9 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
 
     def test_model_file_generation_custom(self) -> None:
         """Test model file generation with custom connection and name."""
-        generator = LookMLGenerator(
-            connection="my_connection",
-            model_name="my_project"
-        )
+        generator = LookMLGenerator(connection="my_connection", model_name="my_project")
 
-        semantic_models = [
-            SemanticModel(name="test", model="test_table")
-        ]
+        semantic_models = [SemanticModel(name="test", model="test_table")]
 
         files = generator.generate(semantic_models)
 
@@ -489,14 +451,14 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
                     type="string",
                     sql="${TABLE}.id",
                     description="ID field",
-                    primary_key=True
+                    primary_key=True,
                 ),
                 LookMLDimension(
                     name="hidden_field",
                     type="string",
                     sql="${TABLE}.hidden",
-                    hidden=True
-                )
+                    hidden=True,
+                ),
             ],
             dimension_groups=[
                 LookMLDimensionGroup(
@@ -505,7 +467,7 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
                     timeframes=["date", "week", "month"],
                     sql="${TABLE}.created_at",
                     description="Creation time",
-                    label="Created At"
+                    label="Created At",
                 )
             ],
             measures=[
@@ -514,15 +476,15 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
                     type="count",
                     sql="1",
                     description="Total count",
-                    label="Total Count"
+                    label="Total Count",
                 ),
                 LookMLMeasure(
                     name="hidden_measure",
                     type="sum",
                     sql="${TABLE}.amount",
-                    hidden=True
-                )
-            ]
+                    hidden=True,
+                ),
+            ],
         )
 
         content = generator._generate_view_lookml(view)
@@ -539,18 +501,15 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         generator = LookMLGenerator()
 
         # Create a semantic model that might cause issues
-        semantic_models = [
-            SemanticModel(
-                name="test_model",
-                model="test_table"
-            )
-        ]
+        semantic_models = [SemanticModel(name="test_model", model="test_table")]
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
             # Patch the mapper to raise an exception
-            with patch.object(generator.mapper, 'semantic_model_to_view') as mock_mapper:
+            with patch.object(
+                generator.mapper, "semantic_model_to_view"
+            ) as mock_mapper:
                 mock_mapper.side_effect = Exception("Mapping error")
 
                 generated_files, validation_errors = generator.generate_lookml_files(
@@ -567,9 +526,7 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         """Test that output directory is created if it doesn't exist."""
         generator = LookMLGenerator()
 
-        semantic_models = [
-            SemanticModel(name="test", model="test_table")
-        ]
+        semantic_models = [SemanticModel(name="test", model="test_table")]
 
         with TemporaryDirectory() as temp_dir:
             # Use a subdirectory that doesn't exist yet
@@ -595,9 +552,9 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
                 LookMLDimension(
                     name="complex_field",
                     type="string",
-                    sql="CASE WHEN status = 'active' THEN 'Active' ELSE 'Inactive' END"
+                    sql="CASE WHEN status = 'active' THEN 'Active' ELSE 'Inactive' END",
                 )
-            ]
+            ],
         )
 
         content = generator._generate_view_lookml(view)
@@ -619,7 +576,7 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         # Should not raise exception for valid content
         generator._validate_lookml_syntax(valid_content)
 
-    @patch('lkml.load')
+    @patch("lkml.load")
     def test_validate_lookml_syntax_failure(self, mock_load: MagicMock) -> None:
         """Test LookML syntax validation failure."""
         mock_load.side_effect = Exception("Parse error")
@@ -631,7 +588,7 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         with pytest.raises(LookMLValidationError):
             generator._validate_lookml_syntax(invalid_content)
 
-    @patch('lkml.load')
+    @patch("lkml.load")
     def test_validate_lookml_syntax_returns_none(self, mock_load: MagicMock) -> None:
         """Test LookML syntax validation when parse returns None."""
         mock_load.return_value = None
@@ -640,7 +597,9 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
 
         content = "some content"
 
-        with pytest.raises(LookMLValidationError, match="Failed to parse LookML content"):
+        with pytest.raises(
+            LookMLValidationError, match="Failed to parse LookML content"
+        ):
             generator._validate_lookml_syntax(content)
 
     def test_empty_explores_list(self) -> None:
@@ -656,9 +615,7 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         """Test handling of file permission errors."""
         generator = LookMLGenerator()
 
-        semantic_models = [
-            SemanticModel(name="test", model="test_table")
-        ]
+        semantic_models = [SemanticModel(name="test", model="test_table")]
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -668,9 +625,7 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
 
             try:
                 with pytest.raises(PermissionError):
-                    generator.generate_lookml_files(
-                        semantic_models, output_dir
-                    )
+                    generator.generate_lookml_files(semantic_models, output_dir)
             finally:
                 # Restore permissions for cleanup
                 output_dir.chmod(0o755)
@@ -688,9 +643,9 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
                     name="unicode_field",
                     type="string",
                     sql="${TABLE}.field",
-                    description="Unicode description: 测试"
+                    description="Unicode description: 测试",
                 )
-            ]
+            ],
         )
 
         content = generator._generate_view_lookml(view)
@@ -1391,7 +1346,7 @@ class TestGenerateExploreslookml:
         content = generator._generate_explores_lookml(models)
 
         # Should still generate valid LookML with includes but minimal explores
-        assert 'include:' in content
+        assert "include:" in content
         assert "users" in content
         assert "products" in content
 
@@ -1543,6 +1498,7 @@ class TestGenerateExploreslookml:
 
         # Validate syntax by parsing with lkml library
         import lkml
+
         parsed = lkml.load(content)
         assert parsed is not None
 
@@ -1658,7 +1614,7 @@ class TestFormatLookMLEdgeCases:
         formatted = generator._format_lookml_content(unformatted)
 
         # Should have proper indentation levels
-        lines = formatted.split('\n')
+        lines = formatted.split("\n")
         assert len(lines) > 1  # Should have multiple lines
         assert len(formatted) > 0  # Should have content
 
@@ -1666,7 +1622,9 @@ class TestFormatLookMLEdgeCases:
         """Test formatting with explore keyword."""
         generator = LookMLGenerator(format_output=True)
 
-        unformatted = "explore: orders\njoin: customers\nsql_on: ${orders.id}=${customers.id}"
+        unformatted = (
+            "explore: orders\njoin: customers\nsql_on: ${orders.id}=${customers.id}"
+        )
 
         formatted = generator._format_lookml_content(unformatted)
 
@@ -1726,7 +1684,7 @@ class TestValidateOutput:
         assert is_valid is True
         assert error_msg == ""
 
-    @patch('lkml.load')
+    @patch("lkml.load")
     def test_validate_output_with_none_result(self, mock_load: MagicMock) -> None:
         """Test validation when parser returns None."""
         mock_load.return_value = None
@@ -1738,7 +1696,7 @@ class TestValidateOutput:
         assert is_valid is False
         assert "Failed to parse" in error_msg
 
-    @patch('lkml.load')
+    @patch("lkml.load")
     def test_validate_output_with_exception(self, mock_load: MagicMock) -> None:
         """Test validation when parser raises exception."""
         mock_load.side_effect = Exception("Parse error")
@@ -1759,15 +1717,13 @@ class TestValidateOutput:
             model="dim_users",
             entities=[
                 Entity(name="user_id", type="primary"),
-                Entity(name="tenant_id", type="foreign")
+                Entity(name="tenant_id", type="foreign"),
             ],
             dimensions=[
                 Dimension(name="status", type=DimensionType.CATEGORICAL),
-                Dimension(name="created_at", type=DimensionType.TIME)
+                Dimension(name="created_at", type=DimensionType.TIME),
             ],
-            measures=[
-                Measure(name="user_count", agg=AggregationType.COUNT)
-            ]
+            measures=[Measure(name="user_count", agg=AggregationType.COUNT)],
         )
 
         content = generator._generate_view_lookml(semantic_model)
@@ -1790,9 +1746,7 @@ class TestValidateOutput:
         semantic_model = SemanticModel(
             name="metrics_only",
             model="fct_metrics",
-            measures=[
-                Measure(name="total", agg=AggregationType.SUM)
-            ]
+            measures=[Measure(name="total", agg=AggregationType.SUM)],
         )
 
         content = generator._generate_view_lookml(semantic_model)
@@ -1808,11 +1762,11 @@ class TestValidateOutput:
             name="orders",
             model="fct_orders",
             entities=[
-                Entity(name="order_id", type="primary", description="Hidden primary key")
+                Entity(
+                    name="order_id", type="primary", description="Hidden primary key"
+                )
             ],
-            dimensions=[
-                Dimension(name="status", type=DimensionType.CATEGORICAL)
-            ]
+            dimensions=[Dimension(name="status", type=DimensionType.CATEGORICAL)],
         )
 
         content = generator._generate_view_lookml(semantic_model)
@@ -1821,15 +1775,17 @@ class TestValidateOutput:
         assert "dimensions_only" in content
         # Parse to verify structure
         parsed = lkml.load(content)
-        views = parsed.get('views', [])
+        views = parsed.get("views", [])
         assert len(views) == 1
 
-        sets = views[0].get('sets', [])
+        sets = views[0].get("sets", [])
         if sets:  # If implementation uses sets list
-            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            dimension_set = next(
+                (s for s in sets if s["name"] == "dimensions_only"), None
+            )
             assert dimension_set is not None
-            assert 'order_id' in dimension_set['fields']
-            assert 'status' in dimension_set['fields']
+            assert "order_id" in dimension_set["fields"]
+            assert "status" in dimension_set["fields"]
 
     def test_dimension_set_includes_dimension_groups(self) -> None:
         """Test that dimension_groups (time dimensions) are included in sets."""
@@ -1838,17 +1794,15 @@ class TestValidateOutput:
         semantic_model = SemanticModel(
             name="events",
             model="fct_events",
-            entities=[
-                Entity(name="event_id", type="primary")
-            ],
+            entities=[Entity(name="event_id", type="primary")],
             dimensions=[
                 Dimension(
                     name="event_timestamp",
                     type=DimensionType.TIME,
-                    type_params={'time_granularity': 'day'}
+                    type_params={"time_granularity": "day"},
                 ),
-                Dimension(name="event_type", type=DimensionType.CATEGORICAL)
-            ]
+                Dimension(name="event_type", type=DimensionType.CATEGORICAL),
+            ],
         )
 
         content = generator._generate_view_lookml(semantic_model)
@@ -1860,16 +1814,18 @@ class TestValidateOutput:
 
         # Verify the set contains the base name, not the timeframe variant
         parsed = lkml.load(content)
-        views = parsed.get('views', [])
+        views = parsed.get("views", [])
         assert len(views) == 1
 
-        sets = views[0].get('sets', [])
+        sets = views[0].get("sets", [])
         if sets:
-            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            dimension_set = next(
+                (s for s in sets if s["name"] == "dimensions_only"), None
+            )
             assert dimension_set is not None
-            assert 'event_timestamp' in dimension_set['fields']
-            assert 'event_type' in dimension_set['fields']
-            assert 'event_id' in dimension_set['fields']
+            assert "event_timestamp" in dimension_set["fields"]
+            assert "event_type" in dimension_set["fields"]
+            assert "event_id" in dimension_set["fields"]
 
     def test_dimension_set_only_dimensions_no_measures(self) -> None:
         """Test dimension set in view with only dimensions (no measures)."""
@@ -1878,13 +1834,11 @@ class TestValidateOutput:
         semantic_model = SemanticModel(
             name="product",
             model="dim_product",
-            entities=[
-                Entity(name="product_id", type="primary")
-            ],
+            entities=[Entity(name="product_id", type="primary")],
             dimensions=[
                 Dimension(name="product_name", type=DimensionType.CATEGORICAL),
-                Dimension(name="category", type=DimensionType.CATEGORICAL)
-            ]
+                Dimension(name="category", type=DimensionType.CATEGORICAL),
+            ],
         )
 
         content = generator._generate_view_lookml(semantic_model)
@@ -1892,14 +1846,14 @@ class TestValidateOutput:
         # Should still generate set even without measures
         assert "dimensions_only" in content
         parsed = lkml.load(content)
-        views = parsed.get('views', [])
-        sets = views[0].get('sets', [])
+        views = parsed.get("views", [])
+        sets = views[0].get("sets", [])
         assert len(sets) > 0
-        dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+        dimension_set = next((s for s in sets if s["name"] == "dimensions_only"), None)
         assert dimension_set is not None
-        assert 'product_id' in dimension_set['fields']
-        assert 'product_name' in dimension_set['fields']
-        assert 'category' in dimension_set['fields']
+        assert "product_id" in dimension_set["fields"]
+        assert "product_name" in dimension_set["fields"]
+        assert "category" in dimension_set["fields"]
 
 
 class TestGenerateDimensionSet:
@@ -1958,12 +1912,12 @@ class TestGenerateDimensionSet:
 
         # Parse and verify set contains both
         parsed = lkml.load(content)
-        views = parsed.get('views', [])
-        sets = views[0].get('sets', [])
-        dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+        views = parsed.get("views", [])
+        sets = views[0].get("sets", [])
+        dimension_set = next((s for s in sets if s["name"] == "dimensions_only"), None)
         if dimension_set:
-            assert 'hidden_id' in dimension_set['fields']
-            assert 'visible_field' in dimension_set['fields']
+            assert "hidden_id" in dimension_set["fields"]
+            assert "visible_field" in dimension_set["fields"]
 
     def test_generate_dimension_set_includes_dimension_groups(self) -> None:
         """Test that dimension_group base names are included in set."""
@@ -1976,7 +1930,7 @@ class TestGenerateDimensionSet:
                 Dimension(
                     name="created_at",
                     type=DimensionType.TIME,
-                    type_params={"time_granularity": "day"}
+                    type_params={"time_granularity": "day"},
                 ),
             ],
         )
@@ -2114,13 +2068,17 @@ class TestGenerateDimensionSet:
         assert "user_id" in content
         # Verify no prefixed references in the set itself
         parsed = lkml.load(content)
-        views = parsed.get('views', [])
-        sets = views[0].get('sets', [])
+        views = parsed.get("views", [])
+        sets = views[0].get("sets", [])
         if sets:
-            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            dimension_set = next(
+                (s for s in sets if s["name"] == "dimensions_only"), None
+            )
             if dimension_set:
-                for field in dimension_set['fields']:
-                    assert not field.startswith('v_'), "Set field should not have view prefix"
+                for field in dimension_set["fields"]:
+                    assert not field.startswith("v_"), (
+                        "Set field should not have view prefix"
+                    )
 
 
 class TestJoinFieldsParameter:
@@ -2253,7 +2211,9 @@ class TestJoinFieldsParameter:
         assert len(joins) == 2
         # All joins should have fields parameter
         for join in joins:
-            assert "fields" in join, f"Join to {join['view_name']} missing fields parameter"
+            assert "fields" in join, (
+                f"Join to {join['view_name']} missing fields parameter"
+            )
             assert isinstance(join["fields"], list)
 
     def test_join_fields_parameter_multiple_joins(self) -> None:
@@ -2346,13 +2306,13 @@ class TestJoinFieldsParameter:
 
         # Assert
         # Verify fields appears in join block (after join name, before or after sql_on)
-        lines = content.split('\n')
+        lines = content.split("\n")
         join_found = False
         fields_found = False
         for i, line in enumerate(lines):
-            if 'join:' in line:
+            if "join:" in line:
                 join_found = True
-            if join_found and 'fields:' in line:
+            if join_found and "fields:" in line:
                 fields_found = True
                 break
 
@@ -2435,12 +2395,14 @@ class TestDimensionSetEdgeCases:
         # Set should be generated even for hidden fields
         assert "dimensions_only" in content
         parsed = lkml.load(content)
-        views = parsed.get('views', [])
-        sets = views[0].get('sets', [])
+        views = parsed.get("views", [])
+        sets = views[0].get("sets", [])
         if sets:
-            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            dimension_set = next(
+                (s for s in sets if s["name"] == "dimensions_only"), None
+            )
             if dimension_set:
-                assert len(dimension_set['fields']) >= 2
+                assert len(dimension_set["fields"]) >= 2
 
     def test_join_fields_with_circular_reference(self) -> None:
         """Test that circular references don't cause issues with fields parameter."""
@@ -2486,7 +2448,11 @@ class TestDimensionSetEdgeCases:
             entities=[Entity(name="id", type="primary")],
             dimensions=[
                 Dimension(name="category", type=DimensionType.CATEGORICAL),
-                Dimension(name="created_at", type=DimensionType.TIME, type_params={"time_granularity": "day"}),
+                Dimension(
+                    name="created_at",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                ),
                 Dimension(name="amount", type=DimensionType.CATEGORICAL),
             ],
         )
@@ -2503,9 +2469,11 @@ class TestDimensionSetEdgeCases:
 
         # Verify in parsed structure
         parsed = lkml.load(content)
-        views = parsed.get('views', [])
-        sets = views[0].get('sets', [])
+        views = parsed.get("views", [])
+        sets = views[0].get("sets", [])
         if sets:
-            dimension_set = next((s for s in sets if s['name'] == 'dimensions_only'), None)
+            dimension_set = next(
+                (s for s in sets if s["name"] == "dimensions_only"), None
+            )
             if dimension_set:
-                assert len(dimension_set['fields']) >= 3
+                assert len(dimension_set["fields"]) >= 3

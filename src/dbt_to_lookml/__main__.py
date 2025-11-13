@@ -9,6 +9,7 @@ from dbt_to_lookml.parsers.dbt import DbtParser as SemanticModelParser
 
 try:
     from dbt_to_lookml.generators.lookml import LookMLGenerator
+
     GENERATOR_AVAILABLE = True
 except ImportError:
     GENERATOR_AVAILABLE = False
@@ -106,15 +107,19 @@ def generate(
 ) -> None:
     """Generate LookML views and explores from semantic models."""
     if not GENERATOR_AVAILABLE:
-        console.print("[bold red]Error: LookML generator dependencies not available[/bold red]")
+        console.print(
+            "[bold red]Error: LookML generator dependencies not available[/bold red]"
+        )
         console.print("Please install required dependencies: pip install lkml")
         raise click.ClickException("Missing dependencies for LookML generation")
-        
+
     try:
         # Show configuration
         if dry_run:
-            console.print("[bold yellow]DRY RUN MODE - No files will be created[/bold yellow]")
-        
+            console.print(
+                "[bold yellow]DRY RUN MODE - No files will be created[/bold yellow]"
+            )
+
         console.print(
             f"[bold blue]Parsing semantic models from {input_dir}[/bold blue]"
         )
@@ -130,36 +135,54 @@ def generate(
             try:
                 models = parser.parse_file(yaml_file)
                 semantic_models.extend(models)
-                console.print(f"  [green]✓[/green] {yaml_file.name}: {len(models)} models")
+                console.print(
+                    f"  [green]✓[/green] {yaml_file.name}: {len(models)} models"
+                )
             except Exception as e:
                 error_count += 1
                 console.print(f"  [red]✗[/red] {yaml_file.name}: {e}")
-                console.print(f"    [yellow]Skipping file due to parse error...[/yellow]")
+                console.print(
+                    "    [yellow]Skipping file due to parse error...[/yellow]"
+                )
 
         for yaml_file in input_dir.glob("*.yaml"):
             file_count += 1
             try:
                 models = parser.parse_file(yaml_file)
                 semantic_models.extend(models)
-                console.print(f"  [green]✓[/green] {yaml_file.name}: {len(models)} models")
+                console.print(
+                    f"  [green]✓[/green] {yaml_file.name}: {len(models)} models"
+                )
             except Exception as e:
                 error_count += 1
                 console.print(f"  [red]✗[/red] {yaml_file.name}: {e}")
-                console.print(f"    [yellow]Skipping file due to parse error...[/yellow]")
+                console.print(
+                    "    [yellow]Skipping file due to parse error...[/yellow]"
+                )
 
         if len(semantic_models) == 0:
-            console.print("[bold red]No semantic models found or all files failed to parse[/bold red]")
+            console.print(
+                "[bold red]No semantic models found or all files failed to parse[/bold red]"
+            )
             raise click.ClickException("No valid semantic models to generate from")
 
-        console.print(f"Found {len(semantic_models)} semantic models from {file_count} files")
-        
+        console.print(
+            f"Found {len(semantic_models)} semantic models from {file_count} files"
+        )
+
         if error_count > 0:
-            console.print(f"[yellow]Warning: {error_count} files had parse errors and were skipped[/yellow]")
+            console.print(
+                f"[yellow]Warning: {error_count} files had parse errors and were skipped[/yellow]"
+            )
 
         if not dry_run:
-            console.print(f"[bold blue]Generating LookML files to {output_dir}[/bold blue]")
+            console.print(
+                f"[bold blue]Generating LookML files to {output_dir}[/bold blue]"
+            )
         else:
-            console.print(f"[bold yellow]Previewing LookML generation for {output_dir}[/bold yellow]")
+            console.print(
+                f"[bold yellow]Previewing LookML generation for {output_dir}[/bold yellow]"
+            )
 
         # Configure generator
         generator = LookMLGenerator(
@@ -174,9 +197,7 @@ def generate(
 
         # Generate files
         generated_files, validation_errors = generator.generate_lookml_files(
-            semantic_models, 
-            output_dir,
-            dry_run=dry_run
+            semantic_models, output_dir, dry_run=dry_run
         )
 
         # Show results
@@ -191,21 +212,30 @@ def generate(
 
         # Show validation results
         if validation_errors:
-            console.print(f"[yellow]⚠ Found {len(validation_errors)} validation errors:[/yellow]")
+            console.print(
+                f"[yellow]⚠ Found {len(validation_errors)} validation errors:[/yellow]"
+            )
             for error in validation_errors:
                 console.print(f"  [red]•[/red] {error}")
         elif not no_validation:
-            console.print("[green]✓ All generated LookML passed syntax validation[/green]")
+            console.print(
+                "[green]✓ All generated LookML passed syntax validation[/green]"
+            )
 
         # Show summary if requested
         if show_summary:
-            console.print("\n" + generator.get_generation_summary(
-                semantic_models, generated_files, validation_errors
-            ))
+            console.print(
+                "\n"
+                + generator.get_generation_summary(
+                    semantic_models, generated_files, validation_errors
+                )
+            )
 
         # Exit with error code if there were validation issues
         if validation_errors and not dry_run:
-            console.print("[yellow]Generation completed with validation errors[/yellow]")
+            console.print(
+                "[yellow]Generation completed with validation errors[/yellow]"
+            )
             raise click.ClickException("LookML validation failed")
 
     except Exception as e:
@@ -250,9 +280,11 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
             try:
                 models = parser.parse_file(yaml_file)
                 semantic_models.extend(models)
-                
+
                 if verbose:
-                    console.print(f"  [green]✓[/green] {yaml_file.name}: {len(models)} models")
+                    console.print(
+                        f"  [green]✓[/green] {yaml_file.name}: {len(models)} models"
+                    )
                     for model in models:
                         console.print(
                             f"    - {model.name}: "
@@ -261,14 +293,18 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
                             f"{len(model.measures)} measures"
                         )
                         if model.config and model.config.meta:
-                            console.print(f"      Config: domain={model.config.meta.domain}")
+                            console.print(
+                                f"      Config: domain={model.config.meta.domain}"
+                            )
                 else:
                     console.print(f"  [green]✓[/green] {yaml_file.name}")
             except Exception as e:
                 error_count += 1
                 console.print(f"  [red]✗[/red] {yaml_file.name}: {e}")
                 if not strict:
-                    console.print(f"    [yellow]Continuing in non-strict mode...[/yellow]")
+                    console.print(
+                        "    [yellow]Continuing in non-strict mode...[/yellow]"
+                    )
                 else:
                     raise
 
@@ -277,9 +313,11 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
             try:
                 models = parser.parse_file(yaml_file)
                 semantic_models.extend(models)
-                
+
                 if verbose:
-                    console.print(f"  [green]✓[/green] {yaml_file.name}: {len(models)} models")
+                    console.print(
+                        f"  [green]✓[/green] {yaml_file.name}: {len(models)} models"
+                    )
                     for model in models:
                         console.print(
                             f"    - {model.name}: "
@@ -288,22 +326,30 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
                             f"{len(model.measures)} measures"
                         )
                         if model.config and model.config.meta:
-                            console.print(f"      Config: domain={model.config.meta.domain}")
+                            console.print(
+                                f"      Config: domain={model.config.meta.domain}"
+                            )
                 else:
                     console.print(f"  [green]✓[/green] {yaml_file.name}")
             except Exception as e:
                 error_count += 1
                 console.print(f"  [red]✗[/red] {yaml_file.name}: {e}")
                 if not strict:
-                    console.print(f"    [yellow]Continuing in non-strict mode...[/yellow]")
+                    console.print(
+                        "    [yellow]Continuing in non-strict mode...[/yellow]"
+                    )
                 else:
                     raise
 
         count = len(semantic_models)
-        console.print(f"\n[bold green]✓ Validated {count} semantic models from {file_count} files[/bold green]")
-        
+        console.print(
+            f"\n[bold green]✓ Validated {count} semantic models from {file_count} files[/bold green]"
+        )
+
         if error_count > 0:
-            console.print(f"[yellow]Warning: {error_count} files had validation errors[/yellow]")
+            console.print(
+                f"[yellow]Warning: {error_count} files had validation errors[/yellow]"
+            )
 
         if verbose:
             console.print("\n[bold]Summary:[/bold]")
