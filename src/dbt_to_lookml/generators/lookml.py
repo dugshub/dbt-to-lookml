@@ -37,18 +37,72 @@ class LookMLGenerator(Generator):
     ) -> None:
         """Initialize the generator.
 
+        Configures LookML generation with support for timezone conversion,
+        view/explore naming, syntax validation, and output formatting. The
+        convert_tz parameter establishes the default timezone behavior for all
+        generated dimension_groups, which can be overridden at the dimension
+        level through semantic model metadata.
+
         Args:
-            view_prefix: Prefix to add to view names.
-            explore_prefix: Prefix to add to explore names.
-            validate_syntax: Whether to validate generated LookML syntax.
-            format_output: Whether to format LookML output for readability.
-            schema: Database schema name for sql_table_name.
-            connection: Looker connection name for the model file.
+            view_prefix: Prefix to add to all generated view names. Useful
+                for namespacing views by environment or project.
+            explore_prefix: Prefix to add to all generated explore names.
+                Works alongside view_prefix for consistent naming conventions.
+            validate_syntax: Whether to validate generated LookML syntax
+                using the lkml library. Validation runs automatically unless
+                explicitly disabled.
+            format_output: Whether to format LookML output for human
+                readability. Applies consistent indentation and spacing to
+                generated files.
+            schema: Database schema name for sql_table_name in generated
+                views. Used to qualify table references (e.g., "public.orders").
+            connection: Looker connection name for the generated .model.lkml
+                file. This tells Looker which database connection to use for
+                the model.
             model_name: Name for the generated model file (without
-                .model.lkml extension).
-            convert_tz: Optional timezone conversion setting for time
-                dimensions. None means use dimension-level defaults, True
-                converts to UTC, False disables conversion.
+                .model.lkml extension). Allows multiple models to be generated
+                from different semantic model sets.
+            convert_tz: Default timezone conversion setting for all
+                dimension_groups. Controls the convert_tz parameter in generated
+                LookML dimension_groups.
+                - True: Enable timezone conversion globally (convert_tz: yes)
+                - False: Disable timezone conversion globally (convert_tz: no)
+                - None: Use hardcoded default (False, disabled by default)
+                This setting is overridden by per-dimension config.meta.convert_tz
+                in semantic models, allowing fine-grained control at the
+                dimension level.
+
+        Example:
+            Enable timezone conversion globally:
+
+            ```python
+            generator = LookMLGenerator(
+                view_prefix="fact_",
+                convert_tz=True
+            )
+            ```
+
+            Disable timezone conversion (explicit default):
+
+            ```python
+            generator = LookMLGenerator(
+                view_prefix="dim_",
+                convert_tz=False
+            )
+            ```
+
+            Use hardcoded default (False, but dimension metadata can
+            still override):
+
+            ```python
+            generator = LookMLGenerator(view_prefix="stg_")
+            ```
+
+        See Also:
+            CLAUDE.md: "Timezone Conversion Configuration" section for
+                multi-level precedence rules and detailed examples.
+            Dimension._to_dimension_group_dict(): Implements timezone
+                conversion logic with precedence handling.
         """
         super().__init__(
             validate_syntax=validate_syntax,

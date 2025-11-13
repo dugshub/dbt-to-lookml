@@ -114,6 +114,159 @@ config:
 
 Implementation: `schemas.py:Dimension.get_dimension_labels()` and `schemas.py:Measure.get_measure_labels()`
 
+### Timezone Conversion Configuration
+
+LookML dimension_groups support timezone conversion through the `convert_tz` parameter, which controls whether timestamp values are converted from database timezone to the user's viewing timezone. This feature supports multi-level configuration with a sensible precedence chain.
+
+#### Default Behavior
+
+- **Default**: `convert_tz: no` (timezone conversion explicitly disabled)
+- This prevents unexpected timezone shifts and provides predictable behavior
+- Users must explicitly enable timezone conversion if needed
+
+#### Configuration Levels (Precedence: Highest to Lowest)
+
+1. **Dimension Metadata Override** (Highest priority)
+   ```yaml
+   dimensions:
+     - name: created_at
+       type: time
+       config:
+         meta:
+           convert_tz: yes  # Enable for this dimension only
+   ```
+
+2. **Generator Parameter**
+   ```python
+   generator = LookMLGenerator(
+       view_prefix="my_",
+       convert_tz=True  # Apply to all dimensions (unless overridden)
+   )
+   ```
+
+3. **CLI Flag**
+   ```bash
+   # Enable timezone conversion for all dimensions
+   dbt-to-lookml generate -i semantic_models -o build/lookml --convert-tz
+
+   # Explicitly disable (useful for override)
+   dbt-to-lookml generate -i semantic_models -o build/lookml --no-convert-tz
+   ```
+
+4. **Default** (Lowest priority)
+   - `convert_tz: no` - Applied when no explicit configuration provided
+
+#### Examples
+
+##### Example 1: Override at Dimension Level
+```yaml
+# semantic_models/orders.yaml
+semantic_model:
+  name: orders
+  dimensions:
+    - name: created_at
+      type: time
+      type_params:
+        time_granularity: day
+      config:
+        meta:
+          convert_tz: yes  # This dimension enables timezone conversion
+
+    - name: shipped_at
+      type: time
+      type_params:
+        time_granularity: day
+      # No convert_tz specified, uses generator/CLI/default
+```
+
+**Generated LookML**:
+```lookml
+dimension_group: created_at {
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.created_at ;;
+  convert_tz: yes
+}
+
+dimension_group: shipped_at {
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.shipped_at ;;
+  convert_tz: no
+}
+```
+
+##### Example 2: Generator-Level Configuration
+```python
+from dbt_to_lookml.generators.lookml import LookMLGenerator
+from dbt_to_lookml.parsers.dbt import DbtParser
+
+parser = DbtParser()
+models = parser.parse_directory("semantic_models/")
+
+# Enable timezone conversion for all dimension_groups
+generator = LookMLGenerator(
+    view_prefix="stg_",
+    convert_tz=True  # All dimensions use convert_tz: yes unless overridden
+)
+
+output = generator.generate(models)
+generator.write_files("build/lookml", output)
+```
+
+##### Example 3: CLI Usage
+```bash
+# Generate with timezone conversion enabled globally
+dbt-to-lookml generate -i semantic_models/ -o build/lookml --convert-tz
+
+# Generate with timezone conversion disabled (explicit, useful to override scripts)
+dbt-to-lookml generate -i semantic_models/ -o build/lookml --no-convert-tz
+
+# Generate with default behavior (convert_tz: no)
+dbt-to-lookml generate -i semantic_models/ -o build/lookml
+```
+
+#### Implementation Details
+
+- **Dimension._to_dimension_group_dict()**: Accepts `default_convert_tz` parameter from generator
+  - Checks `config.meta.convert_tz` first (dimension-level override)
+  - Falls back to `default_convert_tz` parameter
+  - Falls back to `False` if neither specified
+
+- **LookMLGenerator.__init__()**: Accepts optional `convert_tz: bool | None` parameter
+  - Stores the setting as instance variable
+  - Propagates to `SemanticModel.to_lookml_dict()` during generation
+
+- **SemanticModel.to_lookml_dict()**: Accepts `convert_tz` parameter
+  - Passes to each `Dimension._to_dimension_group_dict()` call
+
+- **CLI Flags**: Mutually exclusive `--convert-tz` / `--no-convert-tz` options
+  - `--convert-tz`: Sets `convert_tz=True`
+  - `--no-convert-tz`: Sets `convert_tz=False`
+  - Neither: Uses `convert_tz=None` (default behavior)
+
+#### LookML Output Examples
+
+With `convert_tz: no` (default):
+```lookml
+dimension_group: created_at {
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.created_at ;;
+  convert_tz: no
+}
+```
+
+With `convert_tz: yes`:
+```lookml
+dimension_group: created_at {
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.created_at ;;
+  convert_tz: yes
+}
+```
+
 ### Parser Error Handling
 
 - `DbtParser` supports `strict_mode` (fail fast) vs. lenient mode (log warnings, continue)

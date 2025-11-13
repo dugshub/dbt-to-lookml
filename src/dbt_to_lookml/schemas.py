@@ -23,7 +23,56 @@ class Hierarchy(BaseModel):
 
 
 class ConfigMeta(BaseModel):
-    """Represents metadata in a config section."""
+    """Represents metadata in a config section.
+
+    Supports flexible metadata configuration for dimensions and measures, including
+    optional hierarchy labels, data governance tags, and feature-specific overrides
+    like timezone conversion.
+
+    Attributes:
+        domain: Data domain classification (e.g., "customer", "product").
+        owner: Owner or team responsible for this data element.
+        contains_pii: Whether the dimension contains personally identifiable
+            information.
+        update_frequency: How frequently the underlying data is updated
+            (e.g., "daily", "real-time").
+        subject: Flat structure view label for dimensions (preferred over
+            hierarchy).
+        category: Flat structure group label for dimensions/measures
+            (preferred over hierarchy).
+        hierarchy: Nested hierarchy structure for 3-tier labeling:
+            - entity: Maps to view_label for dimensions
+            - category: Maps to group_label for dimensions, view_label for measures
+            - subcategory: Maps to group_label for measures
+        convert_tz: Override timezone conversion behavior for this specific
+            dimension. Controls whether the dimension_group's convert_tz
+            parameter is set to yes/no.
+            - True/yes: Enable timezone conversion (convert_tz: yes in LookML)
+            - False/no: Disable timezone conversion (convert_tz: no in LookML)
+            - Omitted: Use generator or CLI default setting
+            This provides the highest-priority override in the configuration
+            precedence chain.
+
+    Example:
+        Dimension with timezone override and hierarchy labels:
+
+        ```yaml
+        config:
+          meta:
+            domain: "events"
+            owner: "analytics"
+            contains_pii: false
+            convert_tz: yes  # Override generator default for this dimension
+            hierarchy:
+              entity: "event"
+              category: "timing"
+              subcategory: "creation"
+        ```
+
+    See Also:
+        CLAUDE.md: "Timezone Conversion Configuration" section for detailed
+            precedence rules and configuration examples.
+    """
 
     domain: str | None = None
     owner: str | None = None
@@ -144,7 +193,8 @@ class Dimension(BaseModel):
         Returns:
             Tuple of (view_label, group_label) where:
             - view_label comes from meta.subject (or meta.hierarchy.entity as fallback)
-            - group_label comes from meta.category (or meta.hierarchy.category as fallback)
+            - group_label comes from meta.category (or
+              meta.hierarchy.category as fallback)
         """
         if self.config and self.config.meta:
             meta = self.config.meta
@@ -195,15 +245,64 @@ class Dimension(BaseModel):
     ) -> dict[str, Any]:
         """Convert time dimension to LookML dimension_group.
 
+        Generates a LookML dimension_group block with appropriate timeframes
+        based on the dimension's time_granularity setting. Supports timezone
+        conversion configuration through multi-level precedence:
+
+        1. Dimension-level override via config.meta.convert_tz (highest priority)
+        2. Generator default via default_convert_tz parameter
+        3. Hardcoded default of False (lowest priority)
+
         Args:
-            default_convert_tz: Default timezone conversion setting to use if not
-                overridden at dimension level. Precedence: dimension meta >
-                parameter default > False (hardcoded default).
+            default_convert_tz: Default timezone conversion setting from
+                generator or CLI.
+                - True: Enable timezone conversion for all dimensions
+                  (unless overridden)
+                - False: Disable timezone conversion (default behavior)
+                - None: Use generator default (False)
 
         Returns:
-            Dictionary representation of LookML dimension_group with all required
-            fields (name, type, timeframes, sql) and optional fields (description,
-            label, view_label, group_label, convert_tz).
+            Dictionary with dimension_group configuration including:
+            - name: Dimension name
+            - type: "time"
+            - timeframes: List of appropriate timeframes based on granularity
+            - sql: SQL expression for the timestamp column
+            - convert_tz: "yes" or "no" based on precedence rules
+            - description: Optional description
+            - label: Optional label
+            - view_label/group_label: Optional hierarchy labels
+
+        Example:
+            Dimension with metadata override (enables timezone conversion):
+
+            ```python
+            dimension = Dimension(
+                name="created_at",
+                type=DimensionType.TIME,
+                type_params={"time_granularity": "day"},
+                config=Config(meta=ConfigMeta(
+                    convert_tz=True  # Override any generator default
+                ))
+            )
+            result = dimension._to_dimension_group_dict(default_convert_tz=False)
+            # Result includes: "convert_tz": "yes" (meta override takes precedence)
+            ```
+
+            Dimension without override (uses generator default):
+
+            ```python
+            dimension = Dimension(
+                name="shipped_at",
+                type=DimensionType.TIME,
+                type_params={"time_granularity": "hour"}
+            )
+            result = dimension._to_dimension_group_dict(default_convert_tz=True)
+            # Result includes: "convert_tz": "yes" (from default_convert_tz parameter)
+            ```
+
+        See Also:
+            CLAUDE.md: "Timezone Conversion Configuration" section for detailed
+                precedence rules and usage examples.
         """
         # Determine timeframes based on granularity
         timeframes = ["date", "week", "month", "quarter", "year"]

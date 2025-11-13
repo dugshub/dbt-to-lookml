@@ -54,8 +54,17 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions.
    - `dbt-to-lookml validate -i semantic_models -v`
 
 ## CLI Usage
-- `dbt-to-lookml generate -i <input_dir> -o <output_dir> [--view-prefix X] [--explore-prefix Y] [--dry-run] [--no-validation] [--no-formatting] [--show-summary]`
+- `dbt-to-lookml generate -i <input_dir> -o <output_dir> [--view-prefix X] [--explore-prefix Y] [--dry-run] [--no-validation] [--no-formatting] [--show-summary] [--convert-tz | --no-convert-tz]`
 - `dbt-to-lookml validate -i <input_dir> [--strict] [-v]`
+
+### Timezone Conversion
+Control timezone conversion in generated dimension_groups with CLI flags:
+- `--convert-tz`: Enable timezone conversion for all dimensions
+- `--no-convert-tz`: Disable timezone conversion for all dimensions
+- (No flag): Use default behavior (convert_tz: no, disabled by default)
+
+Per-dimension overrides are supported via `config.meta.convert_tz` in semantic models.
+See [CLAUDE.md](CLAUDE.md#timezone-conversion-configuration) for detailed precedence rules and examples.
 
 ## Project Structure
 - `src/dbt_to_lookml/`: Core package (`parser.py`, `generator.py`, `models.py`, CLI)
