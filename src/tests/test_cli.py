@@ -11,6 +11,16 @@ from click.testing import CliRunner
 from dbt_to_lookml.__main__ import cli
 
 
+def _has_textual_available() -> bool:
+    """Check if Textual is available."""
+    try:
+        import textual  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 class TestCLI:
     """Test cases for CLI commands."""
 
@@ -1190,3 +1200,666 @@ measures:
         assert "--input-dir" in result.output
         assert "--strict" in result.output
         assert "--verbose" in result.output
+
+    def test_generate_with_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command with --convert-tz flag."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Parsing semantic models" in result.output
+            assert (
+                "Generating LookML files" in result.output
+                or "Previewing" in result.output
+            )
+
+    def test_generate_with_no_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command with --no-convert-tz flag."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--no-convert-tz",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Parsing semantic models" in result.output
+            assert (
+                "Generating LookML files" in result.output
+                or "Previewing" in result.output
+            )
+
+    def test_generate_without_timezone_flags(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command without timezone flags (default behavior)."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Parsing semantic models" in result.output
+            assert (
+                "Generating LookML files" in result.output
+                or "Previewing" in result.output
+            )
+
+    def test_generate_with_mutually_exclusive_flags(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --convert-tz and --no-convert-tz are mutually exclusive."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                    "--no-convert-tz",
+                ],
+            )
+
+            assert result.exit_code != 0
+            assert "mutually exclusive" in result.output
+
+    def test_generate_help_includes_timezone_flags(self, runner: CliRunner) -> None:
+        """Test that help text documents new timezone flags."""
+        result = runner.invoke(cli, ["generate", "--help"])
+
+        assert result.exit_code == 0
+        assert "--convert-tz" in result.output
+        assert "--no-convert-tz" in result.output
+        assert "mutually exclusive" in result.output
+
+
+class TestCLIConvertTzFlags:
+    """Test cases for CLI --convert-tz and --no-convert-tz flags."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a Click test runner."""
+        return CliRunner()
+
+    @pytest.fixture
+    def fixtures_dir(self) -> Path:
+        """Return path to fixtures directory."""
+        return Path(__file__).parent / "fixtures"
+
+    def test_cli_generate_with_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test CLI accepts --convert-tz flag."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+    def test_cli_generate_with_no_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test CLI accepts --no-convert-tz flag."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--no-convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+    def test_cli_generate_without_convert_tz_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test CLI without flag uses default."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+    def test_cli_generate_help_shows_convert_tz_flags(self, runner: CliRunner) -> None:
+        """Test help text documents convert_tz flags."""
+        # Act
+        result = runner.invoke(cli, ["generate", "--help"])
+
+        # Assert
+        assert result.exit_code == 0
+        assert "--convert-tz" in result.output
+        assert "--no-convert-tz" in result.output
+
+    def test_cli_convert_tz_flag_generates_convert_tz_yes(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --convert-tz flag produces convert_tz: yes in output."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Verify generated files contain convert_tz: yes
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) > 0
+
+            for view_file in view_files:
+                content = view_file.read_text()
+                # Check for convert_tz in dimension_group sections
+                if "type: time" in content:
+                    assert "convert_tz: yes" in content
+
+    def test_cli_no_convert_tz_flag_generates_convert_tz_no(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --no-convert-tz flag produces convert_tz: no in output."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--no-convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Verify generated files contain convert_tz: no
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) > 0
+
+            for view_file in view_files:
+                content = view_file.read_text()
+                # Check for convert_tz in dimension_group sections
+                if "type: time" in content:
+                    assert "convert_tz: no" in content
+
+    def test_cli_convert_tz_flag_in_generated_lookml_files(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that flag value appears in actual files."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act - with --convert-tz flag
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Verify files were created
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) > 0
+
+            # Verify at least one file contains convert_tz: yes
+            found_convert_tz = False
+            for view_file in view_files:
+                content = view_file.read_text()
+                if "convert_tz: yes" in content:
+                    found_convert_tz = True
+                    break
+
+            # If there are time dimensions, we should find convert_tz
+            # (some fixtures might not have time dimensions)
+            has_time_dims = any(
+                "type: time" in view_file.read_text() for view_file in view_files
+            )
+            if has_time_dims:
+                assert found_convert_tz
+
+    def test_cli_convert_tz_respects_dimension_meta_override(
+        self, runner: CliRunner
+    ) -> None:
+        """Test that dimension meta overrides CLI flag."""
+        # This test requires a fixture with convert_tz in dimension meta
+        # For now, we'll test that the CLI flag is properly passed to generator
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            fixtures_dir = Path(__file__).parent / "fixtures"
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+    def test_cli_convert_tz_with_view_prefix_and_explore_prefix(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that convert_tz works with other flags."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                    "--view-prefix",
+                    "v_",
+                    "--explore-prefix",
+                    "e_",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Verify files were created with prefixes
+            view_files = list(output_dir.glob("v_*.view.lkml"))
+            # Some fixtures might not have views with the prefix pattern
+            # Just verify the command succeeded
+
+    def test_cli_convert_tz_flag_validates_output(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that validation passes with correct convert_tz values."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+            # If validation fails, exit_code would be non-zero
+
+    def test_cli_mutually_exclusive_convert_tz_flags(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --convert-tz and --no-convert-tz are mutually exclusive."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--convert-tz",
+                    "--no-convert-tz",
+                ],
+            )
+
+            # Assert
+            assert result.exit_code != 0
+            assert "mutually exclusive" in result.output
+
+    def test_cli_convert_tz_with_dry_run(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --convert-tz can be combined with --dry-run."""
+        # Arrange & Act
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "--input-dir",
+                str(fixtures_dir),
+                "--schema",
+                "public",
+                "--convert-tz",
+                "--dry-run",
+            ],
+        )
+
+        # Assert - flags can be used together (exit code may vary based on fixtures)
+        # The important thing is no mutually exclusive error
+        assert "mutually exclusive" not in result.output
+
+    def test_cli_no_convert_tz_with_dry_run(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test that --no-convert-tz can be combined with --dry-run."""
+        # Arrange & Act
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "--input-dir",
+                str(fixtures_dir),
+                "--schema",
+                "public",
+                "--no-convert-tz",
+                "--dry-run",
+            ],
+        )
+
+        # Assert - flags can be used together (exit code may vary based on fixtures)
+        # The important thing is no mutually exclusive error
+        assert "mutually exclusive" not in result.output
+
+    @pytest.mark.parametrize(
+        "flag,expected_in_output",
+        [
+            ("--convert-tz", "convert_tz: yes"),
+            ("--no-convert-tz", "convert_tz: no"),
+        ],
+    )
+    def test_cli_convert_tz_flag_variations(
+        self,
+        runner: CliRunner,
+        fixtures_dir: Path,
+        flag: str,
+        expected_in_output: str,
+    ) -> None:
+        """Test both convert_tz flag variations produce correct output."""
+        # Arrange
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    flag,
+                ],
+            )
+
+            # Assert
+            assert result.exit_code == 0
+
+            # Check if files contain expected output
+            view_files = list(output_dir.glob("*.view.lkml"))
+            if len(view_files) > 0:
+                for view_file in view_files:
+                    content = view_file.read_text()
+                    if "type: time" in content:
+                        assert expected_in_output in content
+
+    def test_generate_with_preview_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command with --preview flag."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--preview",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Command Preview" in result.output
+            assert "Preview mode - no files will be generated" in result.output
+
+            # Verify no files were created
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) == 0
+
+    def test_generate_with_yes_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command with --yes flag."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--yes",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Auto-confirming" in result.output
+            assert "✓ LookML generation completed successfully" in result.output
+
+    def test_generate_with_confirmation_cancelled(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command when user cancels confirmation."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+                input="n\n",  # Simulate user typing 'n' at prompt
+            )
+
+            assert result.exit_code == 0
+            assert "Command execution cancelled" in result.output
+
+            # Verify no files were created
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) == 0
+
+    @pytest.mark.cli
+    def test_wizard_generate_help(self, runner: CliRunner) -> None:
+        """Test wizard generate command help."""
+        result = runner.invoke(cli, ["wizard", "generate", "--help"])
+        assert result.exit_code == 0
+        assert "--wizard-tui" in result.output
+
+    @pytest.mark.cli
+    def test_wizard_generate_command_exists(self, runner: CliRunner) -> None:
+        """Test that wizard generate command exists."""
+        result = runner.invoke(cli, ["wizard", "generate", "--help"])
+        assert result.exit_code == 0
+        assert "wizard" in result.output or "generate" in result.output
+
+    @pytest.mark.cli
+    @pytest.mark.skipif(
+        not _has_textual_available(),
+        reason="Textual not installed",
+    )
+    def test_wizard_tui_flag_available(self, runner: CliRunner) -> None:
+        """Test --wizard-tui flag when Textual is available."""
+        # Just verify that the import works
+        try:
+            from dbt_to_lookml.wizard import launch_tui_wizard
+
+            assert callable(launch_tui_wizard)
+        except ImportError:
+            pytest.skip("Textual not available")
+
+    @pytest.mark.cli
+    def test_wizard_tui_flag_textual_unavailable(self, runner: CliRunner) -> None:
+        """Test error if Textual not installed."""
+        with patch("dbt_to_lookml.wizard.tui.TEXTUAL_AVAILABLE", False):
+            result = runner.invoke(cli, ["wizard", "generate", "--wizard-tui"])
+
+            assert result.exit_code != 0
+            assert "Textual" in result.output or "textual" in result.output

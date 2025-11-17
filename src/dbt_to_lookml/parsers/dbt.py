@@ -175,6 +175,7 @@ class DbtParser(Parser):
                         owner=meta_data.get("owner"),
                         contains_pii=meta_data.get("contains_pii"),
                         update_frequency=meta_data.get("update_frequency"),
+                        convert_tz=meta_data.get("convert_tz"),
                     )
                 config = Config(meta=config_meta)
 
@@ -235,14 +236,20 @@ class DbtParser(Parser):
                                     category=meta_data.get("category"),
                                     subcategory=meta_data.get("subcategory"),
                                 )
-                            elif 'entity' in meta_data or 'subject' in meta_data or 'category' in meta_data:
+                            elif (
+                                "entity" in meta_data
+                                or "subject" in meta_data
+                                or "category" in meta_data
+                            ):
                                 # Flat structure: meta.subject/entity and meta.category
                                 # Use 'subject' if present, otherwise fall back to 'entity'
-                                entity_value = meta_data.get('subject') or meta_data.get('entity')
+                                entity_value = meta_data.get(
+                                    "subject"
+                                ) or meta_data.get("entity")
                                 hierarchy = Hierarchy(
                                     entity=entity_value,
-                                    category=meta_data.get('category'),
-                                    subcategory=meta_data.get('subcategory'),
+                                    category=meta_data.get("category"),
+                                    subcategory=meta_data.get("subcategory"),
                                 )
                             config_meta = ConfigMeta(
                                 domain=meta_data.get("domain"),
@@ -253,6 +260,7 @@ class DbtParser(Parser):
                                 subject=meta_data.get("subject"),
                                 category=meta_data.get("category"),
                                 hierarchy=hierarchy,
+                                convert_tz=meta_data.get("convert_tz"),
                             )
                         dim_config = Config(meta=config_meta)
 
@@ -312,14 +320,20 @@ class DbtParser(Parser):
                                     category=meta_data.get("category"),
                                     subcategory=meta_data.get("subcategory"),
                                 )
-                            elif 'entity' in meta_data or 'subject' in meta_data or 'category' in meta_data:
+                            elif (
+                                "entity" in meta_data
+                                or "subject" in meta_data
+                                or "category" in meta_data
+                            ):
                                 # Flat structure: meta.subject/entity and meta.category
                                 # Use 'subject' if present, otherwise fall back to 'entity'
-                                entity_value = meta_data.get('subject') or meta_data.get('entity')
+                                entity_value = meta_data.get(
+                                    "subject"
+                                ) or meta_data.get("entity")
                                 hierarchy = Hierarchy(
                                     entity=entity_value,
-                                    category=meta_data.get('category'),
-                                    subcategory=meta_data.get('subcategory'),
+                                    category=meta_data.get("category"),
+                                    subcategory=meta_data.get("subcategory"),
                                 )
                             config_meta = ConfigMeta(
                                 domain=meta_data.get("domain"),
@@ -330,6 +344,7 @@ class DbtParser(Parser):
                                 subject=meta_data.get("subject"),
                                 category=meta_data.get("category"),
                                 hierarchy=hierarchy,
+                                convert_tz=meta_data.get("convert_tz"),
                             )
                         measure_config = Config(meta=config_meta)
 

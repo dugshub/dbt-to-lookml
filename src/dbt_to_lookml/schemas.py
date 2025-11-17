@@ -23,7 +23,56 @@ class Hierarchy(BaseModel):
 
 
 class ConfigMeta(BaseModel):
-    """Represents metadata in a config section."""
+    """Represents metadata in a config section.
+
+    Supports flexible metadata configuration for dimensions and measures, including
+    optional hierarchy labels, data governance tags, and feature-specific overrides
+    like timezone conversion.
+
+    Attributes:
+        domain: Data domain classification (e.g., "customer", "product").
+        owner: Owner or team responsible for this data element.
+        contains_pii: Whether the dimension contains personally identifiable
+            information.
+        update_frequency: How frequently the underlying data is updated
+            (e.g., "daily", "real-time").
+        subject: Flat structure view label for dimensions (preferred over
+            hierarchy).
+        category: Flat structure group label for dimensions/measures
+            (preferred over hierarchy).
+        hierarchy: Nested hierarchy structure for 3-tier labeling:
+            - entity: Maps to view_label for dimensions
+            - category: Maps to group_label for dimensions, view_label for measures
+            - subcategory: Maps to group_label for measures
+        convert_tz: Override timezone conversion behavior for this specific
+            dimension. Controls whether the dimension_group's convert_tz
+            parameter is set to yes/no.
+            - True/yes: Enable timezone conversion (convert_tz: yes in LookML)
+            - False/no: Disable timezone conversion (convert_tz: no in LookML)
+            - Omitted: Use generator or CLI default setting
+            This provides the highest-priority override in the configuration
+            precedence chain.
+
+    Example:
+        Dimension with timezone override and hierarchy labels:
+
+        ```yaml
+        config:
+          meta:
+            domain: "events"
+            owner: "analytics"
+            contains_pii: false
+            convert_tz: yes  # Override generator default for this dimension
+            hierarchy:
+              entity: "event"
+              category: "timing"
+              subcategory: "creation"
+        ```
+
+    See Also:
+        CLAUDE.md: "Timezone Conversion Configuration" section for detailed
+            precedence rules and configuration examples.
+    """
 
     domain: str | None = None
     owner: str | None = None
@@ -33,6 +82,7 @@ class ConfigMeta(BaseModel):
     subject: str | None = None
     category: str | None = None
     hierarchy: Hierarchy | None = None
+    convert_tz: bool | None = None
 
 
 class Config(BaseModel):
@@ -108,15 +158,6 @@ class Entity(BaseModel):
         # Hide all entities (typically surrogate keys) - natural keys should be defined as dimensions
         result["hidden"] = "yes"
 
-            # Add view_label and group_label for primary entities in fact tables
-            if is_fact_table:
-                if view_label:
-                    result['view_label'] = view_label
-                result['group_label'] = 'Join Keys'
-
-        # Hide all entities (typically surrogate keys) - natural keys should be defined as dimensions
-        result['hidden'] = 'yes'
-
         if self.description:
             result["description"] = self.description
 
@@ -134,10 +175,15 @@ class Dimension(BaseModel):
     type_params: dict[str, Any] | None = None
     config: Config | None = None
 
-    def to_lookml_dict(self) -> dict[str, Any]:
-        """Convert dimension to LookML format."""
+    def to_lookml_dict(self, default_convert_tz: bool | None = None) -> dict[str, Any]:
+        """Convert dimension to LookML format.
+
+        Args:
+            default_convert_tz: Optional default timezone conversion setting
+                for time dimensions.
+        """
         if self.type == DimensionType.TIME:
-            return self._to_dimension_group_dict()
+            return self._to_dimension_group_dict(default_convert_tz=default_convert_tz)
         else:
             return self._to_dimension_dict()
 
@@ -147,7 +193,8 @@ class Dimension(BaseModel):
         Returns:
             Tuple of (view_label, group_label) where:
             - view_label comes from meta.subject (or meta.hierarchy.entity as fallback)
-            - group_label comes from meta.category (or meta.hierarchy.category as fallback)
+            - group_label comes from meta.category (or
+              meta.hierarchy.category as fallback)
         """
         if self.config and self.config.meta:
             meta = self.config.meta
@@ -193,8 +240,70 @@ class Dimension(BaseModel):
 
         return result
 
-    def _to_dimension_group_dict(self) -> dict[str, Any]:
-        """Convert time dimension to LookML dimension_group."""
+    def _to_dimension_group_dict(
+        self, default_convert_tz: bool | None = None
+    ) -> dict[str, Any]:
+        """Convert time dimension to LookML dimension_group.
+
+        Generates a LookML dimension_group block with appropriate timeframes
+        based on the dimension's time_granularity setting. Supports timezone
+        conversion configuration through multi-level precedence:
+
+        1. Dimension-level override via config.meta.convert_tz (highest priority)
+        2. Generator default via default_convert_tz parameter
+        3. Hardcoded default of False (lowest priority)
+
+        Args:
+            default_convert_tz: Default timezone conversion setting from
+                generator or CLI.
+                - True: Enable timezone conversion for all dimensions
+                  (unless overridden)
+                - False: Disable timezone conversion (default behavior)
+                - None: Use generator default (False)
+
+        Returns:
+            Dictionary with dimension_group configuration including:
+            - name: Dimension name
+            - type: "time"
+            - timeframes: List of appropriate timeframes based on granularity
+            - sql: SQL expression for the timestamp column
+            - convert_tz: "yes" or "no" based on precedence rules
+            - description: Optional description
+            - label: Optional label
+            - view_label/group_label: Optional hierarchy labels
+
+        Example:
+            Dimension with metadata override (enables timezone conversion):
+
+            ```python
+            dimension = Dimension(
+                name="created_at",
+                type=DimensionType.TIME,
+                type_params={"time_granularity": "day"},
+                config=Config(meta=ConfigMeta(
+                    convert_tz=True  # Override any generator default
+                ))
+            )
+            result = dimension._to_dimension_group_dict(default_convert_tz=False)
+            # Result includes: "convert_tz": "yes" (meta override takes precedence)
+            ```
+
+            Dimension without override (uses generator default):
+
+            ```python
+            dimension = Dimension(
+                name="shipped_at",
+                type=DimensionType.TIME,
+                type_params={"time_granularity": "hour"}
+            )
+            result = dimension._to_dimension_group_dict(default_convert_tz=True)
+            # Result includes: "convert_tz": "yes" (from default_convert_tz parameter)
+            ```
+
+        See Also:
+            CLAUDE.md: "Timezone Conversion Configuration" section for detailed
+                precedence rules and usage examples.
+        """
         # Determine timeframes based on granularity
         timeframes = ["date", "week", "month", "quarter", "year"]
 
@@ -229,6 +338,18 @@ class Dimension(BaseModel):
             result["view_label"] = view_label
         if group_label:
             result["group_label"] = group_label
+
+        # Determine convert_tz with three-tier precedence:
+        # 1. Dimension-level meta.convert_tz (highest priority if present)
+        # 2. default_convert_tz parameter (if provided)
+        # 3. Hardcoded default: False (lowest priority, explicit and safe)
+        convert_tz = False  # Default
+        if default_convert_tz is not None:
+            convert_tz = default_convert_tz
+        if self.config and self.config.meta and self.config.meta.convert_tz is not None:
+            convert_tz = self.config.meta.convert_tz
+
+        result["convert_tz"] = "yes" if convert_tz else "no"
 
         return result
 
@@ -315,11 +436,16 @@ class SemanticModel(BaseModel):
     dimensions: list[Dimension] = Field(default_factory=list)
     measures: list[Measure] = Field(default_factory=list)
 
-    def to_lookml_dict(self, schema: str = "") -> dict[str, Any]:
+    def to_lookml_dict(
+        self, schema: str = "", convert_tz: bool | None = None
+    ) -> dict[str, Any]:
         """Convert entire semantic model to lkml views format.
 
         Args:
             schema: Optional database schema name to prepend to table name.
+            convert_tz: Optional timezone conversion setting. Passed to time
+                dimensions as default_convert_tz. None means use
+                dimension-level defaults.
 
         Returns:
             Dictionary in LookML views format.
@@ -356,7 +482,12 @@ class SemanticModel(BaseModel):
 
         # Convert dimensions (separate regular dims from time dims)
         for dim in self.dimensions:
-            dim_dict = dim.to_lookml_dict()
+            # Pass convert_tz to time dimensions to propagate generator default
+            if dim.type == DimensionType.TIME:
+                dim_dict = dim.to_lookml_dict(default_convert_tz=convert_tz)
+            else:
+                dim_dict = dim.to_lookml_dict()
+
             if dim.type == DimensionType.TIME:
                 dimension_groups.append(dim_dict)
             else:
@@ -372,7 +503,30 @@ class SemanticModel(BaseModel):
         for entity in self.entities:
             dimension_field_names.append(entity.name)
         for dim in self.dimensions:
-            dimension_field_names.append(dim.name)
+            # Time dimensions become dimension_groups with multiple timeframe fields
+            # We must explicitly list each timeframe field in the set
+            if dim.type == DimensionType.TIME:
+                # Determine timeframes (same logic as to_dimension_group_dict)
+                timeframes = ["date", "week", "month", "quarter", "year"]
+                if dim.type_params and dim.type_params.get("time_granularity") in [
+                    "hour",
+                    "minute",
+                ]:
+                    timeframes = [
+                        "time",
+                        "hour",
+                        "date",
+                        "week",
+                        "month",
+                        "quarter",
+                        "year",
+                    ]
+
+                # Add each expanded timeframe field
+                for timeframe in timeframes:
+                    dimension_field_names.append(f"{dim.name}_{timeframe}")
+            else:
+                dimension_field_names.append(dim.name)
 
         # Build the view dict
         view_dict: dict[str, Any] = {

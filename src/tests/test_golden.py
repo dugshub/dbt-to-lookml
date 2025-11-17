@@ -837,3 +837,46 @@ class TestGoldenFiles:
                     assert gen_join["fields"] == exp_join["fields"], (
                         f"Join fields mismatch for {gen_join['name']}: {gen_join['fields']} != {exp_join['fields']}"
                     )
+
+    def test_golden_dimension_groups_have_convert_tz(self, golden_dir: Path) -> None:
+        """Test that golden files have convert_tz: no in all dimension_groups.
+
+        This validates that the golden files reflect the new default behavior where
+        all dimension_groups explicitly include convert_tz: no.
+        """
+        golden_files = [
+            golden_dir / "expected_users.view.lkml",
+            golden_dir / "expected_searches.view.lkml",
+            golden_dir / "expected_rental_orders.view.lkml",
+        ]
+
+        files_checked = 0
+        dimension_groups_found = 0
+
+        for golden_file in golden_files:
+            if not golden_file.exists():
+                # Skip non-existent golden files
+                continue
+
+            files_checked += 1
+            content = golden_file.read_text()
+
+            # Count dimension_group blocks in this file
+            dimension_groups_in_file = content.count("dimension_group:")
+            dimension_groups_found += dimension_groups_in_file
+
+            # If file has dimension_group, should have convert_tz: no
+            if dimension_groups_in_file > 0:
+                assert "convert_tz: no" in content, (
+                    f"Golden file {golden_file.name} has {dimension_groups_in_file} "
+                    f"dimension_group(s) but missing convert_tz: no. "
+                    f"File content:\n{content}"
+                )
+
+        # Ensure we checked at least some golden files
+        assert files_checked > 0, "Golden files should exist at expected locations"
+
+        # Ensure we found dimension_groups to validate
+        assert dimension_groups_found > 0, (
+            "Golden files should contain dimension_groups to validate"
+        )

@@ -54,8 +54,84 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions.
    - `dbt-to-lookml validate -i semantic_models -v`
 
 ## CLI Usage
-- `dbt-to-lookml generate -i <input_dir> -o <output_dir> [--view-prefix X] [--explore-prefix Y] [--dry-run] [--no-validation] [--no-formatting] [--show-summary]`
+- `dbt-to-lookml generate -i <input_dir> -o <output_dir> [--view-prefix X] [--explore-prefix Y] [--dry-run] [--no-validation] [--no-formatting] [--show-summary] [--convert-tz | --no-convert-tz]`
 - `dbt-to-lookml validate -i <input_dir> [--strict] [-v]`
+
+### Timezone Conversion
+Control timezone conversion in generated dimension_groups with CLI flags:
+- `--convert-tz`: Enable timezone conversion for all dimensions
+- `--no-convert-tz`: Disable timezone conversion for all dimensions
+- (No flag): Use default behavior (convert_tz: no, disabled by default)
+
+Per-dimension overrides are supported via `config.meta.convert_tz` in semantic models.
+See [CLAUDE.md](CLAUDE.md#timezone-conversion-configuration) for detailed precedence rules and examples.
+
+## Interactive Wizard
+
+The wizard provides an interactive way to build commands without memorizing all available flags.
+
+### Quick Start
+
+```bash
+# Launch the wizard for the generate command
+dbt-to-lookml wizard generate
+
+# Use TUI mode for full-screen interactive experience (requires Textual)
+dbt-to-lookml wizard generate --wizard-tui
+```
+
+### Features
+
+- **Auto-detection**: Automatically finds semantic model directories and suggests output paths
+- **Contextual validation**: Real-time validation prevents invalid configurations
+- **Smart defaults**: Suggests values based on project structure and detected YAML files
+- **Command preview**: See the complete command before execution
+- **Helpful hints**: Descriptions for each option to guide decision-making
+
+### Example Workflow
+
+Start the wizard:
+```bash
+$ dbt-to-lookml wizard generate
+```
+
+Wizard output:
+```
+Generate Command Wizard
+Press Ctrl-C to cancel at any time
+
+? Input directory (auto-detected): semantic_models
+? Output directory (auto-detected): build/lookml
+? Database schema name (from YAML): analytics
+? View prefix (optional, press Enter to skip):
+? Explore prefix (optional, press Enter to skip):
+? Looker connection name: redshift_test
+? Model file name (without extension): semantic_model
+? Timezone conversion for time dimensions: (Use arrow keys)
+  > No (default) - Use database timezone as-is
+    Yes - Convert timestamps to user timezone
+    Explicitly disable - Add convert_tz: no
+? Additional options (use Space to select, Enter to continue):
+
+Generated Command:
+dbt-to-lookml generate \
+  -i semantic_models \
+  -o build/lookml \
+  -s analytics
+```
+
+### Wizard Modes
+
+- **Interactive mode** (default): Simple sequential prompts with real-time validation
+- **TUI mode** (`--wizard-tui`): Full-screen terminal UI with form navigation and live preview (if Textual is installed)
+
+### When to Use the Wizard
+
+- First time using dbt-to-lookml
+- Exploring available options and features
+- Building complex commands with many flags
+- Learning best practices through contextual hints
+- Setting up automation in unfamiliar environments
 
 ## Project Structure
 - `src/dbt_to_lookml/`: Core package (`parser.py`, `generator.py`, `models.py`, CLI)

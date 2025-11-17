@@ -145,6 +145,53 @@ jobs:
         uv pip install -e .
         dbt-to-lookml --help
 
+  wizard-tests:
+    name: Wizard Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v2
+
+    - name: Install dependencies
+      run: |
+        uv sync --group dev
+
+    - name: Run wizard unit tests
+      run: |
+        python -m pytest src/tests/unit/test_wizard*.py src/tests/unit/test_generate_wizard.py -v --cov=dbt_to_lookml.wizard --cov-report=xml --cov-fail-under=95
+
+    - name: Run wizard integration tests
+      run: |
+        python -m pytest src/tests/integration/test_wizard*.py -v
+
+    - name: Run wizard CLI tests
+      run: |
+        python -m pytest src/tests/test_cli.py::TestCLIWizard -v
+
+    - name: Test wizard command availability
+      run: |
+        uv pip install -e .
+        dbt-to-lookml wizard --help
+        dbt-to-lookml wizard generate --help
+
+    - name: Upload wizard coverage
+      uses: codecov/codecov-action@v3
+      if: always()
+      with:
+        files: ./coverage.xml
+        flags: wizard-tests
+        name: wizard-test-coverage
+
   error-handling-tests:
     name: Error Handling Tests
     runs-on: ubuntu-latest
@@ -406,15 +453,16 @@ jobs:
   final-status:
     name: Final Status
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, cli-tests, error-handling-tests, smoke-tests, multi-python-test]
+    needs: [unit-tests, integration-tests, cli-tests, wizard-tests, error-handling-tests, smoke-tests, multi-python-test]
     if: always()
-    
+
     steps:
     - name: Check status
       run: |
         if [ "${{ needs.unit-tests.result }}" = "success" ] && \
            [ "${{ needs.integration-tests.result }}" = "success" ] && \
            [ "${{ needs.cli-tests.result }}" = "success" ] && \
+           [ "${{ needs.wizard-tests.result }}" = "success" ] && \
            [ "${{ needs.error-handling-tests.result }}" = "success" ] && \
            [ "${{ needs.smoke-tests.result }}" = "success" ] && \
            [ "${{ needs.multi-python-test.result }}" = "success" ]; then
