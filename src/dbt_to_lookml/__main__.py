@@ -231,7 +231,7 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
                 console.print("or use: dbt-to-lookml wizard generate --execute[/dim]")
 
         except Exception as e:
-            console.print(f"[bold red]Error: {e}[/bold red]")
+            console.print(f"[bold red]Error:[/bold red] {e}")
             raise click.ClickException(str(e))
 
 
