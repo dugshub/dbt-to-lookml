@@ -256,11 +256,12 @@ def show_preview_and_confirm(
 
     console.print()
     response = console.input(
-        "[bold yellow]Execute this command?[/bold yellow] [dim][y/N][/dim]: "
+        "[bold yellow]Execute this command?[/bold yellow] [dim][Y/n][/dim]: "
     )
 
-    # Default to No for safety
-    confirmed = response.strip().lower() in ("y", "yes")
+    # Default to Yes (empty response = yes)
+    response_lower = response.strip().lower()
+    confirmed = response_lower in ("y", "yes", "")
 
     if not confirmed:
         console.print("[yellow]Command execution cancelled[/yellow]")
