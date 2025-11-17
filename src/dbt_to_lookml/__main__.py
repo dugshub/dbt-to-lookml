@@ -122,6 +122,61 @@ def wizard_test(mode: str) -> None:
     console.print("[dim]Test config:[/dim]", config)
 
 
+@wizard.command(name="generate")
+@click.option(
+    "--execute",
+    "-x",
+    is_flag=True,
+    help="Execute the generated command immediately after wizard completes",
+)
+def wizard_generate(execute: bool) -> None:
+    """Interactive wizard for building generate commands.
+
+    The wizard will guide you through all generate command options:
+    - Input directory (semantic model YAML files)
+    - Output directory (LookML files)
+    - Database schema name
+    - View and explore prefixes
+    - Connection and model names
+    - Timezone conversion settings
+    - Additional flags (dry-run, validation, summary)
+
+    The wizard provides smart defaults based on your project structure
+    and validates inputs in real-time.
+
+    Examples:
+      # Run wizard and display command
+      dbt-to-lookml wizard generate
+
+      # Run wizard and execute command immediately
+      dbt-to-lookml wizard generate --execute
+    """
+    from dbt_to_lookml.wizard.generate_wizard import run_generate_wizard
+    from dbt_to_lookml.wizard.types import WizardMode
+
+    try:
+        command_str = run_generate_wizard(
+            mode=WizardMode.PROMPT,
+            execute=execute,
+        )
+
+        if command_str is None:
+            # Wizard was cancelled
+            return
+
+        if not execute:
+            console.print(
+                "\n[dim]To execute this command, run it in your terminal"
+            )
+            console.print(
+                "or use: dbt-to-lookml wizard generate --execute[/dim]"
+            )
+
+    except Exception as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        raise click.ClickException(str(e))
+
+
 @cli.command(cls=RichCommand)
 @click.option(
     "--input-dir",
