@@ -165,12 +165,8 @@ def wizard_generate(execute: bool) -> None:
             return
 
         if not execute:
-            console.print(
-                "\n[dim]To execute this command, run it in your terminal"
-            )
-            console.print(
-                "or use: dbt-to-lookml wizard generate --execute[/dim]"
-            )
+            console.print("\n[dim]To execute this command, run it in your terminal")
+            console.print("or use: dbt-to-lookml wizard generate --execute[/dim]")
 
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
@@ -256,6 +252,17 @@ def wizard_generate(execute: bool) -> None:
     is_flag=True,
     help="Don't convert time dimensions to UTC (mutually exclusive with --convert-tz)",
 )
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompt and execute immediately",
+)
+@click.option(
+    "--preview",
+    is_flag=True,
+    help="Show preview without executing (dry run with detailed preview)",
+)
 def generate(
     input_dir: Path,
     output_dir: Path,
@@ -270,6 +277,8 @@ def generate(
     model_name: str,
     convert_tz: bool,
     no_convert_tz: bool,
+    yes: bool,
+    preview: bool,
 ) -> None:
     """Generate LookML views and explores from semantic models.
 
@@ -314,6 +323,92 @@ def generate(
         raise click.ClickException(
             "--convert-tz and --no-convert-tz cannot be used together"
         )
+
+    # Preview mode implies dry run
+    if preview:
+        dry_run = True
+
+    # Import preview utilities
+    from dbt_to_lookml.preview import (
+        PreviewData,
+        count_yaml_files,
+        estimate_output_files,
+        format_command_parts,
+        show_preview_and_confirm,
+    )
+
+    # Count input files for preview
+    input_file_count = count_yaml_files(input_dir)
+
+    if input_file_count == 0:
+        console.print(
+            "[bold red]Error: No YAML files found in input directory[/bold red]"
+        )
+        raise click.ClickException(f"No YAML files in {input_dir}")
+
+    # Estimate output files
+    estimated_views, estimated_explores, estimated_models = estimate_output_files(
+        input_file_count
+    )
+
+    # Build command parts for display
+    command_parts = format_command_parts(
+        "dbt-to-lookml generate",
+        input_dir,
+        output_dir,
+        schema,
+        view_prefix=view_prefix,
+        explore_prefix=explore_prefix,
+        connection=connection,
+        model_name=model_name,
+        convert_tz=convert_tz if convert_tz else (False if no_convert_tz else None),
+        dry_run=dry_run,
+        no_validation=no_validation,
+        no_formatting=no_formatting,
+        show_summary=show_summary,
+    )
+
+    # Build additional config dict
+    additional_config = {}
+    if view_prefix:
+        additional_config["View prefix"] = view_prefix
+    if explore_prefix:
+        additional_config["Explore prefix"] = explore_prefix
+    if connection != "redshift_test":
+        additional_config["Connection"] = connection
+    if model_name != "semantic_model":
+        additional_config["Model name"] = model_name
+    if convert_tz:
+        additional_config["Timezone conversion"] = "enabled"
+    elif no_convert_tz:
+        additional_config["Timezone conversion"] = "disabled"
+
+    # Create preview data
+    preview_data = PreviewData(
+        input_dir=input_dir,
+        output_dir=output_dir,
+        schema=schema,
+        input_file_count=input_file_count,
+        estimated_views=estimated_views,
+        estimated_explores=estimated_explores,
+        estimated_models=estimated_models,
+        command_parts=command_parts,
+        additional_config=additional_config,
+    )
+
+    # Show preview and get confirmation (unless --yes or preview-only)
+    if preview:
+        # Preview-only mode - show and exit
+        from dbt_to_lookml.preview import CommandPreview
+
+        preview_panel = CommandPreview()
+        preview_panel.show(preview_data)
+        console.print("\n[yellow]Preview mode - no files will be generated[/yellow]")
+        return
+
+    # Show preview and confirm (unless --yes flag)
+    if not show_preview_and_confirm(preview_data, auto_confirm=yes):
+        return  # User cancelled
 
     try:
         # Show configuration

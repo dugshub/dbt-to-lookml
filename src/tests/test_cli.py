@@ -1733,3 +1733,85 @@ class TestCLIConvertTzFlags:
                     content = view_file.read_text()
                     if "type: time" in content:
                         assert expected_in_output in content
+
+    def test_generate_with_preview_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command with --preview flag."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--preview",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Command Preview" in result.output
+            assert "Preview mode - no files will be generated" in result.output
+
+            # Verify no files were created
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) == 0
+
+    def test_generate_with_yes_flag(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command with --yes flag."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                    "--yes",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Auto-confirming" in result.output
+            assert "✓ LookML generation completed successfully" in result.output
+
+    def test_generate_with_confirmation_cancelled(
+        self, runner: CliRunner, fixtures_dir: Path
+    ) -> None:
+        """Test generate command when user cancels confirmation."""
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            result = runner.invoke(
+                cli,
+                [
+                    "generate",
+                    "--input-dir",
+                    str(fixtures_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--schema",
+                    "public",
+                ],
+                input="n\n",  # Simulate user typing 'n' at prompt
+            )
+
+            assert result.exit_code == 0
+            assert "Command execution cancelled" in result.output
+
+            # Verify no files were created
+            view_files = list(output_dir.glob("*.view.lkml"))
+            assert len(view_files) == 0

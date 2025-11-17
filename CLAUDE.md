@@ -70,6 +70,19 @@ make lookml-preview    # Dry-run with summary (no files written)
 make lookml-generate INPUT_DIR=semantic_models OUTPUT_DIR=build/lookml
 ```
 
+### Preview and Confirmation
+
+```bash
+# Show preview before generation (interactive confirmation)
+dbt-to-lookml generate -i semantic_models/ -o build/lookml/ -s public
+
+# Show preview only (no generation)
+dbt-to-lookml generate -i semantic_models/ -o build/lookml/ -s public --preview
+
+# Auto-confirm without prompt (useful for CI/automation)
+dbt-to-lookml generate -i semantic_models/ -o build/lookml/ -s public --yes
+```
+
 ### Test Organization
 
 - **Unit tests** (`src/tests/unit/`): Fast, isolated tests for parsers, generators, schemas
