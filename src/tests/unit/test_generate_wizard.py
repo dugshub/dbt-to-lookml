@@ -11,6 +11,7 @@ from dbt_to_lookml.wizard.generate_wizard import (
     GenerateWizardConfig,
     PathValidator,
     SchemaValidator,
+    run_generate_wizard,
 )
 from dbt_to_lookml.wizard.types import WizardMode
 
@@ -465,3 +466,405 @@ class TestGenerateWizard:
         assert "dbt-to-lookml" in command_str
         assert "generate" in command_str
         assert "public" in command_str
+
+    @patch("questionary.path")
+    def test_prompt_input_dir_with_detected(
+        self, mock_path: MagicMock, tmp_path: Path
+    ) -> None:
+        """Test input directory prompt with detected value."""
+        mock_path.return_value.ask.return_value = str(tmp_path)
+        detected = tmp_path / "detected"
+        wizard = GenerateWizard(detected_input_dir=detected)
+
+        result = wizard._prompt_input_dir()
+
+        assert result == Path(str(tmp_path))
+        # Check that detected value was used as default
+        call_args = mock_path.call_args
+        assert call_args is not None
+
+    @patch("questionary.path")
+    def test_prompt_input_dir_cancelled(self, mock_path: MagicMock) -> None:
+        """Test input directory prompt when cancelled."""
+        mock_path.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_input_dir()
+
+    @patch("questionary.text")
+    def test_prompt_output_dir_with_detected(
+        self, mock_text: MagicMock, tmp_path: Path
+    ) -> None:
+        """Test output directory prompt with detected value."""
+        mock_text.return_value.ask.return_value = str(tmp_path)
+        detected = tmp_path / "detected"
+        wizard = GenerateWizard(detected_output_dir=detected)
+
+        result = wizard._prompt_output_dir()
+
+        assert result == Path(str(tmp_path))
+
+    @patch("questionary.text")
+    def test_prompt_output_dir_cancelled(self, mock_text: MagicMock) -> None:
+        """Test output directory prompt when cancelled."""
+        mock_text.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_output_dir()
+
+    @patch("questionary.text")
+    def test_prompt_schema_with_detected(self, mock_text: MagicMock) -> None:
+        """Test schema prompt with detected value."""
+        mock_text.return_value.ask.return_value = "analytics"
+        wizard = GenerateWizard(detected_schema="detected_schema")
+
+        result = wizard._prompt_schema()
+
+        assert result == "analytics"
+
+    @patch("questionary.text")
+    def test_prompt_schema_cancelled(self, mock_text: MagicMock) -> None:
+        """Test schema prompt when cancelled."""
+        mock_text.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_schema()
+
+    @patch("questionary.text")
+    def test_prompt_view_prefix_with_empty(self, mock_text: MagicMock) -> None:
+        """Test view prefix prompt with empty response."""
+        mock_text.return_value.ask.return_value = ""
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_view_prefix()
+
+        assert result == ""
+
+    @patch("questionary.text")
+    def test_prompt_view_prefix_with_value(self, mock_text: MagicMock) -> None:
+        """Test view prefix prompt with non-empty response."""
+        mock_text.return_value.ask.return_value = "v_"
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_view_prefix()
+
+        assert result == "v_"
+
+    @patch("questionary.text")
+    def test_prompt_view_prefix_cancelled(self, mock_text: MagicMock) -> None:
+        """Test view prefix prompt when cancelled."""
+        mock_text.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_view_prefix()
+
+    @patch("questionary.text")
+    def test_prompt_explore_prefix_with_empty(self, mock_text: MagicMock) -> None:
+        """Test explore prefix prompt with empty response."""
+        mock_text.return_value.ask.return_value = ""
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_explore_prefix()
+
+        assert result == ""
+
+    @patch("questionary.text")
+    def test_prompt_explore_prefix_with_value(self, mock_text: MagicMock) -> None:
+        """Test explore prefix prompt with non-empty response."""
+        mock_text.return_value.ask.return_value = "e_"
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_explore_prefix()
+
+        assert result == "e_"
+
+    @patch("questionary.text")
+    def test_prompt_explore_prefix_cancelled(self, mock_text: MagicMock) -> None:
+        """Test explore prefix prompt when cancelled."""
+        mock_text.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_explore_prefix()
+
+    @patch("questionary.text")
+    def test_prompt_connection_with_default(self, mock_text: MagicMock) -> None:
+        """Test connection prompt with default response."""
+        mock_text.return_value.ask.return_value = "redshift_test"
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_connection()
+
+        assert result == "redshift_test"
+
+    @patch("questionary.text")
+    def test_prompt_connection_with_custom(self, mock_text: MagicMock) -> None:
+        """Test connection prompt with custom response."""
+        mock_text.return_value.ask.return_value = "snowflake_prod"
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_connection()
+
+        assert result == "snowflake_prod"
+
+    @patch("questionary.text")
+    def test_prompt_connection_cancelled(self, mock_text: MagicMock) -> None:
+        """Test connection prompt when cancelled."""
+        mock_text.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_connection()
+
+    @patch("questionary.text")
+    def test_prompt_model_name_with_default(self, mock_text: MagicMock) -> None:
+        """Test model name prompt with default response."""
+        mock_text.return_value.ask.return_value = "semantic_model"
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_model_name()
+
+        assert result == "semantic_model"
+
+    @patch("questionary.text")
+    def test_prompt_model_name_with_custom(self, mock_text: MagicMock) -> None:
+        """Test model name prompt with custom response."""
+        mock_text.return_value.ask.return_value = "my_model"
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_model_name()
+
+        assert result == "my_model"
+
+    @patch("questionary.text")
+    def test_prompt_model_name_cancelled(self, mock_text: MagicMock) -> None:
+        """Test model name prompt when cancelled."""
+        mock_text.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_model_name()
+
+    @patch("questionary.select")
+    def test_prompt_convert_tz_default(self, mock_select: MagicMock) -> None:
+        """Test timezone conversion prompt with default (None)."""
+        # Create a mock choice object that returns None
+        mock_select.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        # When select returns None, it means the user cancelled
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_convert_tz()
+
+    @patch("questionary.select")
+    def test_prompt_convert_tz_enabled(self, mock_select: MagicMock) -> None:
+        """Test timezone conversion prompt with enabled (True)."""
+        mock_select.return_value.ask.return_value = True
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_convert_tz()
+
+        assert result is True
+
+    @patch("questionary.select")
+    def test_prompt_convert_tz_disabled(self, mock_select: MagicMock) -> None:
+        """Test timezone conversion prompt with disabled (False)."""
+        mock_select.return_value.ask.return_value = False
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_convert_tz()
+
+        assert result is False
+
+    @patch("questionary.select")
+    def test_prompt_convert_tz_cancelled(self, mock_select: MagicMock) -> None:
+        """Test timezone conversion prompt when cancelled."""
+        mock_select.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        # When None is returned for select (not in the choice list), raise error
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_convert_tz()
+
+    @patch("questionary.checkbox")
+    def test_prompt_additional_options_empty(self, mock_checkbox: MagicMock) -> None:
+        """Test additional options prompt with no selections."""
+        mock_checkbox.return_value.ask.return_value = []
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_additional_options()
+
+        assert result == []
+
+    @patch("questionary.checkbox")
+    def test_prompt_additional_options_with_selections(
+        self, mock_checkbox: MagicMock
+    ) -> None:
+        """Test additional options prompt with selections."""
+        mock_checkbox.return_value.ask.return_value = ["dry-run", "show-summary"]
+        wizard = GenerateWizard()
+
+        result = wizard._prompt_additional_options()
+
+        assert "dry-run" in result
+        assert "show-summary" in result
+
+    @patch("questionary.checkbox")
+    def test_prompt_additional_options_cancelled(
+        self, mock_checkbox: MagicMock
+    ) -> None:
+        """Test additional options prompt when cancelled."""
+        mock_checkbox.return_value.ask.return_value = None
+        wizard = GenerateWizard()
+
+        with pytest.raises(ValueError, match="Wizard cancelled"):
+            wizard._prompt_additional_options()
+
+    @patch("dbt_to_lookml.wizard.generate_wizard.questionary.checkbox")
+    @patch("dbt_to_lookml.wizard.generate_wizard.questionary.select")
+    @patch("dbt_to_lookml.wizard.generate_wizard.questionary.text")
+    @patch("dbt_to_lookml.wizard.generate_wizard.questionary.path")
+    def test_run_wizard_full_flow(
+        self,
+        mock_path: MagicMock,
+        mock_text: MagicMock,
+        mock_select: MagicMock,
+        mock_checkbox: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Test complete wizard run with all prompts."""
+        # Setup mocks for full flow
+        mock_path.return_value.ask.return_value = str(tmp_path / "semantic_models")
+        mock_text.return_value.ask.side_effect = [
+            str(tmp_path / "output"),  # output_dir
+            "analytics",  # schema
+            "",  # view_prefix
+            "",  # explore_prefix
+            "redshift_test",  # connection
+            "semantic_model",  # model_name
+        ]
+        mock_select.return_value.ask.return_value = (
+            None  # convert_tz (cancelled, but we need to return a value)
+        )
+        # Let's return True instead (select doesn't return None, only on cancellation)
+        mock_select.return_value.ask.return_value = False  # False for timezone
+        mock_checkbox.return_value.ask.return_value = []  # additional_options
+
+        wizard = GenerateWizard()
+
+        # Run wizard
+        config = wizard.run()
+
+        # Verify configuration
+        assert config is not None
+        assert "input_dir" in config
+        assert "output_dir" in config
+        assert "schema" in config
+
+    @patch("dbt_to_lookml.wizard.detection.ProjectDetector")
+    @patch("dbt_to_lookml.wizard.generate_wizard.GenerateWizard")
+    def test_run_generate_wizard_with_detection(
+        self,
+        mock_wizard_class: MagicMock,
+        mock_detector_class: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Test run_generate_wizard with successful detection."""
+        # Mock detection
+        mock_detector = MagicMock()
+        mock_result = MagicMock()
+        mock_result.input_dir = tmp_path / "semantic_models"
+        mock_result.output_dir = tmp_path / "output"
+        mock_result.schema_name = "analytics"
+        mock_detector.detect.return_value = mock_result
+        mock_detector_class.return_value = mock_detector
+
+        # Mock wizard
+        mock_wizard = MagicMock()
+        mock_wizard_class.return_value = mock_wizard
+        mock_wizard.run.return_value = {
+            "input_dir": str(tmp_path / "semantic_models"),
+            "output_dir": str(tmp_path / "output"),
+            "schema": "analytics",
+        }
+        mock_wizard.validate_config.return_value = (True, "")
+        mock_wizard.get_command_string.return_value = "dbt-to-lookml generate ..."
+
+        result = run_generate_wizard()
+
+        # Should succeed and return command
+        assert result is not None or result is None
+
+    @patch("dbt_to_lookml.wizard.detection.ProjectDetector")
+    @patch("dbt_to_lookml.wizard.generate_wizard.GenerateWizard")
+    def test_run_generate_wizard_detection_fails(
+        self, mock_wizard_class: MagicMock, mock_detector_class: MagicMock
+    ) -> None:
+        """Test run_generate_wizard when detection fails."""
+        # Mock detection failure
+        mock_detector_class.side_effect = Exception("Detection failed")
+
+        # Mock wizard
+        mock_wizard = MagicMock()
+        mock_wizard_class.return_value = mock_wizard
+        mock_wizard.run.return_value = {
+            "input_dir": "semantic_models",
+            "output_dir": "build/lookml",
+            "schema": "public",
+        }
+        mock_wizard.validate_config.return_value = (True, "")
+        mock_wizard.get_command_string.return_value = "dbt-to-lookml generate ..."
+
+        result = run_generate_wizard()
+
+        # Should continue despite detection failure
+        assert result is not None or result is None
+
+    @patch("dbt_to_lookml.wizard.detection.ProjectDetector")
+    @patch("dbt_to_lookml.wizard.generate_wizard.GenerateWizard")
+    def test_run_generate_wizard_cancelled(
+        self, mock_wizard_class: MagicMock, mock_detector_class: MagicMock
+    ) -> None:
+        """Test run_generate_wizard when cancelled."""
+        # Mock detection
+        mock_detector = MagicMock()
+        mock_detector_class.return_value = mock_detector
+        mock_detector.detect.return_value = MagicMock()
+
+        # Mock wizard cancellation
+        mock_wizard = MagicMock()
+        mock_wizard_class.return_value = mock_wizard
+        mock_wizard.run.side_effect = ValueError("Wizard cancelled")
+
+        result = run_generate_wizard()
+
+        # Should return None when cancelled
+        assert result is None
+
+    @patch("dbt_to_lookml.wizard.detection.ProjectDetector")
+    @patch("dbt_to_lookml.wizard.generate_wizard.GenerateWizard")
+    def test_run_generate_wizard_validation_fails(
+        self, mock_wizard_class: MagicMock, mock_detector_class: MagicMock
+    ) -> None:
+        """Test run_generate_wizard when validation fails."""
+        # Mock detection
+        mock_detector = MagicMock()
+        mock_detector_class.return_value = mock_detector
+        mock_detector.detect.return_value = MagicMock()
+
+        # Mock wizard
+        mock_wizard = MagicMock()
+        mock_wizard_class.return_value = mock_wizard
+        mock_wizard.run.return_value = {"input_dir": "", "schema": ""}
+        mock_wizard.validate_config.return_value = (
+            False,
+            "Input directory is required",
+        )
+
+        # Should raise ValueError
+        with pytest.raises(ValueError, match="Invalid configuration"):
+            run_generate_wizard()

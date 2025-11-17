@@ -300,6 +300,191 @@ dimension_group: created_at {
 - **Naming**: snake_case for functions/variables, PascalCase for classes
 - **Docstrings**: Google-style docstrings for all public functions/classes
 
+## Wizard System Architecture
+
+The wizard system provides interactive command building through a structured architecture with project detection, prompt sequencing, and validation.
+
+### Module Structure
+
+```
+src/dbt_to_lookml/wizard/
+├── __init__.py              # Public API exports
+├── base.py                  # BaseWizard abstract class (mode, config storage)
+├── types.py                 # TypedDict definitions (WizardConfig, WizardMode)
+├── detection.py             # ProjectDetector (structure analysis, smart defaults)
+├── generate_wizard.py       # GenerateWizard (prompts, validation, command building)
+├── tui.py                   # GenerateWizardTUI (Textual-based UI, optional)
+└── tui_widgets.py          # Custom Textual widgets (input, preview panels)
+```
+
+### Design Patterns
+
+1. **Detection-First**: Analyze project structure before prompting
+   - `ProjectDetector` scans for semantic_models directories
+   - Extracts schema hints from YAML files
+   - Suggests output directories based on conventions
+   - Results cached for performance (500ms target detection time)
+
+2. **Progressive Enhancement**: Graceful degradation when dependencies missing
+   - Core wizard uses `questionary` (required in `pyproject.toml`)
+   - TUI mode uses `textual` (optional, skipped if unavailable)
+   - Falls back to prompt mode automatically
+
+3. **Validation Pipeline**: Multi-stage input validation
+   - Real-time validation during prompts using `questionary.Validator`
+   - Path existence and type checks via `PathValidator`
+   - Schema name format validation via `SchemaValidator`
+   - Final config validation before command building
+
+### Key Components
+
+#### Detection Module (`wizard/detection.py`)
+
+**Purpose**: Analyze project structure and provide smart defaults
+
+**Main Classes**:
+- `ProjectDetector`: Scans filesystem, caches results with TTL
+- `DetectionResult`: NamedTuple with input_dir, output_dir, schema_name, file counts
+- `DetectionCache`: Simple TTL cache for detection results
+
+**Usage**:
+```python
+from dbt_to_lookml.wizard.detection import ProjectDetector
+
+detector = ProjectDetector(working_dir=Path.cwd())
+result = detector.detect()
+
+if result.has_semantic_models():
+    print(f"Found: {result.input_dir}")
+```
+
+#### Generate Wizard (`wizard/generate_wizard.py`)
+
+**Purpose**: Interactive prompts for building generate commands
+
+**Main Classes**:
+- `GenerateWizardConfig`: Dataclass with all command options
+- `PathValidator`: Custom questionary validator for filesystem paths
+- `SchemaValidator`: Custom questionary validator for schema names
+- `GenerateWizard`: Main wizard orchestrating prompts and config
+
+**Prompt Sequence**:
+1. Input directory (with detection default)
+2. Output directory (with suggested default)
+3. Schema name (with detected default from YAML)
+4. View prefix (optional, empty default)
+5. Explore prefix (optional, empty default)
+6. Connection name (default: "redshift_test")
+7. Model name (default: "semantic_model")
+8. Timezone conversion (three-choice select: No/Yes/Explicitly disable)
+9. Additional options (checkboxes: dry-run, no-validation, show-summary)
+
+**Command Building**:
+```python
+config = GenerateWizardConfig(
+    input_dir=Path("semantic_models"),
+    output_dir=Path("build/lookml"),
+    schema="analytics",
+)
+command = config.to_command_string(multiline=True)
+# Returns: "dbt-to-lookml generate \\\n  -i semantic_models \\\n  -o build/lookml \\\n  -s analytics"
+```
+
+### Testing Strategy
+
+#### Unit Tests (95%+ coverage target)
+
+**Detection Tests** (`src/tests/unit/test_wizard_detection.py`):
+- Directory detection scenarios (semantic_models, models/semantic, etc.)
+- Multiple candidate priority handling
+- Missing/empty directory handling
+- Permission and symlink error handling
+- Cache functionality and TTL expiration
+
+**Generate Wizard Tests** (`src/tests/unit/test_generate_wizard.py`):
+- Config dataclass command building (all option combinations)
+- Validator classes (PathValidator, SchemaValidator)
+- Wizard prompt methods with mocked questionary
+- Full wizard flow with sequential mocks
+- Error handling and cancellation scenarios
+- Detection integration with mocked ProjectDetector
+
+**Mocking Patterns**:
+```python
+# Mock questionary prompts
+@patch("dbt_to_lookml.wizard.generate_wizard.questionary.text")
+def test_wizard(mock_text):
+    mock_text.return_value.ask.return_value = "user_input"
+    wizard = GenerateWizard()
+    result = wizard._prompt_schema()
+    assert result == "user_input"
+
+# Mock filesystem detection
+@patch("dbt_to_lookml.wizard.detection.ProjectDetector")
+def test_detection(mock_detector_class):
+    mock_detector = MagicMock()
+    mock_detector_class.return_value = mock_detector
+    mock_detector.detect.return_value = MagicMock(input_dir=Path(...))
+```
+
+#### Integration Tests (`src/tests/integration/test_wizard_integration.py`)
+
+- Realistic project structure creation with semantic models
+- Full wizard flow with mocked prompts and real file operations
+- Detection + wizard + generator end-to-end workflows
+- Error recovery and validation failure scenarios
+
+#### CLI Tests (`src/tests/test_cli.py::TestCLIWizard`)
+
+- Wizard command help text and availability
+- Wizard generate subcommand testing
+- TUI flag handling (with/without Textual)
+- Non-interactive mode handling
+
+### Coverage Requirements
+
+**Per-Module Targets**:
+- `wizard/detection.py`: 95%+ branch coverage
+- `wizard/generate_wizard.py`: 95%+ branch coverage
+- `wizard/base.py`: 95%+ branch coverage
+- `wizard/tui.py`: 85%+ coverage (optional feature)
+- `wizard/tui_widgets.py`: 85%+ coverage (optional feature)
+
+**Overall Wizard Coverage**: 95%+
+
+### Error Handling
+
+**Error Categories**:
+1. **User Input Errors**: Real-time validation prevents invalid input
+   - Empty paths → "Path cannot be empty"
+   - Nonexistent directories → "Path does not exist"
+   - Invalid schema names → "Schema can only contain letters, numbers, _, -"
+   - User can re-enter or cancel with Ctrl-C
+
+2. **Filesystem Errors**: Graceful handling of permission/symlink issues
+   - Detection skips restricted directories
+   - PathValidator catches existence checks
+
+3. **Detection Failures**: Graceful degradation
+   - If detection fails, wizard continues with empty defaults
+   - User still provides full config via prompts
+
+4. **Execution Errors**: Command validation before execution
+   - Config validation in `validate_config()`
+   - LookML syntax validation during generation
+
+### Performance Considerations
+
+**Detection Performance**:
+- Target: < 500ms for detection on typical project
+- Caching with 5-minute TTL to reduce repeated scans
+- Limits directory traversal depth (max 3 levels)
+- Skips large directories (.git, node_modules, .venv)
+
+**Prompt Performance**:
+- < 100ms between prompts (questionary response time)
+- Target total wizard flow: < 2 minutes (mostly user think time)
+
 ## Common Pitfalls
 
 1. **Don't bypass interfaces**: Use `Parser.parse_directory()` and `Generator.write_files()`, not direct file I/O
@@ -307,6 +492,8 @@ dimension_group: created_at {
 3. **Test isolation**: Unit tests should not write to disk; use fixtures and temporary directories in integration tests
 4. **CLI output**: Use `rich.console.Console` for all CLI output (never print() directly in generators/parsers)
 5. **Multiline YAML expressions**: The parser strips multiline expressions; ensure proper SQL formatting in generated LookML
+6. **Wizard mocking**: Mock questionary at the module level where it's used (`dbt_to_lookml.wizard.generate_wizard.questionary`), not at import level
+7. **Detection caching**: Be aware of 5-minute cache TTL when testing detection; use `cache_enabled=False` for tests
 
 ## Python Version
 
