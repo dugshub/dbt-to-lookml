@@ -332,9 +332,7 @@ class ProjectDetector:
             # Fail silently - detection is best-effort
             return None
 
-    def _extract_schema_from_content(
-        self, content: dict[str, object]
-    ) -> str | None:
+    def _extract_schema_from_content(self, content: dict[str, object]) -> str | None:
         """Extract schema name from parsed YAML content.
 
         Handles multiple content structures:

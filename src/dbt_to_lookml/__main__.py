@@ -129,7 +129,12 @@ def wizard_test(mode: str) -> None:
     is_flag=True,
     help="Execute the generated command immediately after wizard completes",
 )
-def wizard_generate(execute: bool) -> None:
+@click.option(
+    "--wizard-tui",
+    is_flag=True,
+    help="Use TUI interface (requires textual)",
+)
+def wizard_generate(execute: bool, wizard_tui: bool) -> None:
     """Interactive wizard for building generate commands.
 
     The wizard will guide you through all generate command options:
@@ -148,29 +153,86 @@ def wizard_generate(execute: bool) -> None:
       # Run wizard and display command
       dbt-to-lookml wizard generate
 
+      # Run wizard with TUI interface
+      dbt-to-lookml wizard generate --wizard-tui
+
       # Run wizard and execute command immediately
       dbt-to-lookml wizard generate --execute
     """
-    from dbt_to_lookml.wizard.generate_wizard import run_generate_wizard
-    from dbt_to_lookml.wizard.types import WizardMode
+    if wizard_tui:
+        try:
+            from dbt_to_lookml.wizard import launch_tui_wizard
 
-    try:
-        command_str = run_generate_wizard(
-            mode=WizardMode.PROMPT,
-            execute=execute,
-        )
+            # Get smart defaults (DTL-017 - if implemented)
+            defaults: dict[str, Any] = {}
+            # TODO: Add detection module integration when DTL-017 is complete
+            # from dbt_to_lookml.wizard.detection import ProjectDetector
+            # detector = ProjectDetector()
+            # detection_result = detector.detect()
+            # if detection_result.success:
+            #     defaults = detection_result.to_dict()
 
-        if command_str is None:
-            # Wizard was cancelled
-            return
+            # Launch TUI
+            result = launch_tui_wizard(defaults)
 
-        if not execute:
-            console.print("\n[dim]To execute this command, run it in your terminal")
-            console.print("or use: dbt-to-lookml wizard generate --execute[/dim]")
+            if result:
+                # Execute the generate command with form data
+                console.print("[bold blue]Executing command...[/bold blue]")
 
-    except Exception as e:
-        console.print(f"[bold red]Error: {e}[/bold red]")
-        raise click.ClickException(str(e))
+                # Convert form data to click context and invoke generate
+                ctx = click.get_current_context()
+                ctx.invoke(
+                    generate,
+                    input_dir=Path(result["input_dir"]),
+                    output_dir=Path(result["output_dir"]),
+                    schema=result["schema"],
+                    view_prefix=result.get("view_prefix", ""),
+                    explore_prefix=result.get("explore_prefix", ""),
+                    dry_run=result.get("dry_run", False),
+                    no_validation=result.get("skip_validation", False),
+                    no_formatting=result.get("skip_formatting", False),
+                    show_summary=result.get("show_summary", False),
+                    connection=result.get("connection", "redshift_test"),
+                    model_name=result.get("model_name", "semantic_model"),
+                    convert_tz=result.get("convert_tz") == "yes",
+                    no_convert_tz=result.get("convert_tz") == "no",
+                    yes=False,
+                    preview=False,
+                )
+            else:
+                console.print("[yellow]Wizard cancelled[/yellow]")
+
+        except ImportError as e:
+            console.print(f"[bold red]Error: {e}[/bold red]")
+            console.print(
+                "\nTo use TUI mode, install wizard dependencies:\n"
+                "  pip install dbt-to-lookml[wizard]\n"
+                "  or: uv pip install -e '.[wizard]'\n"
+                "\nOr use the prompt-based wizard:\n"
+                "  dbt-to-lookml wizard generate"
+            )
+            raise click.ClickException("Textual library not available")
+    else:
+        from dbt_to_lookml.wizard.generate_wizard import run_generate_wizard
+        from dbt_to_lookml.wizard.types import WizardMode
+
+        try:
+            command_str = run_generate_wizard(
+                mode=WizardMode.PROMPT,
+                execute=execute,
+            )
+
+            if command_str is None:
+                # Wizard was cancelled
+                return
+
+            if not execute:
+                console.print("\n[dim]To execute this command, run it in your terminal")
+                console.print("or use: dbt-to-lookml wizard generate --execute[/dim]")
+
+        except Exception as e:
+            console.print(f"[bold red]Error: {e}[/bold red]")
+            raise click.ClickException(str(e))
 
 
 @cli.command(cls=RichCommand)

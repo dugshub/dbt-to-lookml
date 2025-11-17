@@ -423,9 +423,7 @@ class TestGenerateWizard:
         assert config_obj.no_validation is False
 
     @patch("questionary.path")
-    def test_run_wizard_cancelled_at_input_dir(
-        self, mock_path: MagicMock
-    ) -> None:
+    def test_run_wizard_cancelled_at_input_dir(self, mock_path: MagicMock) -> None:
         """Test wizard cancellation at input directory prompt."""
         mock_path.return_value.ask.return_value = None
 

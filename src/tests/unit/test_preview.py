@@ -222,7 +222,7 @@ class TestCommandPreview:
 
         assert syntax is not None
         # Verify it's a Syntax object
-        assert hasattr(syntax, 'code')
+        assert hasattr(syntax, "code")
 
     def test_render_preview_panel_with_config(self) -> None:
         """Test preview panel includes additional config."""

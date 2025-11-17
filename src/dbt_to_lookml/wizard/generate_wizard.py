@@ -376,9 +376,7 @@ class GenerateWizard(BaseWizard):
         result = questionary.path(
             f"Input directory{hint}:",
             default=default,
-            validate=PathValidator(
-                must_be_dir=True, message_prefix="Input directory"
-            ),
+            validate=PathValidator(must_be_dir=True, message_prefix="Input directory"),
             only_directories=True,
         ).ask()
 

@@ -4,6 +4,8 @@ This module provides prompt-based and TUI-based wizards for guiding users
 through configuration and command building.
 """
 
+from typing import Any
+
 from dbt_to_lookml.wizard.base import BaseWizard
 from dbt_to_lookml.wizard.detection import (
     DetectionResult,
@@ -14,4 +16,22 @@ __all__ = [
     "BaseWizard",
     "DetectionResult",
     "ProjectDetector",
+    "launch_tui_wizard",
 ]
+
+
+def launch_tui_wizard(defaults: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Launch TUI wizard for generate command.
+
+    Args:
+        defaults: Default values for form fields from project detection
+
+    Returns:
+        Form data dict if user executes, None if cancelled
+
+    Raises:
+        ImportError: If Textual library is not installed
+    """
+    from dbt_to_lookml.wizard.tui import launch_tui_wizard as _launch
+
+    return _launch(defaults)

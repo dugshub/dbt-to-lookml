@@ -11,6 +11,16 @@ from click.testing import CliRunner
 from dbt_to_lookml.__main__ import cli
 
 
+def _has_textual_available() -> bool:
+    """Check if Textual is available."""
+    try:
+        import textual  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 class TestCLI:
     """Test cases for CLI commands."""
 
@@ -1815,3 +1825,41 @@ class TestCLIConvertTzFlags:
             # Verify no files were created
             view_files = list(output_dir.glob("*.view.lkml"))
             assert len(view_files) == 0
+
+    @pytest.mark.cli
+    def test_wizard_generate_help(self, runner: CliRunner) -> None:
+        """Test wizard generate command help."""
+        result = runner.invoke(cli, ["wizard", "generate", "--help"])
+        assert result.exit_code == 0
+        assert "--wizard-tui" in result.output
+
+    @pytest.mark.cli
+    def test_wizard_generate_command_exists(self, runner: CliRunner) -> None:
+        """Test that wizard generate command exists."""
+        result = runner.invoke(cli, ["wizard", "generate", "--help"])
+        assert result.exit_code == 0
+        assert "wizard" in result.output or "generate" in result.output
+
+    @pytest.mark.cli
+    @pytest.mark.skipif(
+        not _has_textual_available(),
+        reason="Textual not installed",
+    )
+    def test_wizard_tui_flag_available(self, runner: CliRunner) -> None:
+        """Test --wizard-tui flag when Textual is available."""
+        # Just verify that the import works
+        try:
+            from dbt_to_lookml.wizard import launch_tui_wizard
+
+            assert callable(launch_tui_wizard)
+        except ImportError:
+            pytest.skip("Textual not available")
+
+    @pytest.mark.cli
+    def test_wizard_tui_flag_textual_unavailable(self, runner: CliRunner) -> None:
+        """Test error if Textual not installed."""
+        with patch("dbt_to_lookml.wizard.tui.TEXTUAL_AVAILABLE", False):
+            result = runner.invoke(cli, ["wizard", "generate", "--wizard-tui"])
+
+            assert result.exit_code != 0
+            assert "Textual" in result.output or "textual" in result.output

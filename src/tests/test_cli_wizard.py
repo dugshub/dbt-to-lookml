@@ -1,6 +1,5 @@
 """CLI tests for wizard command group."""
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
