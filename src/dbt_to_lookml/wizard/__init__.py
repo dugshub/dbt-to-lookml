@@ -4,7 +4,7 @@ This module provides prompt-based and TUI-based wizards for guiding users
 through configuration and command building.
 """
 
-from typing import Any
+from typing import Any, Optional
 
 from dbt_to_lookml.wizard.base import BaseWizard
 from dbt_to_lookml.wizard.detection import (
@@ -20,7 +20,9 @@ __all__ = [
 ]
 
 
-def launch_tui_wizard(defaults: dict[str, Any] | None = None) -> dict[str, Any] | None:
+def launch_tui_wizard(
+    defaults: Optional[dict[str, Any]] = None,
+) -> Optional[dict[str, Any]]:
     """Launch TUI wizard for generate command.
 
     Args:
