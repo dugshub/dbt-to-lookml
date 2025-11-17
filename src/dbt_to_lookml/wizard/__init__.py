@@ -5,5 +5,13 @@ through configuration and command building.
 """
 
 from dbt_to_lookml.wizard.base import BaseWizard
+from dbt_to_lookml.wizard.detection import (
+    DetectionResult,
+    ProjectDetector,
+)
 
-__all__ = ["BaseWizard"]
+__all__ = [
+    "BaseWizard",
+    "DetectionResult",
+    "ProjectDetector",
+]
