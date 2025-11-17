@@ -1,0 +1,735 @@
+---
+id: DTL-009
+title: "Update LookMLGenerator to accept and propagate convert_tz settings"
+type: spec
+status: ready
+created: 2025-11-12
+updated: 2025-11-12
+---
+
+# DTL-009 Implementation Specification
+
+## Overview
+
+This specification details the implementation of timezone conversion (`convert_tz`) parameter propagation in `LookMLGenerator` and the `SemanticModel` schema. This is part of the timezone conversion feature (DTL-007) and depends on DTL-008 (Dimension schema updates).
+
+**Dependency Status**: DTL-008 (Dimension schema changes) must be completed first. DTL-009 implements the generator-level default parameter that DTL-008's `_to_dimension_group_dict()` expects.
+
+## Current Architecture Analysis
+
+### LookMLGenerator Class
+**File**: `src/dbt_to_lookml/generators/lookml.py` (lines 23-70)
+
+**Current State**:
+- `__init__()` accepts 7 parameters: view_prefix, explore_prefix, validate_syntax, format_output, schema, connection, model_name
+- No timezone conversion configuration
+- Stores parameters as instance variables for use in generation methods
+- Has backward compatibility mapper class (MapperCompat)
+
+**Docstring Pattern** (lines 36-46):
+```python
+"""Initialize the generator.
+
+Args:
+    view_prefix: Prefix to add to view names.
+    explore_prefix: Prefix to add to explore names.
+    ...
+"""
+```
+
+### SemanticModel.to_lookml_dict() Method
+**File**: `src/dbt_to_lookml/schemas.py` (lines 309-401)
+
+**Current State**:
+- Takes only `schema: str = ""` parameter
+- Converts dimensions via `dim.to_lookml_dict()` at line 350 (non-time dims) and 157 (time dims)
+- No mechanism for passing generator-level defaults to dimensions
+- Time dimension conversion at lines 156-157:
+```python
+if dim.type == DimensionType.TIME:
+    dim_dict = dim.to_lookml_dict(default_convert_tz=convert_tz)
+```
+
+### Dimension.to_lookml_dict() Router
+**File**: `src/dbt_to_lookml/schemas.py` (lines 128-133)
+
+**Current State**:
+- Routes to `_to_dimension_dict()` for categorical dimensions
+- Routes to `_to_dimension_group_dict()` for time dimensions
+- No parameter passing for timezone conversion
+
+### Dimension._to_dimension_group_dict() Method
+**File**: `src/dbt_to_lookml/schemas.py` (lines 187-224)
+
+**Expected State After DTL-008**:
+- Will accept `default_convert_tz: bool | None = None` parameter
+- Will implement three-level precedence for convert_tz:
+  1. Per-dimension `config.meta.convert_tz` (highest priority)
+  2. `default_convert_tz` parameter
+  3. Hardcoded default: False
+
+## Implementation Plan
+
+### Phase 1: LookMLGenerator Updates
+
+#### 1.1 Add convert_tz Parameter to __init__()
+**Location**: `src/dbt_to_lookml/generators/lookml.py`, lines 26-35
+
+**Changes Required**:
+
+```python
+def __init__(
+    self,
+    view_prefix: str = "",
+    explore_prefix: str = "",
+    validate_syntax: bool = True,
+    format_output: bool = True,
+    schema: str = "",
+    connection: str = "redshift_test",
+    model_name: str = "semantic_model",
+    convert_tz: bool | None = None,  # NEW PARAMETER
+) -> None:
+```
+
+**Details**:
+- Add parameter after `model_name` (line 34)
+- Type: `bool | None` with default None (allows None as valid value for "use dimension default")
+- Store as instance variable after line 58:
+```python
+self.convert_tz = convert_tz
+```
+
+**Docstring Update** (lines 36-46):
+Add after connection parameter description:
+```
+convert_tz: Optional timezone conversion setting for time dimensions.
+    None means use dimension-level defaults, True converts to UTC, False disables conversion.
+```
+
+**Rationale**:
+- Enables generator-level default for timezone conversion
+- Default None maintains backward compatibility (dimensions use their own config)
+- Follows existing parameter naming convention (boolean flags)
+
+#### 1.2 Update _generate_view_lookml() Method
+**Location**: `src/dbt_to_lookml/generators/lookml.py`, lines 354-393
+
+**Current Code** (lines 370-381):
+```python
+if self.view_prefix:
+    prefixed_model = SemanticModel(
+        name=f"{self.view_prefix}{semantic_model.name}",
+        **{
+            k: v
+            for k, v in semantic_model.model_dump().items()
+            if k != "name"
+        },
+    )
+    view_dict = prefixed_model.to_lookml_dict(schema=self.schema)
+else:
+    view_dict = semantic_model.to_lookml_dict(schema=self.schema)
+```
+
+**Updated Code**:
+```python
+if self.view_prefix:
+    prefixed_model = SemanticModel(
+        name=f"{self.view_prefix}{semantic_model.name}",
+        **{
+            k: v
+            for k, v in semantic_model.model_dump().items()
+            if k != "name"
+        },
+    )
+    view_dict = prefixed_model.to_lookml_dict(
+        schema=self.schema,
+        convert_tz=self.convert_tz
+    )
+else:
+    view_dict = semantic_model.to_lookml_dict(
+        schema=self.schema,
+        convert_tz=self.convert_tz
+    )
+```
+
+**Details**:
+- Pass `self.convert_tz` to both `to_lookml_dict()` calls
+- Maintains backward compatibility (None is valid value)
+- Ensures all views generated by this generator use the same timezone setting
+
+### Phase 2: SemanticModel Schema Updates
+
+#### 2.1 Update to_lookml_dict() Signature
+**Location**: `src/dbt_to_lookml/schemas.py`, line 309
+
+**Current Signature**:
+```python
+def to_lookml_dict(self, schema: str = "") -> dict[str, Any]:
+```
+
+**Updated Signature**:
+```python
+def to_lookml_dict(
+    self, schema: str = "", convert_tz: bool | None = None
+) -> dict[str, Any]:
+```
+
+**Details**:
+- Add `convert_tz: bool | None = None` parameter after schema
+- Parameter is optional with None default for backward compatibility
+- Will be passed to time dimension conversion
+
+**Docstring Update**:
+Update the docstring to document the parameter:
+```python
+"""Convert entire semantic model to lkml views format.
+
+Args:
+    schema: Optional database schema name to prepend to table name.
+    convert_tz: Optional timezone conversion setting. Passed to time dimensions
+        as default_convert_tz. None means use dimension-level defaults.
+
+Returns:
+    Dictionary in LookML views format.
+"""
+```
+
+#### 2.2 Update Dimension Conversion Loop
+**Location**: `src/dbt_to_lookml/schemas.py`, lines 348-354
+
+**Current Code**:
+```python
+# Convert dimensions (separate regular dims from time dims)
+for dim in self.dimensions:
+    dim_dict = dim.to_lookml_dict()
+    if dim.type == DimensionType.TIME:
+        dimension_groups.append(dim_dict)
+    else:
+        dimensions.append(dim_dict)
+```
+
+**Updated Code**:
+```python
+# Convert dimensions (separate regular dims from time dims)
+for dim in self.dimensions:
+    # Pass convert_tz to time dimensions to propagate generator default
+    if dim.type == DimensionType.TIME:
+        dim_dict = dim.to_lookml_dict(default_convert_tz=convert_tz)
+    else:
+        dim_dict = dim.to_lookml_dict()
+
+    if dim.type == DimensionType.TIME:
+        dimension_groups.append(dim_dict)
+    else:
+        dimensions.append(dim_dict)
+```
+
+**Details**:
+- Only pass `convert_tz` to time dimensions (categorical dimensions don't support convert_tz)
+- Uses conditional `if dim.type == DimensionType.TIME` to determine whether to pass parameter
+- Maintains clean separation: only time dimensions receive timezone configuration
+- Non-time dimensions generate without the parameter (maintains original behavior)
+
+**Note on Routing**:
+The `Dimension.to_lookml_dict()` method (lines 128-133) routes to `_to_dimension_group_dict()` for time dimensions. The router method signature is unchanged, but DTL-008 will have updated `_to_dimension_group_dict()` to accept the `default_convert_tz` parameter. The routing works like this:
+
+```python
+# In Dimension.to_lookml_dict()
+def to_lookml_dict(self) -> dict[str, Any]:
+    if self.type == DimensionType.TIME:
+        return self._to_dimension_group_dict()  # Can now accept default_convert_tz
+    else:
+        return self._to_dimension_dict()
+```
+
+After DTL-008, the method can be called with positional/keyword arguments:
+```python
+# From SemanticModel.to_lookml_dict()
+dim_dict = dim.to_lookml_dict(default_convert_tz=convert_tz)
+```
+
+Wait - this requires updating `Dimension.to_lookml_dict()` signature. Let me reconsider:
+
+#### CORRECTION: Update Dimension.to_lookml_dict() Router
+
+**Location**: `src/dbt_to_lookml/schemas.py`, lines 128-133
+
+**Current Code**:
+```python
+def to_lookml_dict(self) -> dict[str, Any]:
+    """Convert dimension to LookML format."""
+    if self.type == DimensionType.TIME:
+        return self._to_dimension_group_dict()
+    else:
+        return self._to_dimension_dict()
+```
+
+**Updated Code**:
+```python
+def to_lookml_dict(self, default_convert_tz: bool | None = None) -> dict[str, Any]:
+    """Convert dimension to LookML format.
+
+    Args:
+        default_convert_tz: Optional default timezone conversion setting for time dimensions.
+    """
+    if self.type == DimensionType.TIME:
+        return self._to_dimension_group_dict(default_convert_tz=default_convert_tz)
+    else:
+        return self._to_dimension_dict()
+```
+
+**Details**:
+- Add `default_convert_tz: bool | None = None` parameter to router method
+- Pass through to `_to_dimension_group_dict()` when routing to time dimensions
+- Non-time dimensions don't receive the parameter (they don't support convert_tz)
+- Maintains backward compatibility (parameter is optional with None default)
+
+**Then in SemanticModel** (lines 348-354), the updated loop would be:
+```python
+# Convert dimensions (separate regular dims from time dims)
+for dim in self.dimensions:
+    # Pass convert_tz to time dimensions to propagate generator default
+    if dim.type == DimensionType.TIME:
+        dim_dict = dim.to_lookml_dict(default_convert_tz=convert_tz)
+    else:
+        dim_dict = dim.to_lookml_dict()
+
+    if dim.type == DimensionType.TIME:
+        dimension_groups.append(dim_dict)
+    else:
+        dimensions.append(dim_dict)
+```
+
+## Code Changes Summary
+
+### File: src/dbt_to_lookml/generators/lookml.py
+
+**Change 1** (line 34): Add parameter to `__init__()`
+```python
+convert_tz: bool | None = None,
+```
+
+**Change 2** (after line 58): Store instance variable
+```python
+self.convert_tz = convert_tz
+```
+
+**Change 3** (lines 36-46): Update docstring
+```python
+"""Initialize the generator.
+
+Args:
+    view_prefix: Prefix to add to view names.
+    explore_prefix: Prefix to add to explore names.
+    validate_syntax: Whether to validate generated LookML syntax.
+    format_output: Whether to format LookML output for readability.
+    schema: Database schema name for sql_table_name.
+    connection: Looker connection name for the model file.
+    model_name: Name for the generated model file (without .model.lkml extension).
+    convert_tz: Optional timezone conversion setting for time dimensions.
+        None means use dimension-level defaults, True converts to UTC, False disables conversion.
+"""
+```
+
+**Change 4** (lines 379, 381): Update _generate_view_lookml() calls
+```python
+view_dict = prefixed_model.to_lookml_dict(
+    schema=self.schema,
+    convert_tz=self.convert_tz
+)
+```
+and
+```python
+view_dict = semantic_model.to_lookml_dict(
+    schema=self.schema,
+    convert_tz=self.convert_tz
+)
+```
+
+### File: src/dbt_to_lookml/schemas.py
+
+**Change 1** (lines 128-133): Update Dimension.to_lookml_dict() signature and implementation
+```python
+def to_lookml_dict(self, default_convert_tz: bool | None = None) -> dict[str, Any]:
+    """Convert dimension to LookML format.
+
+    Args:
+        default_convert_tz: Optional default timezone conversion setting for time dimensions.
+    """
+    if self.type == DimensionType.TIME:
+        return self._to_dimension_group_dict(default_convert_tz=default_convert_tz)
+    else:
+        return self._to_dimension_dict()
+```
+
+**Change 2** (line 309): Update SemanticModel.to_lookml_dict() signature
+```python
+def to_lookml_dict(
+    self, schema: str = "", convert_tz: bool | None = None
+) -> dict[str, Any]:
+```
+
+**Change 3** (lines 313-316): Update docstring
+```python
+"""Convert entire semantic model to lkml views format.
+
+Args:
+    schema: Optional database schema name to prepend to table name.
+    convert_tz: Optional timezone conversion setting. Passed to time dimensions
+        as default_convert_tz. None means use dimension-level defaults.
+
+Returns:
+    Dictionary in LookML views format.
+"""
+```
+
+**Change 4** (lines 348-365): Update dimension conversion loop
+```python
+# Convert dimensions (separate regular dims from time dims)
+for dim in self.dimensions:
+    # Pass convert_tz to time dimensions to propagate generator default
+    if dim.type == DimensionType.TIME:
+        dim_dict = dim.to_lookml_dict(default_convert_tz=convert_tz)
+    else:
+        dim_dict = dim.to_lookml_dict()
+
+    if dim.type == DimensionType.TIME:
+        dimension_groups.append(dim_dict)
+    else:
+        dimensions.append(dim_dict)
+```
+
+## Testing Strategy
+
+### Unit Tests to Add
+
+**File**: `src/tests/unit/test_lookml_generator.py`
+
+#### Test 1: Generator initialization with convert_tz
+```python
+def test_generator_initialization_with_convert_tz(self) -> None:
+    """Test that LookMLGenerator accepts convert_tz parameter."""
+    # Test None (default)
+    gen_none = LookMLGenerator(convert_tz=None)
+    assert gen_none.convert_tz is None
+
+    # Test True
+    gen_true = LookMLGenerator(convert_tz=True)
+    assert gen_true.convert_tz is True
+
+    # Test False
+    gen_false = LookMLGenerator(convert_tz=False)
+    assert gen_false.convert_tz is False
+
+    # Test backward compatibility (no convert_tz parameter)
+    gen_default = LookMLGenerator()
+    assert gen_default.convert_tz is None
+```
+
+**Rationale**: Verify that the generator correctly stores the convert_tz parameter in all variants.
+
+#### Test 2: Backward compatibility with existing initialization
+```python
+def test_generator_backward_compatibility_initialization(self) -> None:
+    """Test that existing code without convert_tz still works."""
+    # Old-style initialization should work
+    generator = LookMLGenerator(
+        view_prefix="v_",
+        explore_prefix="e_",
+        schema="public",
+        validate_syntax=True,
+        format_output=True,
+    )
+    assert generator.convert_tz is None
+    assert generator.view_prefix == "v_"
+    assert generator.schema == "public"
+```
+
+**Rationale**: Ensure backward compatibility with existing code that doesn't use convert_tz.
+
+#### Test 3: convert_tz propagation to SemanticModel
+```python
+def test_convert_tz_propagation_to_semantic_model(self) -> None:
+    """Test that convert_tz is passed to SemanticModel.to_lookml_dict()."""
+    generator = LookMLGenerator(convert_tz=True)
+
+    # Create a semantic model with a time dimension
+    model = SemanticModel(
+        name="events",
+        model="events",
+        dimensions=[
+            Dimension(
+                name="created_at",
+                type=DimensionType.TIME,
+                type_params={"time_granularity": "day"}
+            )
+        ]
+    )
+
+    # Generate view LookML
+    content = generator._generate_view_lookml(model)
+
+    # Verify content is valid and contains expected elements
+    assert isinstance(content, str)
+    assert len(content) > 0
+    # Note: Exact verification of convert_tz in output depends on DTL-008 implementation
+```
+
+**Rationale**: Verify that the generator passes convert_tz parameter through the generation pipeline.
+
+**File**: `src/tests/unit/test_schemas.py`
+
+#### Test 4: SemanticModel.to_lookml_dict() accepts convert_tz parameter
+```python
+def test_semantic_model_to_lookml_dict_with_convert_tz(self) -> None:
+    """Test that SemanticModel.to_lookml_dict() accepts convert_tz parameter."""
+    model = SemanticModel(
+        name="test_model",
+        model="test_table",
+        dimensions=[
+            Dimension(
+                name="created_at",
+                type=DimensionType.TIME,
+                type_params={"time_granularity": "day"}
+            )
+        ]
+    )
+
+    # Test with None (default)
+    result_none = model.to_lookml_dict(schema="public", convert_tz=None)
+    assert isinstance(result_none, dict)
+    assert "views" in result_none
+
+    # Test with True
+    result_true = model.to_lookml_dict(schema="public", convert_tz=True)
+    assert isinstance(result_true, dict)
+
+    # Test with False
+    result_false = model.to_lookml_dict(schema="public", convert_tz=False)
+    assert isinstance(result_false, dict)
+
+    # Test backward compatibility (no convert_tz parameter)
+    result_compat = model.to_lookml_dict(schema="public")
+    assert isinstance(result_compat, dict)
+```
+
+**Rationale**: Verify that SemanticModel method correctly accepts and handles the parameter.
+
+#### Test 5: Dimension.to_lookml_dict() accepts default_convert_tz parameter
+```python
+def test_dimension_to_lookml_dict_with_default_convert_tz(self) -> None:
+    """Test that Dimension.to_lookml_dict() accepts default_convert_tz parameter."""
+    dim = Dimension(
+        name="created_at",
+        type=DimensionType.TIME,
+        type_params={"time_granularity": "day"}
+    )
+
+    # Test with None (default)
+    result_none = dim.to_lookml_dict(default_convert_tz=None)
+    assert isinstance(result_none, dict)
+    assert result_none["name"] == "created_at"
+
+    # Test with True
+    result_true = dim.to_lookml_dict(default_convert_tz=True)
+    assert isinstance(result_true, dict)
+
+    # Test with False
+    result_false = dim.to_lookml_dict(default_convert_tz=False)
+    assert isinstance(result_false, dict)
+
+    # Test backward compatibility (no parameter)
+    result_compat = dim.to_lookml_dict()
+    assert isinstance(result_compat, dict)
+```
+
+**Rationale**: Verify that Dimension router method correctly accepts and routes the parameter.
+
+### Integration Test Verification
+
+- Existing integration tests should continue to pass without modification
+- Golden tests will be updated in DTL-012
+- No database changes required
+- No configuration changes required
+
+### Test Execution Checklist
+
+```bash
+# Run all unit tests
+python -m pytest src/tests/unit/test_lookml_generator.py -v
+python -m pytest src/tests/unit/test_schemas.py -v
+
+# Run all tests to verify no regressions
+make test
+
+# Type checking
+make type-check
+
+# Full quality gate
+make quality-gate
+```
+
+## Backward Compatibility
+
+**Breaking Changes**: None
+
+**Compatibility Features**:
+1. All new parameters are optional with None defaults
+2. Existing code can instantiate LookMLGenerator without convert_tz parameter
+3. Existing calls to SemanticModel.to_lookml_dict() work without convert_tz parameter
+4. Dimension.to_lookml_dict() signature change accepts optional parameter only for time dimensions
+5. None is a valid value that means "use dimension-level defaults" (not the same as True/False)
+
+**Migration Path**:
+- Existing code requires no changes
+- New code can opt-in to generator-level defaults by passing convert_tz parameter
+
+## Type Safety
+
+- **File**: All type hints use `bool | None` (PEP 604 union syntax)
+- **Consistency**: Matches existing codebase style and patterns
+- **Validation**: All changes pass `mypy --strict` type checking
+- **Docstrings**: All changes include updated docstrings with parameter documentation
+
+## Implementation Order
+
+1. **Update LookMLGenerator.__init__()** - Add parameter and instance variable
+2. **Update LookMLGenerator._generate_view_lookml()** - Pass convert_tz to to_lookml_dict()
+3. **Update Dimension.to_lookml_dict()** - Add router parameter for default_convert_tz
+4. **Update SemanticModel.to_lookml_dict()** - Add parameter and pass to dimensions
+5. **Add unit tests** - Test initialization, propagation, backward compatibility
+6. **Run full test suite** - Ensure no regressions
+7. **Type check with mypy** - Verify strict typing compliance
+
+## Verification Checklist
+
+- [ ] All 5 code changes implemented as specified
+- [ ] All 5 unit tests added and passing
+- [ ] Existing tests pass without modification
+- [ ] `make type-check` passes with no errors
+- [ ] `make lint` passes with no errors
+- [ ] `make test` passes with no regressions
+- [ ] `make quality-gate` passes (lint + type-check + tests)
+- [ ] Backward compatibility verified with existing code
+- [ ] Parameter None correctly represents "use dimension default"
+- [ ] DTL-008 has been completed first (Dimension schema changes)
+
+## Precedence Chain
+
+After DTL-009, the timezone conversion precedence chain will be:
+
+1. **Per-dimension metadata** (DTL-008): `config.meta.convert_tz` in dimension YAML
+2. **Generator parameter** (DTL-009): `LookMLGenerator(convert_tz=...)`
+3. **CLI flag** (DTL-010): `--convert-tz` / `--no-convert-tz`
+4. **Default**: `convert_tz: no` (explicit in generated LookML)
+
+This implementation provides level 2 of the chain.
+
+## Related Issues
+
+- **Prerequisite**: DTL-008 (Dimension schema must accept convert_tz in _to_dimension_group_dict)
+- **Successor**: DTL-010 (CLI adds --convert-tz flag)
+- **Successor**: DTL-011 (Unit tests for timezone conversion)
+- **Successor**: DTL-012 (Integration and golden tests)
+- **Successor**: DTL-013 (Documentation updates)
+
+## Risks and Mitigations
+
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|-----------|
+| Breaking change to API | Low | High | Use default parameter None; existing calls work without changes |
+| Mypy type errors | Low | Medium | Use consistent `bool \| None` type throughout; run mypy before merge |
+| Incorrect parameter routing | Medium | High | Add comprehensive unit tests for parameter passing; review flow diagram |
+| Missing DTL-008 prerequisite | Low | High | Clearly document dependency; check that DTL-008 is merged first |
+| Test coverage gaps | Medium | Medium | Add 5+ unit tests covering all code paths and parameter combinations |
+
+## Code Review Checklist
+
+- [ ] All parameter names match DTL-008 expectations (`default_convert_tz` for dimension, `convert_tz` for generator)
+- [ ] Type hints are consistent with codebase style (`bool | None`)
+- [ ] Docstrings updated with examples and parameter descriptions
+- [ ] No breaking changes to public API
+- [ ] Tests cover all parameter combinations (None, True, False)
+- [ ] Tests cover backward compatibility (no parameter provided)
+- [ ] `mypy --strict` passes without errors
+- [ ] Backward compatibility verified with existing tests
+- [ ] Parameter routing verified (only time dimensions receive default_convert_tz)
+- [ ] DTL-008 prerequisite has been completed
+
+## Deployment Notes
+
+- This change is safe to deploy independently (backward compatible)
+- DTL-009 can be merged before DTL-010 and DTL-011
+- DTL-012 (test updates) should follow after this implementation
+- No database or configuration changes needed
+- No CLI changes (DTL-010 handles that)
+- No package dependency updates required
+
+## Implementation Status
+
+**Status**: Ready for implementation
+
+**Dependencies**:
+- DTL-008 must be completed first (Dimension schema changes)
+
+**Estimated Effort**: 2-3 hours
+- Code changes: 30-45 minutes
+- Unit test implementation: 45-60 minutes
+- Full test suite execution: 30 minutes
+- Code review and refinement: 15-30 minutes
+
+**Files to Modify**:
+1. `src/dbt_to_lookml/generators/lookml.py` (4 changes)
+2. `src/dbt_to_lookml/schemas.py` (4 changes)
+3. `src/tests/unit/test_lookml_generator.py` (2-3 new tests)
+4. `src/tests/unit/test_schemas.py` (3-4 new tests)
+
+**Lines of Code**:
+- Generator changes: ~15 lines
+- Schema changes: ~20 lines
+- Test code: ~150 lines
+- Total: ~185 lines
+
+---
+
+## Appendix: Parameter Flow Diagram
+
+```
+User Code / DTL-010 CLI
+    ↓
+LookMLGenerator.__init__(convert_tz=True/False/None)
+    ↓
+self.convert_tz instance variable stored
+    ↓
+generate() method
+    ↓
+_generate_view_lookml(semantic_model)
+    ↓
+semantic_model.to_lookml_dict(schema=..., convert_tz=self.convert_tz)
+    ↓
+For each dimension:
+    if DimensionType.TIME:
+        dim.to_lookml_dict(default_convert_tz=convert_tz)
+        ↓
+        Dimension.to_lookml_dict() router passes to:
+        ↓
+        _to_dimension_group_dict(default_convert_tz=convert_tz)
+        ↓
+        [DTL-008] Implements precedence:
+        1. self.config.meta.convert_tz (if set)
+        2. default_convert_tz parameter
+        3. hardcoded default: False
+        ↓
+        Returns dict with "convert_tz": "yes"/"no"
+    else:
+        dim.to_lookml_dict() [no timezone parameter]
+        ↓
+        _to_dimension_dict()
+        ↓
+        Returns dict without convert_tz (not applicable)
+    ↓
+SemanticModel builds view dict with all dimensions
+    ↓
+LookML content generated and returned to user
+```
+

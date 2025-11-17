@@ -1,11 +1,19 @@
 """Command-line interface for dbt-to-lookml."""
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import click
 from rich.console import Console
 
+from dbt_to_lookml.cli.formatting import (
+    format_error,
+    format_success,
+    format_warning,
+)
+from dbt_to_lookml.cli.help_formatter import RichCommand
 from dbt_to_lookml.parsers.dbt import DbtParser as SemanticModelParser
 
 try:
@@ -21,7 +29,39 @@ console = Console()
 @click.group()
 @click.version_option()
 def cli() -> None:
-    """Convert dbt semantic models to LookML views and explores."""
+    """Convert dbt semantic models to LookML views and explores.
+
+    A command-line tool for transforming dbt semantic layer definitions
+    into Looker's LookML format. Supports validation, generation, and
+    interactive wizards for building commands.
+
+    Quick Start:
+
+      1. Validate your semantic models:
+         $ dbt-to-lookml validate -i semantic_models/
+
+      2. Generate LookML files:
+         $ dbt-to-lookml generate -i semantic_models/ -o lookml/ -s prod_schema
+
+      3. Use the interactive wizard:
+         $ dbt-to-lookml wizard generate
+
+    Common Workflows:
+
+      Development workflow with dry-run:
+      $ dbt-to-lookml generate -i models/ -o lookml/ -s dev --dry-run
+
+      Production generation with validation:
+      $ dbt-to-lookml validate -i models/ --strict && \\
+        dbt-to-lookml generate -i models/ -o dist/ -s prod --no-validation
+
+      Custom prefixes and timezone handling:
+      $ dbt-to-lookml generate -i models/ -o lookml/ -s analytics \\
+          --view-prefix "sm_" --explore-prefix "exp_" --convert-tz
+
+    For more information on a specific command:
+      $ dbt-to-lookml COMMAND --help
+    """
     pass
 
 
@@ -82,7 +122,7 @@ def wizard_test(mode: str) -> None:
     console.print("[dim]Test config:[/dim]", config)
 
 
-@cli.command()
+@cli.command(cls=RichCommand)
 @click.option(
     "--input-dir",
     "-i",
@@ -176,20 +216,46 @@ def generate(
     convert_tz: bool,
     no_convert_tz: bool,
 ) -> None:
-    """Generate LookML views and explores from semantic models."""
+    """Generate LookML views and explores from semantic models.
+
+    This command parses dbt semantic model YAML files and generates
+    corresponding LookML view files (.view.lkml) and a consolidated
+    explores file (explores.lkml).
+
+    Examples:
+
+      Basic generation:
+      $ dbt-to-lookml generate -i semantic_models/ -o build/lookml -s prod_schema
+
+      With prefixes and dry-run preview:
+      $ dbt-to-lookml generate -i models/ -o lookml/ -s analytics \\
+          --view-prefix "sm_" --explore-prefix "exp_" --dry-run
+
+      With timezone conversion:
+      $ dbt-to-lookml generate -i models/ -o lookml/ -s dwh --convert-tz
+
+      With custom connection and model name:
+      $ dbt-to-lookml generate -i models/ -o lookml/ -s redshift_prod \\
+          --connection "redshift_analytics" --model-name "semantic_layer"
+
+    For interactive mode, use:
+      $ dbt-to-lookml wizard generate
+    """
     if not GENERATOR_AVAILABLE:
-        console.print(
-            "[bold red]Error: LookML generator dependencies not available[/bold red]"
+        error_panel = format_error(
+            "LookML generator dependencies not available",
+            context="Install with: pip install lkml",
         )
-        console.print("Please install required dependencies: pip install lkml")
+        console.print(error_panel)
         raise click.ClickException("Missing dependencies for LookML generation")
 
     # Validate mutual exclusivity of timezone flags
     if convert_tz and no_convert_tz:
-        console.print(
-            "[bold red]Error: --convert-tz and --no-convert-tz are "
-            "mutually exclusive[/bold red]"
+        error_panel = format_error(
+            "Conflicting timezone options provided",
+            context="Use either --convert-tz OR --no-convert-tz, not both",
         )
+        console.print(error_panel)
         raise click.ClickException(
             "--convert-tz and --no-convert-tz cannot be used together"
         )
@@ -243,7 +309,8 @@ def generate(
 
         if len(semantic_models) == 0:
             console.print(
-                "[bold red]No semantic models found or all files failed to parse[/bold red]"
+                "[bold red]No semantic models found or all files failed to "
+                "parse[/bold red]"
             )
             raise click.ClickException("No valid semantic models to generate from")
 
@@ -253,7 +320,8 @@ def generate(
 
         if error_count > 0:
             console.print(
-                f"[yellow]Warning: {error_count} files had parse errors and were skipped[/yellow]"
+                f"[yellow]Warning: {error_count} files had parse errors and "
+                f"were skipped[/yellow]"
             )
 
         if not dry_run:
@@ -262,14 +330,15 @@ def generate(
             )
         else:
             console.print(
-                f"[bold yellow]Previewing LookML generation for {output_dir}[/bold yellow]"
+                f"[bold yellow]Previewing LookML generation for "
+                f"{output_dir}[/bold yellow]"
             )
 
         # Determine convert_tz value for generator
         # If neither flag specified: None (use generator default)
         # If --convert-tz specified: True
         # If --no-convert-tz specified: False
-        convert_tz_value: Optional[bool] = None
+        convert_tz_value: bool | None = None
         if convert_tz:
             convert_tz_value = True
         elif no_convert_tz:
@@ -294,13 +363,17 @@ def generate(
 
         # Show results
         if not dry_run:
-            console.print(
-                "[bold green]✓ LookML generation completed successfully[/bold green]"
+            success_panel = format_success(
+                "LookML generation completed successfully",
+                details=f"Generated {len(generated_files)} files in {output_dir}",
             )
+            console.print(success_panel)
         else:
-            console.print(
-                "[bold yellow]✓ LookML generation preview completed[/bold yellow]"
+            success_panel = format_success(
+                "LookML generation preview completed",
+                details=f"Would generate {len(generated_files)} files in {output_dir}",
             )
+            console.print(success_panel)
 
         # Show validation results
         if validation_errors:
@@ -331,11 +404,15 @@ def generate(
             raise click.ClickException("LookML validation failed")
 
     except Exception as e:
-        console.print(f"[bold red]Error: {e}[/bold red]")
+        error_panel = format_error(
+            "Generation failed",
+            context=f"Error: {e}",
+        )
+        console.print(error_panel)
         raise click.ClickException(str(e))
 
 
-@cli.command()
+@cli.command(cls=RichCommand)
 @click.option(
     "--input-dir",
     "-i",
@@ -355,7 +432,26 @@ def generate(
     help="Show detailed validation results",
 )
 def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
-    """Validate semantic model files."""
+    """Validate semantic model YAML files without generating LookML.
+
+    This command parses and validates semantic model files to check
+    for syntax errors, schema violations, and structural issues.
+
+    Examples:
+
+      Basic validation:
+      $ dbt-to-lookml validate -i semantic_models/
+
+      Strict mode (fail on first error):
+      $ dbt-to-lookml validate -i semantic_models/ --strict
+
+      Verbose output with model details:
+      $ dbt-to-lookml validate -i semantic_models/ --verbose
+
+      Quick check before generation:
+      $ dbt-to-lookml validate -i models/ && \\
+        dbt-to-lookml generate -i models/ -o lookml/ -s prod
+    """
     try:
         console.print(
             f"[bold blue]Validating semantic models in {input_dir}[/bold blue]"
@@ -434,14 +530,17 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
                     raise
 
         count = len(semantic_models)
-        console.print(
-            f"\n[bold green]✓ Validated {count} semantic models from {file_count} files[/bold green]"
+        success_panel = format_success(
+            f"Validated {count} semantic models from {file_count} files"
         )
+        console.print(success_panel)
 
         if error_count > 0:
-            console.print(
-                f"[yellow]Warning: {error_count} files had validation errors[/yellow]"
+            warning_panel = format_warning(
+                f"{error_count} files had validation errors",
+                context="Review the errors above for details",
             )
+            console.print(warning_panel)
 
         if verbose:
             console.print("\n[bold]Summary:[/bold]")
@@ -449,7 +548,11 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
                 console.print(f"  - {model.name}")
 
     except Exception as e:
-        console.print(f"[bold red]Validation failed: {e}[/bold red]")
+        error_panel = format_error(
+            "Validation failed",
+            context=f"Error: {e}",
+        )
+        console.print(error_panel)
         raise click.ClickException(str(e))
 
 

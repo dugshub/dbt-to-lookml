@@ -809,8 +809,8 @@ class TestEndToEndIntegration:
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            generated_files, validation_errors = generator_with_tz.generate_lookml_files(
-                semantic_models, output_dir
+            generated_files, validation_errors = (
+                generator_with_tz.generate_lookml_files(semantic_models, output_dir)
             )
 
             assert len(validation_errors) == 0

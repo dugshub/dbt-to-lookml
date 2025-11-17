@@ -874,9 +874,7 @@ class TestGoldenFiles:
                 )
 
         # Ensure we checked at least some golden files
-        assert files_checked > 0, (
-            "Golden files should exist at expected locations"
-        )
+        assert files_checked > 0, "Golden files should exist at expected locations"
 
         # Ensure we found dimension_groups to validate
         assert dimension_groups_found > 0, (
