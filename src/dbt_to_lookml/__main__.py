@@ -1,7 +1,7 @@
 """Command-line interface for dbt-to-lookml."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 from rich.console import Console
@@ -23,6 +23,63 @@ console = Console()
 def cli() -> None:
     """Convert dbt semantic models to LookML views and explores."""
     pass
+
+
+@cli.group()
+def wizard() -> None:
+    """Interactive wizard for building and running commands.
+
+    Run 'dbt-to-lookml wizard --help' to see available wizard commands.
+
+    Examples:
+      dbt-to-lookml wizard generate    # Wizard for generate command
+      dbt-to-lookml wizard validate    # Wizard for validate command
+    """
+    pass
+
+
+@wizard.command(name="test")
+@click.option(
+    "--mode",
+    type=click.Choice(["prompt", "tui"], case_sensitive=False),
+    default="prompt",
+    help="Wizard interaction mode (prompt or tui)",
+)
+def wizard_test(mode: str) -> None:
+    """Test wizard infrastructure (temporary command for DTL-015).
+
+    This command tests that the wizard module is properly installed
+    and the base infrastructure is working. Will be replaced by
+    actual wizard commands in DTL-016+.
+    """
+    from dbt_to_lookml.wizard.base import BaseWizard
+    from dbt_to_lookml.wizard.types import WizardMode
+
+    # Test implementation to verify infrastructure
+    class TestWizard(BaseWizard):
+        """Minimal wizard implementation for testing."""
+
+        def run(self) -> dict[str, Any]:
+            """Run test wizard."""
+            console.print("[bold green]Wizard infrastructure working![/bold green]")
+            console.print(f"Mode: {self.mode.value}")
+            console.print(f"TUI available: {self.check_tui_available()}")
+            return {"test": "success"}
+
+        def validate_config(self, config: dict[str, Any]) -> tuple[bool, str]:
+            """Validate test config."""
+            return (True, "")
+
+    wizard_mode = WizardMode.TUI if mode == "tui" else WizardMode.PROMPT
+    test_wizard = TestWizard(mode=wizard_mode)
+
+    # Check TUI availability if requested
+    if wizard_mode == WizardMode.TUI and not test_wizard.check_tui_available():
+        test_wizard.handle_tui_unavailable()
+
+    # Run wizard
+    config = test_wizard.run()
+    console.print("[dim]Test config:[/dim]", config)
 
 
 @cli.command()

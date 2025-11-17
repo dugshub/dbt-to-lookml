@@ -33,6 +33,7 @@ dependencies = [
     "lkml",
     "click>=8.0",
     "rich",
+    "questionary>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +44,9 @@ dev = [
     "ruff",
     "build",
     "twine",
+]
+tui = [
+    "textual>=0.40.0",
 ]
 
 [project.scripts]
@@ -94,6 +98,7 @@ markers = [
     "integration: marks tests as integration tests (slower, end-to-end)",
     "golden: marks tests as golden file comparison tests",
     "cli: marks tests as CLI interface tests",
+    "wizard: marks tests as wizard functionality tests",
     "performance: marks tests as performance/benchmark tests",
     "error_handling: marks tests as error handling and robustness tests",
     "slow: marks tests as slow running (may be skipped in fast runs)",
