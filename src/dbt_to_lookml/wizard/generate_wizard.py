@@ -543,7 +543,8 @@ class GenerateWizard(BaseWizard):
         if result is None:
             raise ValueError("Wizard cancelled")
 
-        return cast(bool | None, result)
+        # result is guaranteed to be bool | None by questionary.select
+        return result  # type: ignore[no-any-return]
 
     def _prompt_additional_options(self) -> list[str]:
         """Prompt for additional boolean options using checkboxes.
