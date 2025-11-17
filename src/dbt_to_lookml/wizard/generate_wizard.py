@@ -678,12 +678,18 @@ def run_generate_wizard(
         console.print("\n[yellow]Executing command...[/yellow]\n")
 
         import click
+        from pathlib import Path
 
         from dbt_to_lookml.__main__ import generate
 
+        # Convert string paths to Path objects for Click
+        config_with_paths = config.copy()
+        config_with_paths["input_dir"] = Path(config["input_dir"])
+        config_with_paths["output_dir"] = Path(config["output_dir"])
+
         # Convert config to Click context and invoke
         ctx = click.Context(generate)
-        ctx.params = config
-        ctx.invoke(generate, **config)
+        ctx.params = config_with_paths
+        ctx.invoke(generate, **config_with_paths)
 
     return command_str
