@@ -640,7 +640,13 @@ def generate(
     is_flag=True,
     help="Show what would be generated without writing files",
 )
-def regenerate(dry_run: bool) -> None:
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompt and execute immediately",
+)
+def regenerate(dry_run: bool, yes: bool) -> None:
     """Re-run the last generate command with saved parameters.
 
     This command loads the configuration from your last successful generation
@@ -649,10 +655,15 @@ def regenerate(dry_run: bool) -> None:
 
     The configuration is loaded from ~/.d2l/last_run.json
 
+    By default, you'll be prompted to confirm before execution.
+
     Examples:
 
-      Re-generate using last parameters:
+      Re-generate with confirmation prompt:
       $ dbt-to-lookml regenerate
+
+      Skip confirmation and execute immediately:
+      $ dbt-to-lookml regenerate --yes
 
       Preview what would be generated:
       $ dbt-to-lookml regenerate --dry-run
@@ -690,6 +701,19 @@ def regenerate(dry_run: bool) -> None:
     if dry_run:
         console.print("[yellow]Dry-run mode - no files will be written[/yellow]")
         return
+
+    # Prompt for confirmation unless --yes flag is set
+    if not yes:
+        import questionary
+
+        proceed = questionary.confirm(
+            "Execute generation with these parameters?",
+            default=True,
+        ).ask()
+
+        if not proceed:
+            console.print("[yellow]Regeneration cancelled[/yellow]")
+            return
 
     # Build parameters for generate command
     convert_tz_value = last_run.get("convert_tz")
