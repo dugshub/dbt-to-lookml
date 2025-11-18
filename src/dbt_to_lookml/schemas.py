@@ -368,33 +368,45 @@ class Measure(BaseModel):
 
     def get_measure_labels(
         self, model_name: str | None = None
-    ) -> tuple[str, str | None]:
+    ) -> tuple[str | None, str | None]:
         """Get view_label and group_label for measure.
+
+        Labeling rules:
+        1. Hierarchy: category → view_label, subcategory → group_label
+        2. Flat category: " Metrics" → view_label, category → group_label
+        3. Model name fallback: " Metrics" → view_label, model_name-based → group_label
+        4. No config and no model_name: no labels
 
         Returns:
             Tuple of (view_label, group_label) where:
-            - view_label is always " Metrics" (with leading space for sort order)
-            - group_label is inferred from model name or meta.category
+            - view_label is from hierarchy.category, or " Metrics" if using flat/model fallback
+            - group_label is from hierarchy.subcategory, flat category, or model name
         """
-        # Always use " Metrics" as view_label (leading space for sort order)
-        view_label = " Metrics"
-
-        # Try to get group_label from meta first
+        view_label = None
         group_label = None
+
         if self.config and self.config.meta:
             meta = self.config.meta
-            # Try flat structure first
-            if meta.category:
+            # Check hierarchical structure first
+            if meta.hierarchy:
+                # category → view_label
+                if meta.hierarchy.category:
+                    view_label = meta.hierarchy.category.replace("_", " ").title()
+                # subcategory → group_label
+                if meta.hierarchy.subcategory:
+                    group_label = meta.hierarchy.subcategory.replace("_", " ").title()
+            # Fall back to flat structure for backward compatibility
+            elif meta.category:
+                # For flat structure: " Metrics" → view_label, category → group_label
+                view_label = " Metrics"
                 group_label = meta.category.replace("_", " ").title()
-            # Fall back to hierarchical structure
-            elif meta.hierarchy and meta.hierarchy.category:
-                group_label = meta.hierarchy.category.replace("_", " ").title()
 
-        # If no group_label from meta, infer from model name
-        if not group_label and model_name:
+        # If no labels from meta and model_name provided, use model_name fallback
+        if not view_label and not group_label and model_name:
             # Convert model name to title case and add "Performance"
             formatted_name = model_name.replace("_", " ").title()
             group_label = f"{formatted_name} Performance"
+            view_label = " Metrics"  # Default with leading space for sort order
 
         return view_label, group_label
 
@@ -417,7 +429,8 @@ class Measure(BaseModel):
 
         # Add measure labels
         view_label, group_label = self.get_measure_labels(model_name)
-        result["view_label"] = view_label
+        if view_label:
+            result["view_label"] = view_label
         if group_label:
             result["group_label"] = group_label
 
@@ -503,30 +516,9 @@ class SemanticModel(BaseModel):
         for entity in self.entities:
             dimension_field_names.append(entity.name)
         for dim in self.dimensions:
-            # Time dimensions become dimension_groups with multiple timeframe fields
-            # We must explicitly list each timeframe field in the set
-            if dim.type == DimensionType.TIME:
-                # Determine timeframes (same logic as to_dimension_group_dict)
-                timeframes = ["date", "week", "month", "quarter", "year"]
-                if dim.type_params and dim.type_params.get("time_granularity") in [
-                    "hour",
-                    "minute",
-                ]:
-                    timeframes = [
-                        "time",
-                        "hour",
-                        "date",
-                        "week",
-                        "month",
-                        "quarter",
-                        "year",
-                    ]
-
-                # Add each expanded timeframe field
-                for timeframe in timeframes:
-                    dimension_field_names.append(f"{dim.name}_{timeframe}")
-            else:
-                dimension_field_names.append(dim.name)
+            # For all dimensions (including time dimensions), use the base name
+            # In LookML, dimension_groups are referenced by their base name in sets
+            dimension_field_names.append(dim.name)
 
         # Build the view dict
         view_dict: dict[str, Any] = {

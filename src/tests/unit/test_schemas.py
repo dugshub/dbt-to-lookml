@@ -700,15 +700,13 @@ class TestSemanticModel:
         assert "dimension_groups" in view
         assert len(view["dimension_groups"]) > 0
 
-        # Verify dimension set includes expanded timeframe fields
+        # Verify dimension set includes dimension_group base names
         dimension_set = next(
             (s for s in view["sets"] if s["name"] == "dimensions_only"), None
         )
         assert dimension_set is not None
-        # Time dimensions expand to multiple timeframe fields
-        assert "created_at_date" in dimension_set["fields"]
-        assert "created_at_week" in dimension_set["fields"]
-        assert "created_at_month" in dimension_set["fields"]
+        # In LookML, dimension_groups are referenced by their base name in sets
+        assert "created_at" in dimension_set["fields"]  # base name, not timeframe variants
         assert "event_type" in dimension_set["fields"]
         assert "event_id" in dimension_set["fields"]
 
