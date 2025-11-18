@@ -554,7 +554,7 @@ class GenerateWizard(BaseWizard):
             ValueError: If user cancels prompt.
         """
         result = questionary.checkbox(
-            "Additional options (use Space to select, Enter to continue):",
+            "Additional options:",
             choices=[
                 questionary.Choice(
                     title="dry-run - Preview without writing files",
@@ -572,6 +572,7 @@ class GenerateWizard(BaseWizard):
                     checked=False,
                 ),
             ],
+            instruction="(Space to select, Enter to continue)",
         ).ask()
 
         if result is None:
@@ -673,23 +674,60 @@ def run_generate_wizard(
         # Clipboard access failed (e.g., no display), skip silently
         pass
 
+    # Prompt for execution if not already specified via --execute flag
+    if not execute:
+        execute_now = questionary.confirm(
+            "Execute this command now?",
+            default=False,
+        ).ask()
+
+        if execute_now is None:
+            # User cancelled
+            console.print("\n[yellow]Wizard cancelled[/yellow]")
+            return command_str
+
+        execute = execute_now
+
     # Execute if requested
     if execute:
         console.print("\n[yellow]Executing command...[/yellow]\n")
 
         import click
-        from pathlib import Path
 
         from dbt_to_lookml.__main__ import generate
 
-        # Convert string paths to Path objects for Click
-        config_with_paths = config.copy()
-        config_with_paths["input_dir"] = Path(config["input_dir"])
-        config_with_paths["output_dir"] = Path(config["output_dir"])
+        # Build complete parameter set for generate command
+        generate_params = {
+            "input_dir": Path(config["input_dir"]),
+            "output_dir": Path(config["output_dir"]),
+            "schema": config["schema"],
+            "view_prefix": config.get("view_prefix", ""),
+            "explore_prefix": config.get("explore_prefix", ""),
+            "connection": config.get("connection", "redshift_test"),
+            "model_name": config.get("model_name", "semantic_model"),
+            "dry_run": config.get("dry_run", False),
+            "no_validation": config.get("no_validation", False),
+            "no_formatting": False,  # Not exposed in wizard
+            "show_summary": config.get("show_summary", False),
+            "yes": True,  # Auto-confirm in wizard execution mode
+            "preview": False,  # Not applicable in wizard mode
+        }
 
-        # Convert config to Click context and invoke
-        ctx = click.Context(generate)
-        ctx.params = config_with_paths
-        ctx.invoke(generate, **config_with_paths)
+        # Handle timezone conversion flags (mutually exclusive)
+        convert_tz_value = config.get("convert_tz")
+        if convert_tz_value is True:
+            generate_params["convert_tz"] = True
+            generate_params["no_convert_tz"] = False
+        elif convert_tz_value is False:
+            generate_params["convert_tz"] = False
+            generate_params["no_convert_tz"] = True
+        else:
+            # None - use default behavior
+            generate_params["convert_tz"] = False
+            generate_params["no_convert_tz"] = False
+
+        # Invoke the generate command
+        ctx = click.get_current_context()
+        ctx.invoke(generate, **generate_params)
 
     return command_str

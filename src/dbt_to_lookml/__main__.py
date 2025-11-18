@@ -226,10 +226,6 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
                 # Wizard was cancelled
                 return
 
-            if not execute:
-                console.print("\n[dim]To execute this command, run it in your terminal")
-                console.print("or use: dbt-to-lookml wizard generate --execute[/dim]")
-
         except Exception as e:
             # Use markup=False to prevent Rich from parsing the exception text
             console.print("[bold red]Error:[/bold red]", e, markup=False)
