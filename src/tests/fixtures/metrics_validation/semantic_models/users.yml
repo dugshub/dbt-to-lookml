@@ -1,0 +1,23 @@
+semantic_models:
+  - name: users
+    model: ref('users')
+    description: User dimension table
+
+    entities:
+      - name: user
+        type: primary
+        expr: user_id
+
+    dimensions:
+      - name: email
+        type: categorical
+        expr: email
+      - name: created_at
+        type: time
+        type_params:
+          time_granularity: day
+
+    measures:
+      - name: user_count
+        agg: count
+        description: Count of users

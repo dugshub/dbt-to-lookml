@@ -1,0 +1,10 @@
+metrics:
+  - name: search_conversion_rate
+    type: ratio
+    type_params:
+      numerator: rental_count
+      denominator: search_count
+    label: Search Conversion Rate
+    description: Conversion rate from search to rental (valid - rental owns, search reachable via FK)
+    meta:
+      primary_entity: rental
