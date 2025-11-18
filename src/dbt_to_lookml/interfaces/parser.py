@@ -2,11 +2,12 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import yaml
 
-from dbt_to_lookml.schemas import SemanticModel
+# Generic type for parsed results (SemanticModel, Metric, etc.)
+T = TypeVar("T")
 
 
 class Parser(ABC):
@@ -22,26 +23,26 @@ class Parser(ABC):
         self.strict_mode = strict_mode
 
     @abstractmethod
-    def parse_file(self, path: Path) -> list[SemanticModel]:
-        """Parse a single file into semantic models.
+    def parse_file(self, path: Path) -> list[Any]:
+        """Parse a single file into parsed objects.
 
         Args:
             path: Path to the file to parse.
 
         Returns:
-            List of parsed semantic models.
+            List of parsed objects (e.g., SemanticModel, Metric).
         """
         pass
 
     @abstractmethod
-    def parse_directory(self, path: Path) -> list[SemanticModel]:
+    def parse_directory(self, path: Path) -> list[Any]:
         """Parse all files in a directory.
 
         Args:
             path: Path to the directory to parse.
 
         Returns:
-            List of all parsed semantic models.
+            List of all parsed objects (e.g., SemanticModel, Metric).
         """
         pass
 

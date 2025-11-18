@@ -66,7 +66,7 @@ def load_last_run() -> dict[str, Any] | None:
         return None
 
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = json.load(f)
 
         # Validate config structure

@@ -1,0 +1,20 @@
+metrics:
+  - name: search_conversion_rate
+    type: ratio
+    type_params:
+      numerator: rental_count
+      denominator: search_count
+    label: Search Conversion Rate
+    description: Percentage of searches that convert to rentals
+    meta:
+      primary_entity: rental_sk  # Owned by rental_orders (can join to searches via search_sk)
+
+  - name: revenue_per_user
+    type: ratio
+    type_params:
+      numerator: total_revenue
+      denominator: user_count
+    label: Revenue Per User
+    description: Average revenue per user
+    meta:
+      primary_entity: rental_sk  # Owned by rental_orders (can join to users via user_sk)

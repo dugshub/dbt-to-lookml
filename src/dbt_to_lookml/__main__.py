@@ -588,7 +588,9 @@ def generate(
                 explore_prefix=explore_prefix,
                 connection=connection,
                 model_name=model_name,
-                convert_tz=convert_tz if convert_tz else (False if no_convert_tz else None),
+                convert_tz=convert_tz
+                if convert_tz
+                else (False if no_convert_tz else None),
             )
         else:
             success_panel = format_success(
