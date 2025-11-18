@@ -261,6 +261,7 @@ class GenerateWizard(BaseWizard):
         detected_input_dir: Path | None = None,
         detected_output_dir: Path | None = None,
         detected_schema: str | None = None,
+        saved_config: dict | None = None,
     ) -> None:
         """Initialize generate wizard.
 
@@ -269,11 +270,13 @@ class GenerateWizard(BaseWizard):
             detected_input_dir: Auto-detected input directory from DTL-017.
             detected_output_dir: Auto-detected output directory from DTL-017.
             detected_schema: Auto-detected schema name from YAML files.
+            saved_config: Previously saved configuration from last run.
         """
         super().__init__(mode=mode)
         self.detected_input_dir = detected_input_dir
         self.detected_output_dir = detected_output_dir
         self.detected_schema = detected_schema
+        self.saved_config = saved_config or {}
         self.wizard_config: GenerateWizardConfig | None = None
 
     def run(self) -> WizardConfig:
@@ -366,12 +369,16 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
-        default = (
-            str(self.detected_input_dir)
-            if self.detected_input_dir
-            else "semantic_models"
-        )
-        hint = " (auto-detected)" if self.detected_input_dir else ""
+        # Priority: detection > saved config > hardcoded default
+        if self.detected_input_dir:
+            default = str(self.detected_input_dir)
+            hint = " (auto-detected)"
+        elif self.saved_config.get("input_dir"):
+            default = self.saved_config["input_dir"]
+            hint = " (from last run)"
+        else:
+            default = "models/semantic_models"
+            hint = ""
 
         result = questionary.path(
             f"Input directory{hint}:",
@@ -394,12 +401,16 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
-        default = (
-            str(self.detected_output_dir)
-            if self.detected_output_dir
-            else "build/lookml"
-        )
-        hint = " (auto-detected)" if self.detected_output_dir else ""
+        # Priority: detection > saved config > hardcoded default
+        if self.detected_output_dir:
+            default = str(self.detected_output_dir)
+            hint = " (auto-detected)"
+        elif self.saved_config.get("output_dir"):
+            default = self.saved_config["output_dir"]
+            hint = " (from last run)"
+        else:
+            default = "build/lookml"
+            hint = ""
 
         result = questionary.text(
             f"Output directory{hint}:",
@@ -421,8 +432,16 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
-        default = self.detected_schema if self.detected_schema else "public"
-        hint = " (from YAML)" if self.detected_schema else ""
+        # Priority: detection > saved config > hardcoded default
+        if self.detected_schema:
+            default = self.detected_schema
+            hint = " (from YAML)"
+        elif self.saved_config.get("schema"):
+            default = self.saved_config["schema"]
+            hint = " (from last run)"
+        else:
+            default = "public"
+            hint = ""
 
         result = questionary.text(
             f"Database schema name{hint}:",
@@ -444,9 +463,10 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
+        default = self.saved_config.get("view_prefix", "")
         result = questionary.text(
             "View prefix (optional, press Enter to skip):",
-            default="",
+            default=default,
         ).ask()
 
         if result is None:
@@ -463,9 +483,10 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
+        default = self.saved_config.get("explore_prefix", "")
         result = questionary.text(
             "Explore prefix (optional, press Enter to skip):",
-            default="",
+            default=default,
         ).ask()
 
         if result is None:
@@ -482,9 +503,10 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
+        default = self.saved_config.get("connection", "redshift_test")
         result = questionary.text(
             "Looker connection name:",
-            default="redshift_test",
+            default=default,
         ).ask()
 
         if result is None:
@@ -501,9 +523,10 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
+        default = self.saved_config.get("model_name", "semantic_model")
         result = questionary.text(
             "Model file name (without extension):",
-            default="semantic_model",
+            default=default,
         ).ask()
 
         if result is None:
@@ -616,6 +639,11 @@ def run_generate_wizard(
     Raises:
         ValueError: If wizard validation fails.
     """
+    # Load saved config from last run
+    from dbt_to_lookml.config import load_last_run
+
+    saved_config = load_last_run()
+
     # Import detection module for smart defaults (DTL-017 integration)
     try:
         from dbt_to_lookml.wizard.detection import ProjectDetector
@@ -638,6 +666,7 @@ def run_generate_wizard(
         detected_input_dir=detected_input,
         detected_output_dir=detected_output,
         detected_schema=detected_schema,
+        saved_config=saved_config,
     )
 
     try:
