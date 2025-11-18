@@ -1823,10 +1823,8 @@ class TestValidateOutput:
                 (s for s in sets if s["name"] == "dimensions_only"), None
             )
             assert dimension_set is not None
-            # Time dimensions expand to multiple timeframe fields
-            assert "event_timestamp_date" in dimension_set["fields"]
-            assert "event_timestamp_week" in dimension_set["fields"]
-            assert "event_timestamp_month" in dimension_set["fields"]
+            # In LookML, dimension_groups are referenced by their base name in sets
+            assert "event_timestamp" in dimension_set["fields"]  # base name, not timeframe variants
             assert "event_type" in dimension_set["fields"]
             assert "event_id" in dimension_set["fields"]
 
