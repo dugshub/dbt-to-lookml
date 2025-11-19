@@ -72,10 +72,10 @@ class DbtParser(Parser):
         return semantic_models
 
     def parse_directory(self, directory: Path) -> list[SemanticModel]:
-        """Parse all YAML files in a directory.
+        """Parse all YAML files recursively in a directory.
 
         Args:
-            directory: Directory containing YAML files.
+            directory: Directory containing YAML files (searched recursively).
 
         Returns:
             List of all parsed semantic models.
@@ -85,14 +85,14 @@ class DbtParser(Parser):
 
         semantic_models = []
 
-        for yaml_file in directory.glob("*.yml"):
+        for yaml_file in directory.rglob("*.yml"):
             try:
                 models = self.parse_file(yaml_file)
                 semantic_models.extend(models)
             except Exception as e:
                 self.handle_error(e, f"Failed to parse {yaml_file}")
 
-        for yaml_file in directory.glob("*.yaml"):
+        for yaml_file in directory.rglob("*.yaml"):
             try:
                 models = self.parse_file(yaml_file)
                 semantic_models.extend(models)

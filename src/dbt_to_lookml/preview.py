@@ -41,16 +41,16 @@ class PreviewData:
 
 
 def count_yaml_files(directory: Path) -> int:
-    """Count YAML files in a directory.
+    """Count YAML files recursively in a directory.
 
     Args:
-        directory: Path to directory to scan
+        directory: Path to directory to scan (searched recursively)
 
     Returns:
         Number of .yml and .yaml files found
     """
-    yml_files = list(directory.glob("*.yml"))
-    yaml_files = list(directory.glob("*.yaml"))
+    yml_files = list(directory.rglob("*.yml"))
+    yaml_files = list(directory.rglob("*.yaml"))
     return len(yml_files) + len(yaml_files)
 
 

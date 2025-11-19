@@ -2030,3 +2030,69 @@ semantic_models:
             assert measure.expr == ""
         finally:
             temp_path.unlink()
+
+    def test_parse_directory_recursively(self) -> None:
+        """Test parsing directory recursively finds files in subdirectories."""
+        parser = DbtParser()
+
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create files in root directory
+            root_model = {
+                "name": "root_model",
+                "model": "root_table",
+                "entities": [],
+                "dimensions": [],
+                "measures": [],
+            }
+            (temp_path / "root.yml").write_text(yaml.dump(root_model))
+
+            # Create subdirectory with files
+            subdir1 = temp_path / "models" / "mart"
+            subdir1.mkdir(parents=True)
+            subdir_model1 = {
+                "name": "subdir_model1",
+                "model": "subdir_table1",
+                "entities": [],
+                "dimensions": [],
+                "measures": [],
+            }
+            (subdir1 / "model1.yml").write_text(yaml.dump(subdir_model1))
+
+            # Create deeply nested directory with .yaml file
+            subdir2 = temp_path / "models" / "staging" / "erp"
+            subdir2.mkdir(parents=True)
+            subdir_model2 = {
+                "name": "subdir_model2",
+                "model": "subdir_table2",
+                "entities": [],
+                "dimensions": [],
+                "measures": [],
+            }
+            (subdir2 / "model2.yaml").write_text(yaml.dump(subdir_model2))
+
+            # Create another nested directory
+            subdir3 = temp_path / "other" / "deep" / "path"
+            subdir3.mkdir(parents=True)
+            subdir_model3 = {
+                "name": "subdir_model3",
+                "model": "subdir_table3",
+                "entities": [],
+                "dimensions": [],
+                "measures": [],
+            }
+            (subdir3 / "model3.yml").write_text(yaml.dump(subdir_model3))
+
+            # Parse directory recursively
+            models = parser.parse_directory(temp_path)
+
+            # Should find all 4 models
+            assert len(models) == 4
+            model_names = {m.name for m in models}
+            assert model_names == {
+                "root_model",
+                "subdir_model1",
+                "subdir_model2",
+                "subdir_model3",
+            }

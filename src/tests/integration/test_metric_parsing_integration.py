@@ -212,8 +212,7 @@ class TestMetricParsingIntegration:
             with open(temp_dir / "root.yml", "w") as f:
                 yaml.dump(root_metric, f)
 
-            # Note: Current implementation doesn't recursively scan subdirectories
-            # This test verifies that behavior
+            # Test recursive scanning - parser should find files in subdirectories
             nested_dir = temp_dir / "nested"
             nested_dir.mkdir()
 
@@ -234,9 +233,10 @@ class TestMetricParsingIntegration:
             parser = DbtMetricParser()
             metrics = parser.parse_directory(temp_dir)
 
-            # Should only find root metric (no recursive scanning)
-            assert len(metrics) == 1
-            assert metrics[0].name == "root_metric"
+            # Should find both root and nested metrics (recursive scanning)
+            assert len(metrics) == 2
+            metric_names = {m.name for m in metrics}
+            assert metric_names == {"root_metric", "nested_metric"}
 
     def test_all_metric_types_with_validation(self) -> None:
         """Test all metric types parse correctly with full validation."""

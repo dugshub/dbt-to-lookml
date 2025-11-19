@@ -793,15 +793,18 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
         error_count = 0
 
         # Parse files individually to provide better error reporting
-        for yaml_file in input_dir.glob("*.yml"):
+        # Use rglob for recursive search through subdirectories
+        for yaml_file in input_dir.rglob("*.yml"):
             file_count += 1
             try:
                 models = parser.parse_file(yaml_file)
                 semantic_models.extend(models)
 
+                # Show relative path for better context
+                rel_path = yaml_file.relative_to(input_dir)
                 if verbose:
                     console.print(
-                        f"  [green]✓[/green] {yaml_file.name}: {len(models)} models"
+                        f"  [green]✓[/green] {rel_path}: {len(models)} models"
                     )
                     for model in models:
                         console.print(
@@ -815,10 +818,11 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
                                 f"      Config: domain={model.config.meta.domain}"
                             )
                 else:
-                    console.print(f"  [green]✓[/green] {yaml_file.name}")
+                    console.print(f"  [green]✓[/green] {rel_path}")
             except Exception as e:
                 error_count += 1
-                console.print(f"  [red]✗[/red] {yaml_file.name}: {e}")
+                rel_path = yaml_file.relative_to(input_dir)
+                console.print(f"  [red]✗[/red] {rel_path}: {e}")
                 if not strict:
                     console.print(
                         "    [yellow]Continuing in non-strict mode...[/yellow]"
@@ -826,15 +830,17 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
                 else:
                     raise
 
-        for yaml_file in input_dir.glob("*.yaml"):
+        for yaml_file in input_dir.rglob("*.yaml"):
             file_count += 1
             try:
                 models = parser.parse_file(yaml_file)
                 semantic_models.extend(models)
 
+                # Show relative path for better context
+                rel_path = yaml_file.relative_to(input_dir)
                 if verbose:
                     console.print(
-                        f"  [green]✓[/green] {yaml_file.name}: {len(models)} models"
+                        f"  [green]✓[/green] {rel_path}: {len(models)} models"
                     )
                     for model in models:
                         console.print(
@@ -848,10 +854,11 @@ def validate(input_dir: Path, strict: bool, verbose: bool) -> None:
                                 f"      Config: domain={model.config.meta.domain}"
                             )
                 else:
-                    console.print(f"  [green]✓[/green] {yaml_file.name}")
+                    console.print(f"  [green]✓[/green] {rel_path}")
             except Exception as e:
                 error_count += 1
-                console.print(f"  [red]✗[/red] {yaml_file.name}: {e}")
+                rel_path = yaml_file.relative_to(input_dir)
+                console.print(f"  [red]✗[/red] {rel_path}: {e}")
                 if not strict:
                     console.print(
                         "    [yellow]Continuing in non-strict mode...[/yellow]"

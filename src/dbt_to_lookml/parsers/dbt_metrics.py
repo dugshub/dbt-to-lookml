@@ -179,14 +179,14 @@ class DbtMetricParser(Parser):
 
         metrics = []
 
-        for yaml_file in directory.glob("*.yml"):
+        for yaml_file in directory.rglob("*.yml"):
             try:
                 file_metrics = self.parse_file(yaml_file)
                 metrics.extend(file_metrics)
             except Exception as e:
                 self.handle_error(e, f"Failed to parse {yaml_file}")
 
-        for yaml_file in directory.glob("*.yaml"):
+        for yaml_file in directory.rglob("*.yaml"):
             try:
                 file_metrics = self.parse_file(yaml_file)
                 metrics.extend(file_metrics)

@@ -380,7 +380,20 @@ class TestDbtMetricParser:
         """Test recursive directory parsing."""
         parser = DbtMetricParser()
 
-        metric_data = {
+        # Root level metric
+        root_metric_data = {
+            "metrics": [
+                {
+                    "name": "root_metric",
+                    "type": "simple",
+                    "type_params": {"measure": "root_measure"},
+                    "meta": {"primary_entity": "test"},
+                }
+            ]
+        }
+
+        # Nested metric
+        nested_metric_data = {
             "metrics": [
                 {
                     "name": "nested_metric",
@@ -391,20 +404,47 @@ class TestDbtMetricParser:
             ]
         }
 
+        # Deeply nested metric
+        deep_metric_data = {
+            "metrics": [
+                {
+                    "name": "deep_metric",
+                    "type": "simple",
+                    "type_params": {"measure": "deep_measure"},
+                    "meta": {"primary_entity": "test"},
+                }
+            ]
+        }
+
         with TemporaryDirectory() as tmpdir:
             temp_dir = Path(tmpdir)
+
+            # Root level metric
+            root_file = temp_dir / "root_metric.yml"
+            with open(root_file, "w") as f:
+                yaml.dump(root_metric_data, f)
+
+            # Nested metric
             nested_dir = temp_dir / "nested"
             nested_dir.mkdir()
+            nested_file = nested_dir / "metric.yml"
+            with open(nested_file, "w") as f:
+                yaml.dump(nested_metric_data, f)
 
-            metric_file = nested_dir / "metric.yml"
-            with open(metric_file, "w") as f:
-                yaml.dump(metric_data, f)
+            # Deeply nested metric
+            deep_dir = temp_dir / "nested" / "deep" / "path"
+            deep_dir.mkdir(parents=True)
+            deep_file = deep_dir / "metric.yaml"
+            with open(deep_file, "w") as f:
+                yaml.dump(deep_metric_data, f)
 
-            # Note: Current implementation doesn't recursively scan subdirectories
-            # Only scans files in the specified directory
+            # Parse directory recursively
             metrics = parser.parse_directory(temp_dir)
-            # Should be empty since file is in subdirectory
-            assert len(metrics) == 0
+
+            # Should find all 3 metrics
+            assert len(metrics) == 3
+            metric_names = {m.name for m in metrics}
+            assert metric_names == {"root_metric", "nested_metric", "deep_metric"}
 
     def test_parse_directory_mixed_extensions(self) -> None:
         """Test parsing both .yml and .yaml files."""
