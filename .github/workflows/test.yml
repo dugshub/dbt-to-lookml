@@ -47,11 +47,11 @@ jobs:
 
     - name: Run linting
       run: |
-        python scripts/run-tests.py lint --verbose
+        uv run python scripts/run-tests.py lint --verbose
 
     - name: Run type checking
       run: |
-        python scripts/run-tests.py types --verbose
+        uv run python scripts/run-tests.py types --verbose
 
   unit-tests:
     name: Unit Tests
@@ -76,7 +76,7 @@ jobs:
 
     - name: Run unit tests
       run: |
-        python scripts/run-tests.py unit --verbose
+        uv run python scripts/run-tests.py unit --verbose
 
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
@@ -109,11 +109,11 @@ jobs:
 
     - name: Run integration tests
       run: |
-        python scripts/run-tests.py integration --verbose
+        uv run python scripts/run-tests.py integration --verbose
 
     - name: Run golden file tests
       run: |
-        python scripts/run-tests.py golden --verbose
+        uv run python scripts/run-tests.py golden --verbose
 
   cli-tests:
     name: CLI Tests
@@ -138,7 +138,7 @@ jobs:
 
     - name: Run CLI tests
       run: |
-        python scripts/run-tests.py cli --verbose
+        uv run python scripts/run-tests.py cli --verbose
 
     - name: Test CLI installation
       run: |
@@ -168,15 +168,15 @@ jobs:
 
     - name: Run wizard unit tests
       run: |
-        python -m pytest src/tests/unit/test_wizard*.py src/tests/unit/test_generate_wizard.py -v --cov=dbt_to_lookml.wizard --cov-report=xml --cov-fail-under=95
+        uv run python -m pytest src/tests/unit/test_wizard*.py src/tests/unit/test_generate_wizard.py -v --cov=dbt_to_lookml.wizard --cov-report=xml --cov-fail-under=95
 
     - name: Run wizard integration tests
       run: |
-        python -m pytest src/tests/integration/test_wizard*.py -v
+        uv run python -m pytest src/tests/integration/test_wizard*.py -v
 
     - name: Run wizard CLI tests
       run: |
-        python -m pytest src/tests/test_cli.py::TestCLIWizard -v
+        uv run python -m pytest src/tests/test_cli.py::TestCLIWizard -v
 
     - name: Test wizard command availability
       run: |
@@ -215,7 +215,7 @@ jobs:
 
     - name: Run error handling tests
       run: |
-        python scripts/run-tests.py error --verbose
+        uv run python scripts/run-tests.py error --verbose
 
   performance-tests:
     name: Performance Tests
@@ -245,7 +245,7 @@ jobs:
 
     - name: Run performance tests
       run: |
-        python scripts/run-tests.py performance --verbose
+        uv run python scripts/run-tests.py performance --verbose
 
     - name: Run benchmark
       run: |
@@ -274,7 +274,7 @@ jobs:
 
     - name: Run smoke tests
       run: |
-        python scripts/run-tests.py smoke --verbose
+        uv run python scripts/run-tests.py smoke --verbose
 
   multi-python-test:
     name: Multi-Python Version Tests
@@ -302,8 +302,8 @@ jobs:
 
     - name: Run core tests
       run: |
-        python scripts/run-tests.py unit
-        python scripts/run-tests.py integration
+        uv run python scripts/run-tests.py unit
+        uv run python scripts/run-tests.py integration
 
   comprehensive-test:
     name: Comprehensive Test Suite
@@ -333,10 +333,10 @@ jobs:
 
     - name: Run comprehensive test suite
       run: |
-        python scripts/run-tests.py all --verbose --report test_results.json
+        uv run python scripts/run-tests.py all --verbose --report test_results.json
 
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-results
@@ -347,7 +347,7 @@ jobs:
       run: |
         if [ -f test_results.json ]; then
           echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
-          python -c "
+          uv run python -c "
           import json
           with open('test_results.json') as f:
               data = json.load(f)
@@ -376,7 +376,7 @@ jobs:
         options: "-r src/ -f json -o bandit-report.json"
 
     - name: Upload security scan results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: security-scan
@@ -408,7 +408,7 @@ jobs:
         uv pip freeze | safety check --json --output safety-report.json || true
 
     - name: Upload dependency check results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: dependency-check
@@ -437,7 +437,7 @@ jobs:
 
     - name: Build package
       run: |
-        python -m build
+        uv run python -m build
 
     - name: Test installation from wheel
       run: |
@@ -445,7 +445,7 @@ jobs:
         dbt-to-lookml --version
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dist
         path: dist/
