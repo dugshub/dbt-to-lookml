@@ -1826,7 +1826,9 @@ class TestValidateOutput:
             )
             assert dimension_set is not None
             # In LookML, dimension_groups are referenced by their base name in sets
-            assert "event_timestamp" in dimension_set["fields"]  # base name, not timeframe variants
+            assert (
+                "event_timestamp" in dimension_set["fields"]
+            )  # base name, not timeframe variants
             assert "event_type" in dimension_set["fields"]
             assert "event_id" in dimension_set["fields"]
 

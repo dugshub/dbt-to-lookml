@@ -1,6 +1,5 @@
 """Comprehensive end-to-end integration tests."""
 
-import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
