@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -155,7 +155,8 @@ class Entity(BaseModel):
                     result["view_label"] = view_label
                 result["group_label"] = "Join Keys"
 
-        # Hide all entities (typically surrogate keys) - natural keys should be defined as dimensions
+        # Hide all entities (typically surrogate keys)
+        # Natural keys should be defined as dimensions
         result["hidden"] = "yes"
 
         if self.description:
@@ -368,33 +369,47 @@ class Measure(BaseModel):
 
     def get_measure_labels(
         self, model_name: str | None = None
-    ) -> tuple[str, str | None]:
+    ) -> tuple[str | None, str | None]:
         """Get view_label and group_label for measure.
+
+        Labeling rules:
+        1. Hierarchy: category → view_label, subcategory → group_label
+        2. Flat category: " Metrics" → view_label, category → group_label
+        3. Model name fallback: " Metrics" → view_label, model_name-based → group_label
+        4. No config and no model_name: no labels
 
         Returns:
             Tuple of (view_label, group_label) where:
-            - view_label is always " Metrics" (with leading space for sort order)
-            - group_label is inferred from model name or meta.category
+            - view_label is from hierarchy.category, or " Metrics" if using
+              flat/model fallback
+            - group_label is from hierarchy.subcategory, flat category, or
+              model name
         """
-        # Always use " Metrics" as view_label (leading space for sort order)
-        view_label = " Metrics"
-
-        # Try to get group_label from meta first
+        view_label = None
         group_label = None
+
         if self.config and self.config.meta:
             meta = self.config.meta
-            # Try flat structure first
-            if meta.category:
+            # Check hierarchical structure first
+            if meta.hierarchy:
+                # category → view_label
+                if meta.hierarchy.category:
+                    view_label = meta.hierarchy.category.replace("_", " ").title()
+                # subcategory → group_label
+                if meta.hierarchy.subcategory:
+                    group_label = meta.hierarchy.subcategory.replace("_", " ").title()
+            # Fall back to flat structure for backward compatibility
+            elif meta.category:
+                # For flat structure: " Metrics" → view_label, category → group_label
+                view_label = " Metrics"
                 group_label = meta.category.replace("_", " ").title()
-            # Fall back to hierarchical structure
-            elif meta.hierarchy and meta.hierarchy.category:
-                group_label = meta.hierarchy.category.replace("_", " ").title()
 
-        # If no group_label from meta, infer from model name
-        if not group_label and model_name:
+        # If no labels from meta and model_name provided, use model_name fallback
+        if not view_label and not group_label and model_name:
             # Convert model name to title case and add "Performance"
             formatted_name = model_name.replace("_", " ").title()
             group_label = f"{formatted_name} Performance"
+            view_label = " Metrics"  # Default with leading space for sort order
 
         return view_label, group_label
 
@@ -417,7 +432,8 @@ class Measure(BaseModel):
 
         # Add measure labels
         view_label, group_label = self.get_measure_labels(model_name)
-        result["view_label"] = view_label
+        if view_label:
+            result["view_label"] = view_label
         if group_label:
             result["group_label"] = group_label
 
@@ -503,30 +519,9 @@ class SemanticModel(BaseModel):
         for entity in self.entities:
             dimension_field_names.append(entity.name)
         for dim in self.dimensions:
-            # Time dimensions become dimension_groups with multiple timeframe fields
-            # We must explicitly list each timeframe field in the set
-            if dim.type == DimensionType.TIME:
-                # Determine timeframes (same logic as to_dimension_group_dict)
-                timeframes = ["date", "week", "month", "quarter", "year"]
-                if dim.type_params and dim.type_params.get("time_granularity") in [
-                    "hour",
-                    "minute",
-                ]:
-                    timeframes = [
-                        "time",
-                        "hour",
-                        "date",
-                        "week",
-                        "month",
-                        "quarter",
-                        "year",
-                    ]
-
-                # Add each expanded timeframe field
-                for timeframe in timeframes:
-                    dimension_field_names.append(f"{dim.name}_{timeframe}")
-            else:
-                dimension_field_names.append(dim.name)
+            # For all dimensions (including time dimensions), use the base name
+            # In LookML, dimension_groups are referenced by their base name in sets
+            dimension_field_names.append(dim.name)
 
         # Build the view dict
         view_dict: dict[str, Any] = {
@@ -568,6 +563,256 @@ class SemanticModel(BaseModel):
         if schema:
             return f"{schema}.{table_name}"
         return table_name
+
+
+# ============================================================================
+# Metric Schemas (Input)
+# ============================================================================
+
+
+class MetricReference(BaseModel):
+    """Reference to another metric in derived metric expressions.
+
+    Used in derived metrics to reference other metrics with optional
+    aliases and offset windows for time-based calculations.
+
+    Attributes:
+        name: Name of the referenced metric.
+        alias: Optional alias for the metric in the expression.
+        offset_window: Optional time window offset (e.g., "1 month", "7 days").
+
+    Example:
+        ```yaml
+        metrics:
+          - name: revenue_growth
+            type: derived
+            type_params:
+              expr: "revenue - revenue_last_month"
+              metrics:
+                - name: revenue
+                - name: revenue
+                  alias: revenue_last_month
+                  offset_window: "1 month"
+        ```
+    """
+
+    name: str
+    alias: str | None = None
+    offset_window: str | None = None
+
+
+class SimpleMetricParams(BaseModel):
+    """Type parameters for simple metrics.
+
+    Simple metrics reference a single measure from a semantic model.
+
+    Attributes:
+        measure: Name of the measure to use (e.g., "revenue", "order_count").
+
+    Example:
+        ```yaml
+        metrics:
+          - name: total_revenue
+            type: simple
+            type_params:
+              measure: revenue
+        ```
+    """
+
+    measure: str
+
+
+class RatioMetricParams(BaseModel):
+    """Type parameters for ratio metrics.
+
+    Ratio metrics calculate numerator / denominator, typically for rates,
+    percentages, or per-unit calculations.
+
+    Attributes:
+        numerator: Name of the measure to use as numerator.
+        denominator: Name of the measure to use as denominator.
+
+    Example:
+        ```yaml
+        metrics:
+          - name: conversion_rate
+            type: ratio
+            type_params:
+              numerator: completed_orders
+              denominator: total_searches
+        ```
+    """
+
+    numerator: str
+    denominator: str
+
+
+class DerivedMetricParams(BaseModel):
+    """Type parameters for derived metrics.
+
+    Derived metrics combine other metrics using a SQL expression.
+
+    Attributes:
+        expr: SQL expression combining referenced metrics.
+        metrics: List of metric references used in the expression.
+
+    Example:
+        ```yaml
+        metrics:
+          - name: revenue_growth
+            type: derived
+            type_params:
+              expr: "(current_revenue - prior_revenue) / prior_revenue"
+              metrics:
+                - name: monthly_revenue
+                  alias: current_revenue
+                - name: monthly_revenue
+                  alias: prior_revenue
+                  offset_window: "1 month"
+        ```
+    """
+
+    expr: str
+    metrics: list[MetricReference]
+
+
+class ConversionMetricParams(BaseModel):
+    """Type parameters for conversion metrics.
+
+    Conversion metrics track funnel conversions between entity states.
+    The structure is flexible to support various conversion patterns.
+
+    Attributes:
+        conversion_type_params: Dictionary containing conversion-specific
+            configuration. Structure depends on conversion type.
+
+    Example:
+        ```yaml
+        metrics:
+          - name: checkout_conversion
+            type: conversion
+            type_params:
+              conversion_type_params:
+                entity: order
+                calculation: conversion_rate
+                base_event: page_view
+                conversion_event: purchase
+        ```
+    """
+
+    conversion_type_params: dict[str, Any]
+
+
+class Metric(BaseModel):
+    """Represents a dbt metric definition.
+
+    Metrics define calculations that can be simple aggregations, ratios,
+    derived calculations, or conversion funnels. They can reference measures
+    from one or more semantic models and are owned by a primary entity.
+
+    Attributes:
+        name: Unique metric identifier (snake_case).
+        type: Type of metric calculation.
+        type_params: Type-specific parameters (validated based on type).
+        label: Optional human-readable label for the metric.
+        description: Optional detailed description of what the metric represents.
+        meta: Optional metadata dictionary for custom configuration.
+            Common fields:
+            - primary_entity: Entity that owns this metric (determines which
+              view file contains the generated measure).
+            - category: Category for grouping related metrics.
+
+    Examples:
+        Simple metric:
+        ```yaml
+        metrics:
+          - name: total_revenue
+            type: simple
+            type_params:
+              measure: revenue
+            label: Total Revenue
+            description: Sum of all revenue
+            meta:
+              primary_entity: order
+              category: financial_performance
+        ```
+
+        Ratio metric (cross-entity):
+        ```yaml
+        metrics:
+          - name: search_conversion_rate
+            type: ratio
+            type_params:
+              numerator: rental_count    # From rental_orders
+              denominator: search_count  # From searches
+            label: Search Conversion Rate
+            description: Percentage of searches that result in rentals
+            meta:
+              primary_entity: search  # Searches is the spine/denominator
+              category: conversion_metrics
+        ```
+
+        Derived metric:
+        ```yaml
+        metrics:
+          - name: revenue_growth
+            type: derived
+            type_params:
+              expr: "(current - prior) / prior"
+              metrics:
+                - name: monthly_revenue
+                  alias: current
+                - name: monthly_revenue
+                  alias: prior
+                  offset_window: "1 month"
+            meta:
+              primary_entity: order
+        ```
+
+    See Also:
+        - Epic DTL-022 for primary entity ownership pattern
+        - MetricReference for derived metric dependencies
+    """
+
+    name: str
+    type: Literal["simple", "ratio", "derived", "conversion"]
+    type_params: (
+        SimpleMetricParams
+        | RatioMetricParams
+        | DerivedMetricParams
+        | ConversionMetricParams
+    )
+    label: str | None = None
+    description: str | None = None
+    meta: dict[str, Any] | None = None
+
+    @property
+    def primary_entity(self) -> str | None:
+        """Extract primary_entity from meta block.
+
+        The primary entity determines which semantic model/view owns this
+        metric and serves as the base for the calculation.
+
+        Returns:
+            Primary entity name if specified in meta, None otherwise.
+
+        Example:
+            ```python
+            metric = Metric(
+                name="conversion_rate",
+                type="ratio",
+                type_params=RatioMetricParams(
+                    numerator="orders",
+                    denominator="searches"
+                ),
+                meta={"primary_entity": "search"}
+            )
+            assert metric.primary_entity == "search"
+            ```
+        """
+        if self.meta:
+            return self.meta.get("primary_entity")
+        return None
 
 
 # ============================================================================

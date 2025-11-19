@@ -765,12 +765,14 @@ class TestGenerateWizard:
         assert "output_dir" in config
         assert "schema" in config
 
+    @patch("dbt_to_lookml.wizard.generate_wizard.questionary")
     @patch("dbt_to_lookml.wizard.detection.ProjectDetector")
     @patch("dbt_to_lookml.wizard.generate_wizard.GenerateWizard")
     def test_run_generate_wizard_with_detection(
         self,
         mock_wizard_class: MagicMock,
         mock_detector_class: MagicMock,
+        mock_questionary: MagicMock,
         tmp_path: Path,
     ) -> None:
         """Test run_generate_wizard with successful detection."""
@@ -794,15 +796,22 @@ class TestGenerateWizard:
         mock_wizard.validate_config.return_value = (True, "")
         mock_wizard.get_command_string.return_value = "dbt-to-lookml generate ..."
 
+        # Mock execution prompt (user declines)
+        mock_questionary.confirm.return_value.ask.return_value = False
+
         result = run_generate_wizard()
 
         # Should succeed and return command
         assert result is not None or result is None
 
+    @patch("dbt_to_lookml.wizard.generate_wizard.questionary")
     @patch("dbt_to_lookml.wizard.detection.ProjectDetector")
     @patch("dbt_to_lookml.wizard.generate_wizard.GenerateWizard")
     def test_run_generate_wizard_detection_fails(
-        self, mock_wizard_class: MagicMock, mock_detector_class: MagicMock
+        self,
+        mock_wizard_class: MagicMock,
+        mock_detector_class: MagicMock,
+        mock_questionary: MagicMock,
     ) -> None:
         """Test run_generate_wizard when detection fails."""
         # Mock detection failure
@@ -818,6 +827,9 @@ class TestGenerateWizard:
         }
         mock_wizard.validate_config.return_value = (True, "")
         mock_wizard.get_command_string.return_value = "dbt-to-lookml generate ..."
+
+        # Mock execution prompt (user declines)
+        mock_questionary.confirm.return_value.ask.return_value = False
 
         result = run_generate_wizard()
 

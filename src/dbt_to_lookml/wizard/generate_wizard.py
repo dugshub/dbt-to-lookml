@@ -261,6 +261,7 @@ class GenerateWizard(BaseWizard):
         detected_input_dir: Path | None = None,
         detected_output_dir: Path | None = None,
         detected_schema: str | None = None,
+        saved_config: dict[str, Any] | None = None,
     ) -> None:
         """Initialize generate wizard.
 
@@ -269,11 +270,13 @@ class GenerateWizard(BaseWizard):
             detected_input_dir: Auto-detected input directory from DTL-017.
             detected_output_dir: Auto-detected output directory from DTL-017.
             detected_schema: Auto-detected schema name from YAML files.
+            saved_config: Previously saved configuration from last run.
         """
         super().__init__(mode=mode)
         self.detected_input_dir = detected_input_dir
         self.detected_output_dir = detected_output_dir
         self.detected_schema = detected_schema
+        self.saved_config = saved_config or {}
         self.wizard_config: GenerateWizardConfig | None = None
 
     def run(self) -> WizardConfig:
@@ -366,12 +369,16 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
-        default = (
-            str(self.detected_input_dir)
-            if self.detected_input_dir
-            else "semantic_models"
-        )
-        hint = " (auto-detected)" if self.detected_input_dir else ""
+        # Priority: detection > saved config > hardcoded default
+        if self.detected_input_dir:
+            default = str(self.detected_input_dir)
+            hint = " (auto-detected)"
+        elif self.saved_config.get("input_dir"):
+            default = self.saved_config["input_dir"]
+            hint = " (from last run)"
+        else:
+            default = "models/semantic_models"
+            hint = ""
 
         result = questionary.path(
             f"Input directory{hint}:",
@@ -394,12 +401,16 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
-        default = (
-            str(self.detected_output_dir)
-            if self.detected_output_dir
-            else "build/lookml"
-        )
-        hint = " (auto-detected)" if self.detected_output_dir else ""
+        # Priority: detection > saved config > hardcoded default
+        if self.detected_output_dir:
+            default = str(self.detected_output_dir)
+            hint = " (auto-detected)"
+        elif self.saved_config.get("output_dir"):
+            default = self.saved_config["output_dir"]
+            hint = " (from last run)"
+        else:
+            default = "build/lookml"
+            hint = ""
 
         result = questionary.text(
             f"Output directory{hint}:",
@@ -421,8 +432,16 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
-        default = self.detected_schema if self.detected_schema else "public"
-        hint = " (from YAML)" if self.detected_schema else ""
+        # Priority: detection > saved config > hardcoded default
+        if self.detected_schema:
+            default = self.detected_schema
+            hint = " (from YAML)"
+        elif self.saved_config.get("schema"):
+            default = self.saved_config["schema"]
+            hint = " (from last run)"
+        else:
+            default = "public"
+            hint = ""
 
         result = questionary.text(
             f"Database schema name{hint}:",
@@ -444,9 +463,10 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
+        default = self.saved_config.get("view_prefix", "")
         result = questionary.text(
             "View prefix (optional, press Enter to skip):",
-            default="",
+            default=default,
         ).ask()
 
         if result is None:
@@ -463,9 +483,10 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
+        default = self.saved_config.get("explore_prefix", "")
         result = questionary.text(
             "Explore prefix (optional, press Enter to skip):",
-            default="",
+            default=default,
         ).ask()
 
         if result is None:
@@ -482,9 +503,10 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
+        default = self.saved_config.get("connection", "redshift_test")
         result = questionary.text(
             "Looker connection name:",
-            default="redshift_test",
+            default=default,
         ).ask()
 
         if result is None:
@@ -501,9 +523,10 @@ class GenerateWizard(BaseWizard):
         Raises:
             ValueError: If user cancels prompt.
         """
+        default = self.saved_config.get("model_name", "semantic_model")
         result = questionary.text(
             "Model file name (without extension):",
-            default="semantic_model",
+            default=default,
         ).ask()
 
         if result is None:
@@ -554,7 +577,7 @@ class GenerateWizard(BaseWizard):
             ValueError: If user cancels prompt.
         """
         result = questionary.checkbox(
-            "Additional options (use Space to select, Enter to continue):",
+            "Additional options:",
             choices=[
                 questionary.Choice(
                     title="dry-run - Preview without writing files",
@@ -572,6 +595,7 @@ class GenerateWizard(BaseWizard):
                     checked=False,
                 ),
             ],
+            instruction="(Space to select, Enter to continue)",
         ).ask()
 
         if result is None:
@@ -615,6 +639,11 @@ def run_generate_wizard(
     Raises:
         ValueError: If wizard validation fails.
     """
+    # Load saved config from last run
+    from dbt_to_lookml.config import load_last_run
+
+    saved_config = load_last_run()
+
     # Import detection module for smart defaults (DTL-017 integration)
     try:
         from dbt_to_lookml.wizard.detection import ProjectDetector
@@ -637,6 +666,7 @@ def run_generate_wizard(
         detected_input_dir=detected_input,
         detected_output_dir=detected_output,
         detected_schema=detected_schema,
+        saved_config=saved_config,
     )
 
     try:
@@ -673,6 +703,20 @@ def run_generate_wizard(
         # Clipboard access failed (e.g., no display), skip silently
         pass
 
+    # Prompt for execution if not already specified via --execute flag
+    if not execute:
+        execute_now = questionary.confirm(
+            "Execute this command now?",
+            default=False,
+        ).ask()
+
+        if execute_now is None:
+            # User cancelled
+            console.print("\n[yellow]Wizard cancelled[/yellow]")
+            return command_str
+
+        execute = execute_now
+
     # Execute if requested
     if execute:
         console.print("\n[yellow]Executing command...[/yellow]\n")
@@ -681,9 +725,38 @@ def run_generate_wizard(
 
         from dbt_to_lookml.__main__ import generate
 
-        # Convert config to Click context and invoke
-        ctx = click.Context(generate)
-        ctx.params = config
-        ctx.invoke(generate, **config)
+        # Build complete parameter set for generate command
+        generate_params = {
+            "input_dir": Path(config["input_dir"]),
+            "output_dir": Path(config["output_dir"]),
+            "schema": config["schema"],
+            "view_prefix": config.get("view_prefix", ""),
+            "explore_prefix": config.get("explore_prefix", ""),
+            "connection": config.get("connection", "redshift_test"),
+            "model_name": config.get("model_name", "semantic_model"),
+            "dry_run": config.get("dry_run", False),
+            "no_validation": config.get("no_validation", False),
+            "no_formatting": False,  # Not exposed in wizard
+            "show_summary": config.get("show_summary", False),
+            "yes": True,  # Auto-confirm in wizard execution mode
+            "preview": False,  # Not applicable in wizard mode
+        }
+
+        # Handle timezone conversion flags (mutually exclusive)
+        convert_tz_value = config.get("convert_tz")
+        if convert_tz_value is True:
+            generate_params["convert_tz"] = True
+            generate_params["no_convert_tz"] = False
+        elif convert_tz_value is False:
+            generate_params["convert_tz"] = False
+            generate_params["no_convert_tz"] = True
+        else:
+            # None - use default behavior
+            generate_params["convert_tz"] = False
+            generate_params["no_convert_tz"] = False
+
+        # Invoke the generate command
+        ctx = click.get_current_context()
+        ctx.invoke(generate, **generate_params)
 
     return command_str

@@ -1,0 +1,25 @@
+metrics:
+  - name: user_conversion
+    type: conversion
+    type_params:
+      conversion_type_params:
+        base_measure: search_count
+        conversion_measure: rental_count
+        entity: user_id
+    label: User Conversion
+    description: Conversion rate from search to rental
+    meta:
+      primary_entity: rental_sk  # Owned by rental_orders (can join to both searches and users)
+
+  - name: checkout_conversion
+    type: conversion
+    type_params:
+      conversion_type_params:
+        entity: rental_sk
+        calculation: conversion_rate
+        base_event: page_view
+        conversion_event: purchase
+    label: Checkout Conversion
+    description: Conversion rate from page view to purchase
+    meta:
+      primary_entity: rental_sk

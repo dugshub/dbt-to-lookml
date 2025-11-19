@@ -1,0 +1,29 @@
+semantic_models:
+  - name: searches
+    model: ref('searches')
+    description: Search fact table
+
+    entities:
+      - name: search
+        type: primary
+        expr: search_id
+      - name: user
+        type: foreign
+        expr: user_id
+      - name: session
+        type: foreign
+        expr: session_id
+
+    dimensions:
+      - name: search_term
+        type: categorical
+        expr: search_term
+      - name: searched_at
+        type: time
+        type_params:
+          time_granularity: day
+
+    measures:
+      - name: search_count
+        agg: count
+        description: Count of searches

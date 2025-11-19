@@ -1,0 +1,20 @@
+semantic_models:
+  - name: sessions
+    model: ref('sessions')
+    description: Session dimension table (no FK to users)
+
+    entities:
+      - name: session
+        type: primary
+        expr: session_id
+
+    dimensions:
+      - name: session_start
+        type: time
+        type_params:
+          time_granularity: minute
+
+    measures:
+      - name: session_count
+        agg: count
+        description: Count of sessions

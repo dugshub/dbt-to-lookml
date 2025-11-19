@@ -1,0 +1,23 @@
+semantic_models:
+  - name: rentals
+    model: ref('rentals')
+    description: Rental fact table
+
+    entities:
+      - name: rental
+        type: primary
+        expr: rental_id
+      - name: search
+        type: foreign
+        expr: search_id
+
+    dimensions:
+      - name: rental_date
+        type: time
+        type_params:
+          time_granularity: day
+
+    measures:
+      - name: rental_count
+        agg: count
+        description: Count of rentals

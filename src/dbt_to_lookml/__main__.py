@@ -14,6 +14,7 @@ from dbt_to_lookml.cli.formatting import (
     format_warning,
 )
 from dbt_to_lookml.cli.help_formatter import RichCommand
+from dbt_to_lookml.config import save_last_run
 from dbt_to_lookml.parsers.dbt import DbtParser as SemanticModelParser
 
 try:
@@ -226,12 +227,9 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
                 # Wizard was cancelled
                 return
 
-            if not execute:
-                console.print("\n[dim]To execute this command, run it in your terminal")
-                console.print("or use: dbt-to-lookml wizard generate --execute[/dim]")
-
         except Exception as e:
-            console.print(f"[bold red]Error: {e}[/bold red]")
+            # Use markup=False to prevent Rich from parsing the exception text
+            console.print("[bold red]Error:[/bold red]", e, markup=False)
             raise click.ClickException(str(e))
 
 
@@ -580,6 +578,20 @@ def generate(
                 details=f"Generated {len(generated_files)} files in {output_dir}",
             )
             console.print(success_panel)
+
+            # Save config for future regeneration (only on successful execution)
+            save_last_run(
+                input_dir=input_dir,
+                output_dir=output_dir,
+                schema=schema,
+                view_prefix=view_prefix,
+                explore_prefix=explore_prefix,
+                connection=connection,
+                model_name=model_name,
+                convert_tz=convert_tz
+                if convert_tz
+                else (False if no_convert_tz else None),
+            )
         else:
             success_panel = format_success(
                 "LookML generation preview completed",
@@ -622,6 +634,112 @@ def generate(
         )
         console.print(error_panel)
         raise click.ClickException(str(e))
+
+
+@cli.command(name="regenerate", cls=RichCommand)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be generated without writing files",
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompt and execute immediately",
+)
+def regenerate(dry_run: bool, yes: bool) -> None:
+    """Re-run the last generate command with saved parameters.
+
+    This command loads the configuration from your last successful generation
+    and re-runs it. Useful for quickly regenerating LookML files after making
+    changes to your semantic models.
+
+    The configuration is loaded from ~/.d2l/last_run.json
+
+    By default, you'll be prompted to confirm before execution.
+
+    Examples:
+
+      Re-generate with confirmation prompt:
+      $ dbt-to-lookml regenerate
+
+      Skip confirmation and execute immediately:
+      $ dbt-to-lookml regenerate --yes
+
+      Preview what would be generated:
+      $ dbt-to-lookml regenerate --dry-run
+
+    If no previous configuration is found, you'll need to run the generate
+    command or wizard first.
+    """
+    from dbt_to_lookml.config import load_last_run
+
+    # Load last run config
+    last_run = load_last_run()
+
+    if not last_run:
+        console.print(
+            "[red]No previous run found.[/red]\n\n"
+            "Run one of these commands first:\n"
+            "  • dbt-to-lookml wizard generate\n"
+            "  • dbt-to-lookml generate -i <input> -o <output> -s <schema>"
+        )
+        raise click.ClickException("No saved configuration")
+
+    # Show what will be run
+    console.print("[bold]Regenerating with last parameters:[/bold]")
+    console.print(f"  Input:      {last_run['input_dir']}")
+    console.print(f"  Output:     {last_run['output_dir']}")
+    console.print(f"  Schema:     {last_run['schema']}")
+    if last_run.get("view_prefix"):
+        console.print(f"  View prefix:    {last_run['view_prefix']}")
+    if last_run.get("explore_prefix"):
+        console.print(f"  Explore prefix: {last_run['explore_prefix']}")
+    console.print(f"  Connection: {last_run['connection']}")
+    console.print(f"  Model:      {last_run['model_name']}")
+    console.print("")
+
+    if dry_run:
+        console.print("[yellow]Dry-run mode - no files will be written[/yellow]")
+        return
+
+    # Prompt for confirmation unless --yes flag is set
+    if not yes:
+        import questionary
+
+        proceed = questionary.confirm(
+            "Execute generation with these parameters?",
+            default=True,
+        ).ask()
+
+        if not proceed:
+            console.print("[yellow]Regeneration cancelled[/yellow]")
+            return
+
+    # Build parameters for generate command
+    convert_tz_value = last_run.get("convert_tz")
+
+    # Invoke the generate command
+    ctx = click.get_current_context()
+    ctx.invoke(
+        generate,
+        input_dir=Path(last_run["input_dir"]),
+        output_dir=Path(last_run["output_dir"]),
+        schema=last_run["schema"],
+        view_prefix=last_run.get("view_prefix", ""),
+        explore_prefix=last_run.get("explore_prefix", ""),
+        connection=last_run.get("connection", "redshift_test"),
+        model_name=last_run.get("model_name", "semantic_model"),
+        convert_tz=convert_tz_value is True,
+        no_convert_tz=convert_tz_value is False,
+        dry_run=False,
+        no_validation=False,
+        no_formatting=False,
+        show_summary=False,
+        yes=True,  # Auto-confirm
+        preview=False,
+    )
 
 
 @cli.command(cls=RichCommand)

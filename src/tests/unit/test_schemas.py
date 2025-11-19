@@ -6,6 +6,8 @@ from pydantic import ValidationError
 from dbt_to_lookml.schemas import (
     Config,
     ConfigMeta,
+    ConversionMetricParams,
+    DerivedMetricParams,
     Dimension,
     Entity,
     LookMLDimension,
@@ -15,7 +17,11 @@ from dbt_to_lookml.schemas import (
     LookMLSet,
     LookMLView,
     Measure,
+    Metric,
+    MetricReference,
+    RatioMetricParams,
     SemanticModel,
+    SimpleMetricParams,
 )
 from dbt_to_lookml.types import (
     AggregationType,
@@ -694,15 +700,15 @@ class TestSemanticModel:
         assert "dimension_groups" in view
         assert len(view["dimension_groups"]) > 0
 
-        # Verify dimension set includes expanded timeframe fields
+        # Verify dimension set includes dimension_group base names
         dimension_set = next(
             (s for s in view["sets"] if s["name"] == "dimensions_only"), None
         )
         assert dimension_set is not None
-        # Time dimensions expand to multiple timeframe fields
-        assert "created_at_date" in dimension_set["fields"]
-        assert "created_at_week" in dimension_set["fields"]
-        assert "created_at_month" in dimension_set["fields"]
+        # In LookML, dimension_groups are referenced by their base name in sets
+        assert (
+            "created_at" in dimension_set["fields"]
+        )  # base name, not timeframe variants
         assert "event_type" in dimension_set["fields"]
         assert "event_id" in dimension_set["fields"]
 
@@ -1463,3 +1469,355 @@ class TestDimensionConvertTzComprehensive:
         # Assert - categorical dimensions should never have convert_tz
         assert "convert_tz" not in result1
         assert "convert_tz" not in result2
+
+
+# ============================================================================
+# Metric Schema Tests
+# ============================================================================
+
+
+class TestMetricReference:
+    """Test cases for MetricReference model."""
+
+    def test_metric_reference_creation(self) -> None:
+        """Test basic metric reference creation with only name."""
+        ref = MetricReference(name="revenue")
+        assert ref.name == "revenue"
+        assert ref.alias is None
+        assert ref.offset_window is None
+
+    def test_metric_reference_with_alias(self) -> None:
+        """Test metric reference with name and alias."""
+        ref = MetricReference(name="revenue", alias="current_revenue")
+        assert ref.name == "revenue"
+        assert ref.alias == "current_revenue"
+        assert ref.offset_window is None
+
+    def test_metric_reference_with_offset_window(self) -> None:
+        """Test metric reference with name and offset_window."""
+        ref = MetricReference(name="revenue", offset_window="1 month")
+        assert ref.name == "revenue"
+        assert ref.alias is None
+        assert ref.offset_window == "1 month"
+
+    def test_metric_reference_with_all_fields(self) -> None:
+        """Test metric reference with all fields."""
+        ref = MetricReference(
+            name="revenue", alias="prior_revenue", offset_window="1 month"
+        )
+        assert ref.name == "revenue"
+        assert ref.alias == "prior_revenue"
+        assert ref.offset_window == "1 month"
+
+    def test_metric_reference_validation(self) -> None:
+        """Test that name is required."""
+        with pytest.raises(ValidationError):
+            MetricReference()  # type: ignore
+
+
+class TestSimpleMetricParams:
+    """Test cases for SimpleMetricParams model."""
+
+    def test_simple_metric_params_creation(self) -> None:
+        """Test simple metric params creation."""
+        params = SimpleMetricParams(measure="revenue")
+        assert params.measure == "revenue"
+
+    def test_simple_metric_params_validation(self) -> None:
+        """Test that measure is required."""
+        with pytest.raises(ValidationError):
+            SimpleMetricParams()  # type: ignore
+
+
+class TestRatioMetricParams:
+    """Test cases for RatioMetricParams model."""
+
+    def test_ratio_metric_params_creation(self) -> None:
+        """Test ratio metric params creation."""
+        params = RatioMetricParams(numerator="orders", denominator="searches")
+        assert params.numerator == "orders"
+        assert params.denominator == "searches"
+
+    def test_ratio_metric_params_validation_missing_denominator(self) -> None:
+        """Test that denominator is required."""
+        with pytest.raises(ValidationError):
+            RatioMetricParams(numerator="orders")  # type: ignore
+
+    def test_ratio_metric_params_validation_missing_numerator(self) -> None:
+        """Test that numerator is required."""
+        with pytest.raises(ValidationError):
+            RatioMetricParams(denominator="searches")  # type: ignore
+
+
+class TestDerivedMetricParams:
+    """Test cases for DerivedMetricParams model."""
+
+    def test_derived_metric_params_creation(self) -> None:
+        """Test derived metric params creation with empty metrics list."""
+        params = DerivedMetricParams(expr="revenue * 1.1", metrics=[])
+        assert params.expr == "revenue * 1.1"
+        assert params.metrics == []
+
+    def test_derived_metric_params_with_single_metric(self) -> None:
+        """Test derived metric params with single metric reference."""
+        ref = MetricReference(name="revenue")
+        params = DerivedMetricParams(expr="revenue * 1.1", metrics=[ref])
+        assert params.expr == "revenue * 1.1"
+        assert len(params.metrics) == 1
+        assert params.metrics[0].name == "revenue"
+
+    def test_derived_metric_params_with_multiple_metrics(self) -> None:
+        """Test derived metric params with multiple metric references."""
+        refs = [
+            MetricReference(name="revenue", alias="current"),
+            MetricReference(name="revenue", alias="prior", offset_window="1 month"),
+        ]
+        params = DerivedMetricParams(expr="(current - prior) / prior", metrics=refs)
+        assert params.expr == "(current - prior) / prior"
+        assert len(params.metrics) == 2
+        assert params.metrics[0].alias == "current"
+        assert params.metrics[1].alias == "prior"
+        assert params.metrics[1].offset_window == "1 month"
+
+    def test_derived_metric_params_validation(self) -> None:
+        """Test that expr is required."""
+        with pytest.raises(ValidationError):
+            DerivedMetricParams(metrics=[])  # type: ignore
+
+    def test_derived_metric_params_validation_missing_metrics(self) -> None:
+        """Test that metrics list is required."""
+        with pytest.raises(ValidationError):
+            DerivedMetricParams(expr="revenue * 1.1")  # type: ignore
+
+
+class TestConversionMetricParams:
+    """Test cases for ConversionMetricParams model."""
+
+    def test_conversion_metric_params_creation(self) -> None:
+        """Test conversion metric params creation."""
+        params = ConversionMetricParams(
+            conversion_type_params={
+                "entity": "order",
+                "calculation": "conversion_rate",
+            }
+        )
+        assert params.conversion_type_params["entity"] == "order"
+        assert params.conversion_type_params["calculation"] == "conversion_rate"
+
+    def test_conversion_metric_params_flexible_structure(self) -> None:
+        """Test conversion params accepts various dict structures."""
+        # Simple structure
+        params1 = ConversionMetricParams(conversion_type_params={"entity": "user"})
+        assert params1.conversion_type_params["entity"] == "user"
+
+        # Complex structure
+        params2 = ConversionMetricParams(
+            conversion_type_params={
+                "entity": "order",
+                "calculation": "conversion_rate",
+                "base_event": "page_view",
+                "conversion_event": "purchase",
+                "window": "7 days",
+            }
+        )
+        assert len(params2.conversion_type_params) == 5
+        assert params2.conversion_type_params["window"] == "7 days"
+
+    def test_conversion_metric_params_validation(self) -> None:
+        """Test that conversion_type_params is required."""
+        with pytest.raises(ValidationError):
+            ConversionMetricParams()  # type: ignore
+
+
+class TestMetric:
+    """Test cases for Metric model."""
+
+    def test_metric_simple_creation(self) -> None:
+        """Test simple metric creation."""
+        metric = Metric(
+            name="total_revenue",
+            type="simple",
+            type_params=SimpleMetricParams(measure="revenue"),
+        )
+        assert metric.name == "total_revenue"
+        assert metric.type == "simple"
+        assert isinstance(metric.type_params, SimpleMetricParams)
+        assert metric.type_params.measure == "revenue"
+        assert metric.label is None
+        assert metric.description is None
+        assert metric.meta is None
+
+    def test_metric_ratio_creation(self) -> None:
+        """Test ratio metric creation."""
+        metric = Metric(
+            name="conversion_rate",
+            type="ratio",
+            type_params=RatioMetricParams(numerator="orders", denominator="searches"),
+        )
+        assert metric.name == "conversion_rate"
+        assert metric.type == "ratio"
+        assert isinstance(metric.type_params, RatioMetricParams)
+        assert metric.type_params.numerator == "orders"
+        assert metric.type_params.denominator == "searches"
+
+    def test_metric_derived_creation(self) -> None:
+        """Test derived metric creation."""
+        refs = [
+            MetricReference(name="revenue", alias="current"),
+            MetricReference(name="revenue", alias="prior", offset_window="1 month"),
+        ]
+        metric = Metric(
+            name="revenue_growth",
+            type="derived",
+            type_params=DerivedMetricParams(
+                expr="(current - prior) / prior", metrics=refs
+            ),
+        )
+        assert metric.name == "revenue_growth"
+        assert metric.type == "derived"
+        assert isinstance(metric.type_params, DerivedMetricParams)
+        assert metric.type_params.expr == "(current - prior) / prior"
+        assert len(metric.type_params.metrics) == 2
+
+    def test_metric_conversion_creation(self) -> None:
+        """Test conversion metric creation."""
+        metric = Metric(
+            name="checkout_conversion",
+            type="conversion",
+            type_params=ConversionMetricParams(
+                conversion_type_params={
+                    "entity": "order",
+                    "calculation": "conversion_rate",
+                }
+            ),
+        )
+        assert metric.name == "checkout_conversion"
+        assert metric.type == "conversion"
+        assert isinstance(metric.type_params, ConversionMetricParams)
+        assert metric.type_params.conversion_type_params["entity"] == "order"
+
+    def test_metric_with_all_optional_fields(self) -> None:
+        """Test metric with label, description, and meta."""
+        metric = Metric(
+            name="total_revenue",
+            type="simple",
+            type_params=SimpleMetricParams(measure="revenue"),
+            label="Total Revenue",
+            description="Sum of all revenue",
+            meta={"primary_entity": "order", "category": "financial"},
+        )
+        assert metric.label == "Total Revenue"
+        assert metric.description == "Sum of all revenue"
+        assert metric.meta is not None
+        assert metric.meta["primary_entity"] == "order"
+        assert metric.meta["category"] == "financial"
+
+    def test_metric_validation_missing_name(self) -> None:
+        """Test that name is required."""
+        with pytest.raises(ValidationError):
+            Metric(  # type: ignore
+                type="simple",
+                type_params=SimpleMetricParams(measure="revenue"),
+            )
+
+    def test_metric_validation_missing_type(self) -> None:
+        """Test that type is required."""
+        with pytest.raises(ValidationError):
+            Metric(  # type: ignore
+                name="total_revenue",
+                type_params=SimpleMetricParams(measure="revenue"),
+            )
+
+    def test_metric_validation_missing_type_params(self) -> None:
+        """Test that type_params is required."""
+        with pytest.raises(ValidationError):
+            Metric(name="total_revenue", type="simple")  # type: ignore
+
+    def test_metric_validation_invalid_type(self) -> None:
+        """Test that invalid type is rejected."""
+        with pytest.raises(ValidationError):
+            Metric(  # type: ignore
+                name="total_revenue",
+                type="invalid",  # type: ignore
+                type_params=SimpleMetricParams(measure="revenue"),
+            )
+
+    def test_metric_primary_entity_present(self) -> None:
+        """Test primary_entity property when present in meta."""
+        metric = Metric(
+            name="conversion_rate",
+            type="ratio",
+            type_params=RatioMetricParams(numerator="orders", denominator="searches"),
+            meta={"primary_entity": "search"},
+        )
+        assert metric.primary_entity == "search"
+
+    def test_metric_primary_entity_missing(self) -> None:
+        """Test primary_entity property when meta is None."""
+        metric = Metric(
+            name="total_revenue",
+            type="simple",
+            type_params=SimpleMetricParams(measure="revenue"),
+        )
+        assert metric.primary_entity is None
+
+    def test_metric_primary_entity_meta_without_field(self) -> None:
+        """Test primary_entity when meta exists but lacks primary_entity."""
+        metric = Metric(
+            name="total_revenue",
+            type="simple",
+            type_params=SimpleMetricParams(measure="revenue"),
+            meta={"category": "performance"},
+        )
+        assert metric.primary_entity is None
+
+    def test_metric_primary_entity_nested_meta(self) -> None:
+        """Test primary_entity extraction from complex meta block."""
+        metric = Metric(
+            name="conversion_rate",
+            type="ratio",
+            type_params=RatioMetricParams(numerator="orders", denominator="searches"),
+            meta={
+                "primary_entity": "order",
+                "category": "conversion",
+                "tags": ["important", "revenue"],
+            },
+        )
+        assert metric.primary_entity == "order"
+        assert metric.meta is not None
+        assert metric.meta["category"] == "conversion"
+
+    @pytest.mark.parametrize(
+        "metric_type,params_class,params_dict",
+        [
+            ("simple", SimpleMetricParams, {"measure": "revenue"}),
+            (
+                "ratio",
+                RatioMetricParams,
+                {"numerator": "orders", "denominator": "searches"},
+            ),
+            (
+                "derived",
+                DerivedMetricParams,
+                {"expr": "revenue * 1.1", "metrics": []},
+            ),
+            (
+                "conversion",
+                ConversionMetricParams,
+                {"conversion_type_params": {"entity": "user"}},
+            ),
+        ],
+    )
+    def test_metric_all_types_valid(
+        self, metric_type: str, params_class: type, params_dict: dict
+    ) -> None:
+        """Test all metric types can be instantiated successfully."""
+        params = params_class(**params_dict)
+        metric = Metric(
+            name=f"test_{metric_type}_metric",
+            type=metric_type,  # type: ignore
+            type_params=params,  # type: ignore
+        )
+        assert metric.name == f"test_{metric_type}_metric"
+        assert metric.type == metric_type
+        assert isinstance(metric.type_params, params_class)

@@ -1,0 +1,9 @@
+metrics:
+  - name: nested_metric
+    type: simple
+    type_params:
+      measure: nested_measure
+    label: Nested Metric
+    description: A metric in a nested directory for testing recursion
+    meta:
+      primary_entity: test

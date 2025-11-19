@@ -36,6 +36,15 @@ class TimeGranularity(str, Enum):
     MINUTE = "minute"
 
 
+class MetricType(str, Enum):
+    """Supported metric types."""
+
+    SIMPLE = "simple"
+    RATIO = "ratio"
+    DERIVED = "derived"
+    CONVERSION = "conversion"
+
+
 # Type mapping from dbt aggregation types to LookML measure types
 LOOKML_TYPE_MAP = {
     AggregationType.COUNT: "count",

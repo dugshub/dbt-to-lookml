@@ -1,0 +1,75 @@
+version: 2
+
+semantic_models:
+  - name: rental_segmentation
+    description: Multi-faceted segmentation dimension from `redshift_gold.dim_rental_segmentation` categorizing rentals by business rules and temporal patterns.
+    model: ref('dim_rental_segmentation')
+    entities:
+      - name: rental
+        type: primary
+        expr: unique_rental_sk
+    dimensions:
+      - name: is_monthly_rental
+        description: Boolean indicator for rentals with monthly pricing rule type (subscription-based parking).
+        type: categorical
+        expr: is_monthly_rental
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Rental Segmentation"
+      - name: is_event_rental
+        description: Boolean indicator for event-associated rentals (concerts, games, etc).
+        type: categorical
+        expr: is_event_rental
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Rental Segmentation"
+      - name: is_airport_rental
+        description: Boolean indicator for airport facility rentals with 24+ hour duration.
+        type: categorical
+        expr: is_airport_rental
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Rental Segmentation"
+      - name: primary_rental_segment
+        description: Hierarchical categorization with strict precedence (monthly > event > airport > transient).
+        type: categorical
+        expr: primary_rental_segment
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Rental Segmentation"
+      - name: temporal_segment
+        description: Time-based rental pattern classification (Commuter, Short-term Weekday, Weekday PM, Weekend Day, Multiday, Other).
+        type: categorical
+        expr: temporal_segment
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Rental Segmentation"
+      - name: rental_rule_type
+        description: Pricing rule classification (monthly, hourly, daily, event) - key driver of segmentation.
+        type: categorical
+        expr: rental_rule_type_title
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Rental Segmentation"
+      - name: rental_length_minutes
+        description: Duration of rental in minutes.
+        type: categorical
+        expr: rental_length_minutes
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Rental Details"
+      - name: is_first_completed_rental
+        description: Flag indicating if this was the renter's first completed rental transaction. Excludes cancelled or refunded rentals.
+        type: categorical
+        expr: is_first_completed_rental
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Customer Lifecycle"

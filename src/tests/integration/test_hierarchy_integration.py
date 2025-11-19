@@ -318,5 +318,7 @@ class TestHierarchyIntegration:
             measure_without = next(
                 (m for m in measures if m["name"] == "measure_without_hierarchy"), None
             )
-            assert "view_label" not in measure_without
-            assert "group_label" not in measure_without
+            # Measures without hierarchy get default " Metrics" view_label
+            # and model_name-based group_label as fallback
+            assert measure_without.get("view_label") == " Metrics"
+            assert measure_without.get("group_label") == "Mixed Model Performance"

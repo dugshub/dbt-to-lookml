@@ -608,8 +608,10 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
 
         content = generator._generate_explores_lookml([])
 
-        # Should generate minimal structure
-        assert "explore:" in content
+        # Should generate empty content (no malformed explore blocks)
+        # This prevents LookML validation errors
+        assert "explore:" not in content
+        assert content.strip() == ""
 
     def test_permission_error_handling(self) -> None:
         """Test handling of file permission errors."""
@@ -1823,10 +1825,10 @@ class TestValidateOutput:
                 (s for s in sets if s["name"] == "dimensions_only"), None
             )
             assert dimension_set is not None
-            # Time dimensions expand to multiple timeframe fields
-            assert "event_timestamp_date" in dimension_set["fields"]
-            assert "event_timestamp_week" in dimension_set["fields"]
-            assert "event_timestamp_month" in dimension_set["fields"]
+            # In LookML, dimension_groups are referenced by their base name in sets
+            assert (
+                "event_timestamp" in dimension_set["fields"]
+            )  # base name, not timeframe variants
             assert "event_type" in dimension_set["fields"]
             assert "event_id" in dimension_set["fields"]
 
@@ -2952,3 +2954,669 @@ class TestLookMLGeneratorConvertTz:
 
         # Assert
         assert generator.convert_tz is None
+
+
+class TestMetricRequirementsForExplores:
+    """Tests for explore join enhancement based on metric requirements."""
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_identify_metric_requirements_basic(self, mock_extract: MagicMock) -> None:
+        """Test basic metric requirement identification."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        # Base model with primary entity "search"
+        base_model = SemanticModel(
+            name="searches",
+            model="ref('fct_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="search_count",
+                    agg=AggregationType.COUNT,
+                    description="Count of searches",
+                )
+            ],
+        )
+
+        # Target model with the measure we need
+        rental_model = SemanticModel(
+            name="rental_orders",
+            model="ref('fct_rental_orders')",
+            entities=[Entity(name="rental", type="primary", expr="rental_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="rental_count",
+                    agg=AggregationType.COUNT,
+                    description="Count of rentals",
+                )
+            ],
+        )
+
+        # Metric owned by searches requiring rental_count
+        metric = MagicMock()
+        metric.name = "search_conversion_rate"
+        metric.primary_entity = "search"
+
+        # Mock extract to return rental_count
+        mock_extract.return_value = {"rental_count"}
+
+        # Act
+        requirements = generator._identify_metric_requirements(
+            base_model, [metric], [base_model, rental_model]
+        )
+
+        # Assert
+        assert requirements == {"rental_orders": {"rental_count"}}
+        mock_extract.assert_called_once_with(metric)
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_identify_metric_requirements_multiple_measures(
+        self, mock_extract: MagicMock
+    ) -> None:
+        """Test metric requiring multiple measures from same joined model."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        base_model = SemanticModel(
+            name="searches",
+            model="ref('fct_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[],
+        )
+
+        rental_model = SemanticModel(
+            name="rental_orders",
+            model="ref('fct_rental_orders')",
+            entities=[Entity(name="rental", type="primary", expr="rental_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="rental_count",
+                    agg=AggregationType.COUNT,
+                    description="Count of rentals",
+                ),
+                Measure(
+                    name="total_revenue",
+                    agg=AggregationType.SUM,
+                    expr="revenue_amount",
+                    description="Total revenue",
+                ),
+            ],
+        )
+
+        metric = MagicMock()
+        metric.name = "revenue_per_search"
+        metric.primary_entity = "search"
+
+        # Mock extract to return multiple measures
+        mock_extract.return_value = {"rental_count", "total_revenue"}
+
+        # Act
+        requirements = generator._identify_metric_requirements(
+            base_model, [metric], [base_model, rental_model]
+        )
+
+        # Assert
+        assert requirements == {"rental_orders": {"rental_count", "total_revenue"}}
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_identify_metric_requirements_multiple_models(
+        self, mock_extract: MagicMock
+    ) -> None:
+        """Test metric requiring measures from multiple different models."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        base_model = SemanticModel(
+            name="searches",
+            model="ref('fct_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[],
+        )
+
+        rental_model = SemanticModel(
+            name="rental_orders",
+            model="ref('fct_rental_orders')",
+            entities=[Entity(name="rental", type="primary", expr="rental_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="rental_count",
+                    agg=AggregationType.COUNT,
+                    description="Count",
+                )
+            ],
+        )
+
+        user_model = SemanticModel(
+            name="users",
+            model="ref('dim_users')",
+            entities=[Entity(name="user", type="primary", expr="user_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="user_count", agg=AggregationType.COUNT, description="Count"
+                )
+            ],
+        )
+
+        metric = MagicMock()
+        metric.name = "complex_metric"
+        metric.primary_entity = "search"
+
+        # Mock extract to return measures from different models
+        mock_extract.return_value = {"rental_count", "user_count"}
+
+        # Act
+        requirements = generator._identify_metric_requirements(
+            base_model, [metric], [base_model, rental_model, user_model]
+        )
+
+        # Assert
+        assert requirements == {
+            "rental_orders": {"rental_count"},
+            "users": {"user_count"},
+        }
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_identify_metric_requirements_excludes_base_model_measures(
+        self, mock_extract: MagicMock
+    ) -> None:
+        """Test that measures from base model are excluded from requirements."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        base_model = SemanticModel(
+            name="searches",
+            model="ref('fct_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="search_count",
+                    agg=AggregationType.COUNT,
+                    description="Count of searches",
+                )
+            ],
+        )
+
+        rental_model = SemanticModel(
+            name="rental_orders",
+            model="ref('fct_rental_orders')",
+            entities=[Entity(name="rental", type="primary", expr="rental_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="rental_count",
+                    agg=AggregationType.COUNT,
+                    description="Count",
+                )
+            ],
+        )
+
+        metric = MagicMock()
+        metric.name = "conversion_rate"
+        metric.primary_entity = "search"
+
+        # Mock extract to return both base and cross-view measures
+        mock_extract.return_value = {"search_count", "rental_count"}
+
+        # Act
+        requirements = generator._identify_metric_requirements(
+            base_model, [metric], [base_model, rental_model]
+        )
+
+        # Assert - only rental_count, not search_count
+        assert requirements == {"rental_orders": {"rental_count"}}
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_identify_metric_requirements_deduplicates(
+        self, mock_extract: MagicMock
+    ) -> None:
+        """Test that duplicate measure requirements are deduplicated."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        base_model = SemanticModel(
+            name="searches",
+            model="ref('fct_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[],
+        )
+
+        rental_model = SemanticModel(
+            name="rental_orders",
+            model="ref('fct_rental_orders')",
+            entities=[Entity(name="rental", type="primary", expr="rental_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="rental_count",
+                    agg=AggregationType.COUNT,
+                    description="Count",
+                )
+            ],
+        )
+
+        # Two metrics both requiring same measure
+        metric1 = MagicMock()
+        metric1.name = "metric1"
+        metric1.primary_entity = "search"
+
+        metric2 = MagicMock()
+        metric2.name = "metric2"
+        metric2.primary_entity = "search"
+
+        # Both return same measure
+        mock_extract.return_value = {"rental_count"}
+
+        # Act
+        requirements = generator._identify_metric_requirements(
+            base_model, [metric1, metric2], [base_model, rental_model]
+        )
+
+        # Assert - rental_count appears once (automatic via set)
+        assert requirements == {"rental_orders": {"rental_count"}}
+        assert len(requirements["rental_orders"]) == 1
+
+    def test_identify_metric_requirements_no_primary_entity(self) -> None:
+        """Test handling of base model without primary entity."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        # Base model WITHOUT primary entity
+        base_model = SemanticModel(
+            name="searches",
+            model="ref('fct_searches')",
+            entities=[
+                Entity(name="search", type="foreign", expr="search_sk")
+            ],  # foreign, not primary
+            dimensions=[],
+            measures=[],
+        )
+
+        metric = MagicMock()
+        metric.name = "some_metric"
+        metric.primary_entity = "search"
+
+        # Act
+        requirements = generator._identify_metric_requirements(
+            base_model, [metric], [base_model]
+        )
+
+        # Assert - returns empty dict immediately
+        assert requirements == {}
+
+    def test_identify_metric_requirements_no_metrics(self) -> None:
+        """Test handling of empty metrics list."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        base_model = SemanticModel(
+            name="searches",
+            model="ref('fct_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[],
+        )
+
+        # Act
+        requirements = generator._identify_metric_requirements(
+            base_model,
+            [],
+            [base_model],  # Empty metrics list
+        )
+
+        # Assert
+        assert requirements == {}
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_identify_metric_requirements_no_owned_metrics(
+        self, mock_extract: MagicMock
+    ) -> None:
+        """Test handling when no metrics are owned by base model."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        base_model = SemanticModel(
+            name="searches",
+            model="ref('fct_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[],
+        )
+
+        # Metric owned by different entity
+        metric = MagicMock()
+        metric.name = "some_metric"
+        metric.primary_entity = "rental"  # Different from base_model's primary entity
+
+        # Act
+        requirements = generator._identify_metric_requirements(
+            base_model, [metric], [base_model]
+        )
+
+        # Assert
+        assert requirements == {}
+        mock_extract.assert_not_called()  # Should not extract from non-owned metrics
+
+    def test_build_join_graph_no_metrics(self) -> None:
+        """Test join graph generation without metrics (backward compatibility)."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        # Fact model with foreign key
+        fact_model = SemanticModel(
+            name="rentals",
+            model="ref('fct_rentals')",
+            entities=[
+                Entity(name="rental", type="primary", expr="rental_sk"),
+                Entity(name="search", type="foreign", expr="search_sk"),
+            ],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="rental_count", agg=AggregationType.COUNT, description="Count"
+                )
+            ],
+        )
+
+        # Dimension model
+        dim_model = SemanticModel(
+            name="searches",
+            model="ref('dim_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[],
+        )
+
+        # Act - no metrics parameter
+        joins = generator._build_join_graph(fact_model, [fact_model, dim_model])
+
+        # Assert - fields list contains only dimensions_only*
+        assert len(joins) == 1
+        assert joins[0]["fields"] == ["searches.dimensions_only*"]
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_build_join_graph_with_metric_requirements(
+        self, mock_extract: MagicMock
+    ) -> None:
+        """Test join graph enhanced with metric requirements."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        # Fact model
+        fact_model = SemanticModel(
+            name="rentals",
+            model="ref('fct_rentals')",
+            entities=[
+                Entity(name="rental", type="primary", expr="rental_sk"),
+                Entity(name="search", type="foreign", expr="search_sk"),
+            ],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="rental_count", agg=AggregationType.COUNT, description="Count"
+                )
+            ],
+        )
+
+        # Dimension model with measure we need
+        dim_model = SemanticModel(
+            name="searches",
+            model="ref('dim_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="search_count",
+                    agg=AggregationType.COUNT,
+                    description="Count of searches",
+                )
+            ],
+        )
+
+        # Metric owned by rentals requiring search_count
+        metric = MagicMock()
+        metric.name = "rental_per_search"
+        metric.primary_entity = "rental"
+
+        mock_extract.return_value = {"search_count"}
+
+        # Act
+        joins = generator._build_join_graph(
+            fact_model, [fact_model, dim_model], [metric]
+        )
+
+        # Assert - fields list includes dimensions_only* AND required measure
+        assert len(joins) == 1
+        assert "searches.dimensions_only*" in joins[0]["fields"]
+        assert "searches.search_count" in joins[0]["fields"]
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_build_join_graph_multiple_required_measures(
+        self, mock_extract: MagicMock
+    ) -> None:
+        """Test join graph with multiple required measures from same model."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        fact_model = SemanticModel(
+            name="rentals",
+            model="ref('fct_rentals')",
+            entities=[
+                Entity(name="rental", type="primary", expr="rental_sk"),
+                Entity(name="search", type="foreign", expr="search_sk"),
+            ],
+            dimensions=[],
+            measures=[],
+        )
+
+        dim_model = SemanticModel(
+            name="searches",
+            model="ref('dim_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="search_count",
+                    agg=AggregationType.COUNT,
+                    description="Count",
+                ),
+                Measure(
+                    name="avg_duration",
+                    agg=AggregationType.AVERAGE,
+                    expr="duration",
+                    description="Average duration",
+                ),
+            ],
+        )
+
+        metric = MagicMock()
+        metric.name = "complex_metric"
+        metric.primary_entity = "rental"
+
+        # Multiple measures required
+        mock_extract.return_value = {"search_count", "avg_duration"}
+
+        # Act
+        joins = generator._build_join_graph(
+            fact_model, [fact_model, dim_model], [metric]
+        )
+
+        # Assert - all required measures included
+        assert len(joins) == 1
+        assert "searches.dimensions_only*" in joins[0]["fields"]
+        assert "searches.search_count" in joins[0]["fields"]
+        assert "searches.avg_duration" in joins[0]["fields"]
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_build_join_graph_fields_deterministic(
+        self, mock_extract: MagicMock
+    ) -> None:
+        """Test that fields list is deterministic (sorted)."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        fact_model = SemanticModel(
+            name="rentals",
+            model="ref('fct_rentals')",
+            entities=[
+                Entity(name="rental", type="primary", expr="rental_sk"),
+                Entity(name="search", type="foreign", expr="search_sk"),
+            ],
+            dimensions=[],
+            measures=[],
+        )
+
+        dim_model = SemanticModel(
+            name="searches",
+            model="ref('dim_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[
+                Measure(name="zulu", agg=AggregationType.COUNT, description="Z"),
+                Measure(name="alpha", agg=AggregationType.COUNT, description="A"),
+                Measure(name="mike", agg=AggregationType.COUNT, description="M"),
+            ],
+        )
+
+        metric = MagicMock()
+        metric.name = "metric"
+        metric.primary_entity = "rental"
+
+        # Return measures in non-alphabetical order
+        mock_extract.return_value = {"zulu", "alpha", "mike"}
+
+        # Act - run twice
+        joins1 = generator._build_join_graph(
+            fact_model, [fact_model, dim_model], [metric]
+        )
+        joins2 = generator._build_join_graph(
+            fact_model, [fact_model, dim_model], [metric]
+        )
+
+        # Assert - fields list is identical and sorted
+        assert joins1[0]["fields"] == joins2[0]["fields"]
+        # Check measures are sorted (after dimensions_only*)
+        measure_fields = [f for f in joins1[0]["fields"] if "dimensions_only" not in f]
+        assert measure_fields == [
+            "searches.alpha",
+            "searches.mike",
+            "searches.zulu",
+        ]
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_build_join_graph_with_view_prefix(self, mock_extract: MagicMock) -> None:
+        """Test that view prefix is applied correctly to field names."""
+        # Arrange
+        generator = LookMLGenerator(view_prefix="v_")
+
+        fact_model = SemanticModel(
+            name="rentals",
+            model="ref('fct_rentals')",
+            entities=[
+                Entity(name="rental", type="primary", expr="rental_sk"),
+                Entity(name="search", type="foreign", expr="search_sk"),
+            ],
+            dimensions=[],
+            measures=[],
+        )
+
+        dim_model = SemanticModel(
+            name="searches",
+            model="ref('dim_searches')",
+            entities=[Entity(name="search", type="primary", expr="search_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="search_count",
+                    agg=AggregationType.COUNT,
+                    description="Count",
+                )
+            ],
+        )
+
+        metric = MagicMock()
+        metric.name = "metric"
+        metric.primary_entity = "rental"
+
+        mock_extract.return_value = {"search_count"}
+
+        # Act
+        joins = generator._build_join_graph(
+            fact_model, [fact_model, dim_model], [metric]
+        )
+
+        # Assert - prefixed view names used
+        assert "v_searches.dimensions_only*" in joins[0]["fields"]
+        assert "v_searches.search_count" in joins[0]["fields"]
+
+    @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
+    def test_build_join_graph_multi_hop_with_metrics(
+        self, mock_extract: MagicMock
+    ) -> None:
+        """Test multi-hop join with metric requirements."""
+        # Arrange
+        generator = LookMLGenerator()
+
+        # A → B → C chain
+        model_a = SemanticModel(
+            name="rentals",
+            model="ref('fct_rentals')",
+            entities=[
+                Entity(name="rental", type="primary", expr="rental_sk"),
+                Entity(name="search", type="foreign", expr="search_sk"),
+            ],
+            dimensions=[],
+            measures=[],
+        )
+
+        model_b = SemanticModel(
+            name="searches",
+            model="ref('dim_searches')",
+            entities=[
+                Entity(name="search", type="primary", expr="search_sk"),
+                Entity(name="session", type="foreign", expr="session_sk"),
+            ],
+            dimensions=[],
+            measures=[],
+        )
+
+        model_c = SemanticModel(
+            name="sessions",
+            model="ref('dim_sessions')",
+            entities=[Entity(name="session", type="primary", expr="session_sk")],
+            dimensions=[],
+            measures=[
+                Measure(
+                    name="session_count",
+                    agg=AggregationType.COUNT,
+                    description="Count",
+                )
+            ],
+        )
+
+        # Metric in A requiring measure from C
+        metric = MagicMock()
+        metric.name = "rental_per_session"
+        metric.primary_entity = "rental"
+
+        mock_extract.return_value = {"session_count"}
+
+        # Act
+        joins = generator._build_join_graph(
+            model_a, [model_a, model_b, model_c], [metric]
+        )
+
+        # Assert - C's join includes required measure
+        assert len(joins) == 2  # B and C
+        session_join = next(j for j in joins if j["view_name"] == "sessions")
+        assert "sessions.dimensions_only*" in session_join["fields"]
+        assert "sessions.session_count" in session_join["fields"]

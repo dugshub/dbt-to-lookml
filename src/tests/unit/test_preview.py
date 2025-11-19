@@ -284,14 +284,14 @@ class TestShowPreviewAndConfirm:
         assert result is False
 
     @patch("dbt_to_lookml.preview.console.input")
-    def test_confirm_empty_defaults_to_no(
+    def test_confirm_empty_defaults_to_yes(
         self, mock_input: MagicMock, sample_preview_data: PreviewData
     ) -> None:
-        """Test that empty response defaults to No for safety."""
+        """Test that empty response defaults to Yes (Enter key)."""
         mock_input.return_value = ""
 
         result = show_preview_and_confirm(sample_preview_data, auto_confirm=False)
-        assert result is False
+        assert result is True
 
     @patch("dbt_to_lookml.preview.console.input")
     def test_confirm_yes_full_word(

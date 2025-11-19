@@ -1,0 +1,114 @@
+version: 2
+
+metrics:
+  # Rental Metrics (from rentals semantic model)
+  - name: rental_revenue
+    description: Total rental revenue in local currency
+    type: simple
+    label: Rental Revenue
+    type_params:
+      measure:
+        name: total_revenue
+    meta:
+      category: Financial
+      owner: data-team
+
+  - name: rental_count
+    description: Total number of unique rentals
+    type: simple
+    label: Rental Count
+    type_params:
+      measure:
+        name: rentals
+    meta:
+      category: Operations
+      owner: data-team
+
+  - name: unique_renters
+    description: Total number of unique renters
+    type: simple
+    label: Unique Renters
+    type_params:
+      measure:
+        name: renter_count
+    meta:
+      category: Customer
+      owner: data-team
+
+  - name: facilities_with_rentals
+    description: Number of facilities with rental activity
+    type: simple
+    label: Facilities with Rentals
+    type_params:
+      measure:
+        name: parking_spot_count
+    meta:
+      category: Operations
+      owner: data-team
+
+  - name: rental_arv
+    description: Average revenue per rental (ARV)
+    type: simple
+    label: Rental ARV
+    type_params:
+      measure:
+        name: average_rental_value
+    meta:
+      category: Financial
+      owner: data-team
+
+  - name: rental_price_p25
+    description: 25th percentile of rental checkout amounts
+    type: simple
+    label: Rental Price (P25)
+    type_params:
+      measure:
+        name: revenue_25th_percentile
+    meta:
+      category: Financial
+      owner: data-team
+
+  - name: rental_price_median
+    description: Median rental checkout amount (50th percentile)
+    type: simple
+    label: Rental Price (Median)
+    type_params:
+      measure:
+        name: revenue_50th_percentile
+    meta:
+      category: Financial
+      owner: data-team
+
+  - name: rental_price_p75
+    description: 75th percentile of rental checkout amounts
+    type: simple
+    label: Rental Price (P75)
+    type_params:
+      measure:
+        name: revenue_75th_percentile
+    meta:
+      category: Financial
+      owner: data-team
+
+  - name: booking_lead_time_hours
+    description: Average hours between booking and rental start
+    type: simple
+    label: Booking Lead Time (Hours)
+    type_params:
+      measure:
+        name: average_lead_time_hours
+    meta:
+      category: Operations
+      owner: data-team
+
+  # Search Metrics (from searches semantic model)
+  - name: search_count
+    description: Total number of searches executed
+    type: simple
+    label: Search Count
+    type_params:
+      measure:
+        name: search_count
+    meta:
+      category: Operations
+      owner: data-team
