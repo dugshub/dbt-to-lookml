@@ -1,0 +1,50 @@
+version: 2
+
+semantic_models:
+  - name: searches
+    description: Search dimension sourced from `redshift_gold.dim_searches`.
+    model: ref('dim_searches')
+    defaults:
+      agg_time_dimension: search_date
+      
+    entities:
+      - name: search
+        type: primary
+        expr: search_id
+      - name: session
+        type: foreign
+        expr: session_id
+
+    dimensions:
+      - name: search_date
+        description: Date the search event was recorded.
+        type: time
+        type_params:
+          time_granularity: day
+        expr: event_date
+        config:
+          meta:
+            subject: "Universal"
+            category: "Time Periods"
+            is_primary_time: true
+      - name: search_city
+        description: City matched in the search results.
+        type: categorical
+        expr: city
+        config:
+          meta:
+            subject: "Markets"
+            category: "Geographic Demand"
+      - name: parking_type
+        description: Parking product type requested.
+        type: categorical
+        expr: parking_type
+        config:
+          meta:
+            subject: "Markets"
+            category: "Product Demand"
+    measures:
+      - name: search_count
+        description: Distinct searches executed.
+        agg: count_distinct
+        expr: search_id

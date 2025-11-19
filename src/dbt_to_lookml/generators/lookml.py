@@ -1128,13 +1128,10 @@ class LookMLGenerator(Generator):
         # Add include statements
         if include_statements:
             result_parts.append("\n".join(include_statements))
-            result_parts.append("")  # Blank line after includes
 
-        # Handle empty explores list to maintain structure
-        if not explores:
-            result_parts.append("explore:\n")
-        else:
-            # Generate LookML for explores
+        # Generate LookML for explores (only if there are explores to generate)
+        if explores:
+            result_parts.append("")  # Blank line before explores
             explores_content = lkml.dump({"explores": explores})
             if explores_content:
                 result_parts.append(explores_content)
