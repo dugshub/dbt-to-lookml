@@ -188,6 +188,10 @@ class Dimension(BaseModel):
         if group_label:
             result["group_label"] = group_label
 
+        # Add hidden parameter if specified
+        if self.config and self.config.meta and self.config.meta.hidden is True:
+            result["hidden"] = "yes"
+
         return result
 
     def _get_timeframes(self) -> list[str]:
@@ -311,6 +315,10 @@ class Dimension(BaseModel):
 
         result["convert_tz"] = "yes" if convert_tz else "no"
 
+        # Add hidden parameter if specified
+        if self.config and self.config.meta and self.config.meta.hidden is True:
+            result["hidden"] = "yes"
+
         return result
 
 
@@ -395,6 +403,10 @@ class Measure(BaseModel):
             result["view_label"] = view_label
         if group_label:
             result["group_label"] = group_label
+
+        # Add hidden parameter if specified
+        if self.config and self.config.meta and self.config.meta.hidden is True:
+            result["hidden"] = "yes"
 
         return result
 
@@ -778,3 +790,32 @@ class Metric(BaseModel):
         if self.meta:
             return self.meta.get("primary_entity")
         return None
+
+    def get_required_measures(self) -> list[str]:
+        """Get list of measure names this metric depends on.
+
+        Extracts measure dependencies based on metric type:
+        - Simple: Single measure reference
+        - Ratio: Numerator and denominator measures
+        - Derived: Extracted from metric references
+        - Conversion: Empty (no simple measure dependencies)
+
+        Returns:
+            List of measure names required by this metric.
+        """
+        if self.type == "simple" and isinstance(self.type_params, SimpleMetricParams):
+            return [self.type_params.measure]
+        elif self.type == "ratio" and isinstance(
+            self.type_params, RatioMetricParams
+        ):
+            return [self.type_params.numerator, self.type_params.denominator]
+        elif self.type == "derived" and isinstance(
+            self.type_params, DerivedMetricParams
+        ):
+            # For derived metrics, extract unique metric names
+            unique_measures = set()
+            for ref in self.type_params.metrics:
+                unique_measures.add(ref.name)
+            return sorted(list(unique_measures))
+        # Conversion metrics don't have direct measure dependencies
+        return []
