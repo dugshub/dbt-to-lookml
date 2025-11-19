@@ -1,0 +1,43 @@
+version: 2
+
+semantic_models:
+  - name: rental_attributes
+    description: Rental attribute dimension from `redshift_gold.dim_rentals`.
+    model: ref('dim_rentals')
+    entities:
+      - name: rental
+        type: primary
+        expr: rental_sk
+    dimensions:
+      - name: payment_type
+        description: Payment method used for the rental.
+        type: categorical
+        expr: payment_type_title
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Transaction Details"
+      - name: rental_source
+        description: Channel where the rental was booked.
+        type: categorical
+        expr: rental_source_title
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Acquisition Channels"
+      - name: source_category
+        description: Device category reported for the booking source.
+        type: categorical
+        expr: rental_source_device_category
+        config:
+          meta:
+            subject: "Rentals"
+            category: "Acquisition Channels"
+      - name: is_guest_rental
+        description: Flag indicating if renter checked out as a guest.
+        type: categorical
+        expr: purchased_as_guest
+        config:
+          meta:
+            subject: "Customers"
+            category: "User Status"

@@ -608,8 +608,10 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
 
         content = generator._generate_explores_lookml([])
 
-        # Should generate minimal structure
-        assert "explore:" in content
+        # Should generate empty content (no malformed explore blocks)
+        # This prevents LookML validation errors
+        assert "explore:" not in content
+        assert content.strip() == ""
 
     def test_permission_error_handling(self) -> None:
         """Test handling of file permission errors."""
