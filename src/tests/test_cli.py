@@ -85,7 +85,7 @@ class TestCLI:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -122,7 +122,7 @@ class TestCLI:
                     "v_",
                     "--explore-prefix",
                     "e_",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -154,7 +154,7 @@ class TestCLI:
                     "--schema",
                     "public",
                     "--dry-run",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -184,7 +184,7 @@ class TestCLI:
                     "--schema",
                     "public",
                     "--no-validation",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -207,7 +207,7 @@ class TestCLI:
                     "--schema",
                     "public",
                     "--show-summary",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -232,7 +232,7 @@ class TestCLI:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -257,7 +257,7 @@ class TestCLI:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -285,7 +285,7 @@ class TestCLI:
                     str(output_dir),
                     "--schema",
                     "analytics",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -389,7 +389,7 @@ class TestCLI:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -424,7 +424,7 @@ class TestCLI:
                     "--no-formatting",
                     "--show-summary",
                     "--dry-run",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -462,7 +462,7 @@ class TestCLI:
                         str(output_dir),
                         "--schema",
                         "public",
-                    "--yes",
+                        "--yes",
                     ],
                 )
 
@@ -490,7 +490,7 @@ class TestCLI:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -553,7 +553,7 @@ class TestCLI:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -581,7 +581,7 @@ class TestCLI:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
                 env=env,
             )
@@ -606,7 +606,7 @@ class TestCLI:
                     str(unicode_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -645,7 +645,7 @@ class TestCLI:
                         str(output_dir),
                         "--schema",
                         "public",
-                    "--yes",
+                        "--yes",
                     ],
                 )
 
@@ -676,7 +676,7 @@ class TestCLI:
                         str(output_dir),
                         "--schema",
                         "public",
-                    "--yes",
+                        "--yes",
                     ],
                 )
 
@@ -707,7 +707,7 @@ class TestCLI:
                     long_prefix,
                     "--explore-prefix",
                     long_prefix,
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -821,7 +821,7 @@ class TestCLIGenerateOptions:
                     str(fixtures_dir),
                     "--output-dir",
                     str(temp_dir),
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -847,7 +847,7 @@ class TestCLIGenerateOptions:
                     "public",
                     "--view-prefix",
                     "dim_",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -875,7 +875,7 @@ class TestCLIGenerateOptions:
                     "public",
                     "--explore-prefix",
                     "exp_",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -903,7 +903,7 @@ class TestCLIGenerateOptions:
                     "--schema",
                     "public",
                     "--no-formatting",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -934,7 +934,7 @@ class TestCLIGenerateOptions:
                     "tmp_",
                     "--explore-prefix",
                     "test_",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -966,7 +966,7 @@ class TestCLIGenerateOptions:
                     "--explore-prefix",
                     "e_",
                     "--show-summary",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -993,7 +993,7 @@ class TestCLIGenerateOptions:
                     "--schema",
                     "public",
                     "--no-validation",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1023,7 +1023,7 @@ class TestCLIGenerateOptions:
                     "",
                     "--explore-prefix",
                     "",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1053,7 +1053,7 @@ class TestCLIGenerateOptions:
                     "my-view_",
                     "--explore-prefix",
                     "my-explore_",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1092,7 +1092,7 @@ class TestCLIErrorHandling:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1176,7 +1176,7 @@ measures:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1248,7 +1248,7 @@ measures:
                     "--schema",
                     "public",
                     "--convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1277,7 +1277,7 @@ measures:
                     "--schema",
                     "public",
                     "--no-convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1305,7 +1305,7 @@ measures:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1335,7 +1335,7 @@ measures:
                     "public",
                     "--convert-tz",
                     "--no-convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1385,7 +1385,7 @@ class TestCLIConvertTzFlags:
                     "--schema",
                     "public",
                     "--convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1412,7 +1412,7 @@ class TestCLIConvertTzFlags:
                     "--schema",
                     "public",
                     "--no-convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1438,7 +1438,7 @@ class TestCLIConvertTzFlags:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1475,7 +1475,7 @@ class TestCLIConvertTzFlags:
                     "--schema",
                     "public",
                     "--convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1512,7 +1512,7 @@ class TestCLIConvertTzFlags:
                     "--schema",
                     "public",
                     "--no-convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1549,7 +1549,7 @@ class TestCLIConvertTzFlags:
                     "--schema",
                     "public",
                     "--convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1598,7 +1598,7 @@ class TestCLIConvertTzFlags:
                     "--schema",
                     "public",
                     "--convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1629,7 +1629,7 @@ class TestCLIConvertTzFlags:
                     "v_",
                     "--explore-prefix",
                     "e_",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1661,7 +1661,7 @@ class TestCLIConvertTzFlags:
                     "--schema",
                     "public",
                     "--convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1690,7 +1690,7 @@ class TestCLIConvertTzFlags:
                     "public",
                     "--convert-tz",
                     "--no-convert-tz",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1773,7 +1773,7 @@ class TestCLIConvertTzFlags:
                     "--schema",
                     "public",
                     flag,
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1806,7 +1806,7 @@ class TestCLIConvertTzFlags:
                     "--schema",
                     "public",
                     "--preview",
-                "--yes",
+                    "--yes",
                 ],
             )
 
@@ -1860,7 +1860,7 @@ class TestCLIConvertTzFlags:
                     str(output_dir),
                     "--schema",
                     "public",
-                "--yes",
+                    "--yes",
                 ],
                 input="n\n",  # Simulate user typing 'n' at prompt
             )
