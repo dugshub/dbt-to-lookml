@@ -519,9 +519,12 @@ class SemanticModel(BaseModel):
         for entity in self.entities:
             dimension_field_names.append(entity.name)
         for dim in self.dimensions:
-            # For all dimensions (including time dimensions), use the base name
-            # In LookML, dimension_groups are referenced by their base name in sets
-            dimension_field_names.append(dim.name)
+            # For time dimensions, use wildcard to include all timeframes
+            # For regular dimensions, use the base name
+            if dim.type == DimensionType.TIME:
+                dimension_field_names.append(f"{dim.name}*")
+            else:
+                dimension_field_names.append(dim.name)
 
         # Build the view dict
         view_dict: dict[str, Any] = {

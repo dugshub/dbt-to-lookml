@@ -1825,10 +1825,10 @@ class TestValidateOutput:
                 (s for s in sets if s["name"] == "dimensions_only"), None
             )
             assert dimension_set is not None
-            # In LookML, dimension_groups are referenced by their base name in sets
+            # In LookML, dimension_groups are referenced with wildcard in sets
             assert (
-                "event_timestamp" in dimension_set["fields"]
-            )  # base name, not timeframe variants
+                "event_timestamp*" in dimension_set["fields"]
+            )  # wildcard to include all timeframes
             assert "event_type" in dimension_set["fields"]
             assert "event_id" in dimension_set["fields"]
 
