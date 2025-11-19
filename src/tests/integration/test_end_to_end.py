@@ -608,20 +608,29 @@ class TestEndToEndIntegration:
                             f"View {view['name']} dimension set has no fields"
                         )
 
-                        # Verify all dimension and entity names are in the set
+                        # Verify all dimension names are in the set
                         dimension_names = [
                             d["name"] for d in view.get("dimensions", [])
                         ]
+
+                        # For dimension_groups, check that at least one timeframe field exists
+                        # (e.g., created_at_date, created_at_week)
                         dimension_group_names = [
                             dg["name"] for dg in view.get("dimension_groups", [])
                         ]
-                        all_expected_names = set(
-                            dimension_names + dimension_group_names
-                        )
 
-                        for expected_name in all_expected_names:
+                        # Check regular dimensions
+                        for expected_name in dimension_names:
                             assert expected_name in fields, (
                                 f"Dimension {expected_name} not in set of view {view['name']}"
+                            )
+
+                        # For dimension groups, verify at least one timeframe field exists
+                        for dg_name in dimension_group_names:
+                            # Check if any field starts with the dimension_group name
+                            matching_fields = [f for f in fields if f.startswith(f"{dg_name}_")]
+                            assert len(matching_fields) > 0, (
+                                f"No timeframe fields for dimension_group {dg_name} in view {view['name']}"
                             )
 
     def test_generated_views_contain_field_sets(self) -> None:

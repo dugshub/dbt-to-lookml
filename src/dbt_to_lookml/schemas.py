@@ -241,6 +241,29 @@ class Dimension(BaseModel):
 
         return result
 
+    def _get_timeframes(self) -> list[str]:
+        """Get the list of timeframes for this time dimension.
+
+        Returns:
+            List of timeframe strings
+            (e.g., ['date', 'week', 'month', 'quarter', 'year'])
+        """
+        timeframes = ["date", "week", "month", "quarter", "year"]
+
+        if self.type_params and "time_granularity" in self.type_params:
+            granularity = self.type_params["time_granularity"]
+            if granularity in ["hour", "minute"]:
+                timeframes = [
+                    "time",
+                    "hour",
+                    "date",
+                    "week",
+                    "month",
+                    "quarter",
+                    "year",
+                ]
+        return timeframes
+
     def _to_dimension_group_dict(
         self, default_convert_tz: bool | None = None
     ) -> dict[str, Any]:
@@ -306,20 +329,7 @@ class Dimension(BaseModel):
                 precedence rules and usage examples.
         """
         # Determine timeframes based on granularity
-        timeframes = ["date", "week", "month", "quarter", "year"]
-
-        if self.type_params and "time_granularity" in self.type_params:
-            granularity = self.type_params["time_granularity"]
-            if granularity in ["hour", "minute"]:
-                timeframes = [
-                    "time",
-                    "hour",
-                    "date",
-                    "week",
-                    "month",
-                    "quarter",
-                    "year",
-                ]
+        timeframes = self._get_timeframes()
 
         result: dict[str, Any] = {
             "name": self.name,
@@ -519,10 +529,13 @@ class SemanticModel(BaseModel):
         for entity in self.entities:
             dimension_field_names.append(entity.name)
         for dim in self.dimensions:
-            # For time dimensions, use wildcard to include all timeframes
+            # For time dimensions, add each individual timeframe field
+            # (e.g., created_at_date, created_at_week, created_at_month)
             # For regular dimensions, use the base name
             if dim.type == DimensionType.TIME:
-                dimension_field_names.append(f"{dim.name}*")
+                timeframes = dim._get_timeframes()
+                for timeframe in timeframes:
+                    dimension_field_names.append(f"{dim.name}_{timeframe}")
             else:
                 dimension_field_names.append(dim.name)
 

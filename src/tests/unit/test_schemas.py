@@ -705,10 +705,10 @@ class TestSemanticModel:
             (s for s in view["sets"] if s["name"] == "dimensions_only"), None
         )
         assert dimension_set is not None
-        # In LookML, dimension_groups are referenced with wildcard in sets
-        assert (
-            "created_at*" in dimension_set["fields"]
-        )  # wildcard to include all timeframes
+        # In LookML, dimension_groups must list each timeframe individually
+        assert "created_at_date" in dimension_set["fields"]
+        assert "created_at_week" in dimension_set["fields"]
+        assert "created_at_month" in dimension_set["fields"]
         assert "event_type" in dimension_set["fields"]
         assert "event_id" in dimension_set["fields"]
 

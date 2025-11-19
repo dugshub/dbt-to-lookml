@@ -17,8 +17,8 @@ def _extract_dimension_fields_from_view(
 ) -> tuple[list[str], list[str]]:
     """Extract dimension and measure field names from parsed LookML view.
 
-    Note: For dimension_groups, the set uses the base name (e.g., 'created_date')
-    rather than individual timeframe names (e.g., 'created_date_date').
+    Note: For dimension_groups, the set contains individual timeframe names
+    (e.g., 'created_date_date', 'created_date_week') not the base name.
 
     Args:
         view_dict: Parsed LookML view dictionary
@@ -33,11 +33,13 @@ def _extract_dimension_fields_from_view(
     for dim in view_dict.get("dimensions", []):
         dimension_fields.append(dim["name"])
 
-    # Dimension groups (time dimensions) - use base name as it appears in sets
+    # Dimension groups (time dimensions) - extract individual timeframe fields
     for dg in view_dict.get("dimension_groups", []):
         base_name = dg["name"]
-        # In LookML sets, dimension_groups are referenced by their base name
-        dimension_fields.append(base_name)
+        timeframes = dg.get("timeframes", [])
+        # In LookML sets, dimension_groups are referenced by individual timeframes
+        for timeframe in timeframes:
+            dimension_fields.append(f"{base_name}_{timeframe}")
 
     # Measures
     for measure in view_dict.get("measures", []):
