@@ -280,6 +280,151 @@ dimension_group: created_at {
 }
 ```
 
+### Field Visibility Control
+
+The field visibility control system provides flexible mechanisms to manage which fields appear in generated LookML explores and whether fields are marked as hidden. This supports both internal/technical field hiding and selective BI field exposure.
+
+#### Hidden Parameter
+
+Hide fields from LookML output using the `hidden` parameter:
+
+```yaml
+dimensions:
+  - name: internal_id
+    type: categorical
+    config:
+      meta:
+        hidden: true  # Field won't appear in LookML output
+
+  - name: customer_name
+    type: categorical
+    # No hidden parameter - field visible (default)
+```
+
+**LookML Output** (hidden field):
+```lookml
+dimension: internal_id {
+  hidden: yes
+  type: string
+  sql: ${TABLE}.internal_id ;;
+}
+```
+
+#### BI Field Filtering
+
+Selectively expose fields in explores using the `bi_field` parameter combined with CLI flag:
+
+```yaml
+dimensions:
+  - name: customer_id
+    type: categorical
+    config:
+      meta:
+        bi_field: true  # Include in --bi-field-only explores
+
+  - name: internal_notes
+    type: categorical
+    config:
+      meta:
+        bi_field: false  # Exclude from --bi-field-only explores
+```
+
+##### CLI Usage:
+
+```bash
+# Generate with all fields (default)
+dbt-to-lookml generate -i semantic_models/ -o build/lookml/ -s public
+
+# Generate with only bi_field: true fields exposed
+dbt-to-lookml generate -i semantic_models/ -o build/lookml/ -s public --bi-field-only
+```
+
+#### Configuration Precedence
+
+1. **Dimension/Measure level** (via `config.meta`)
+   - `hidden: true` - Always hides the field
+   - `bi_field: true` - Always includes in filtered explores
+   - `bi_field: false` - Always excludes from filtered explores
+
+2. **Generator default** (via `LookMLGenerator` parameter)
+   - `use_bi_field_filter=True` - Enable filtering, include only bi_field fields
+   - `use_bi_field_filter=False` (default) - All fields included, backward compatible
+
+#### Implementation Details
+
+- **Hidden Parameter**:
+  - Applied to dimensions (both categorical and time)
+  - Applied to measures
+  - Generates `hidden: yes` in LookML output
+  - Respected in both views and explores
+
+- **BI Field Filtering**:
+  - `LookMLGenerator._filter_fields_by_bi_field()` filters explore join fields
+  - Primary keys (entities) always included for join relationships
+  - Only applied when `use_bi_field_filter=True`
+  - Backward compatible (disabled by default)
+
+- **Metric Dependencies**:
+  - `Metric.get_required_measures()` extracts measure dependencies
+  - Supports simple, ratio, and derived metric types
+  - Used for intelligent field inclusion in cross-entity metrics
+
+#### Combined Example
+
+```yaml
+semantic_model:
+  name: orders
+  config:
+    meta:
+      hierarchy:
+        entity: "order"
+        category: "transactions"
+
+  entities:
+    - name: order_id
+      type: primary
+
+  dimensions:
+    - name: internal_hash
+      type: categorical
+      config:
+        meta:
+          hidden: true  # Hide internal field
+
+    - name: customer_name
+      type: categorical
+      config:
+        meta:
+          bi_field: true  # Include in BI filtering
+
+    - name: warehouse_id
+      type: categorical
+      config:
+        meta:
+          bi_field: false  # Exclude from BI filtering
+
+  measures:
+    - name: revenue
+      agg: sum
+      config:
+        meta:
+          bi_field: true  # Include in BI filtering
+
+    - name: internal_cost
+      agg: sum
+      config:
+        meta:
+          hidden: true  # Hide from BI
+          bi_field: false
+```
+
+**Generated LookML behavior**:
+- `internal_hash` dimension: Not in LookML (hidden)
+- `customer_name` dimension: In explores with `--bi-field-only`
+- `warehouse_id` dimension: In explores without `--bi-field-only`, excluded with flag
+- `revenue` measure: In explores with `--bi-field-only`
+- `internal_cost` measure: Not in LookML (hidden)
+
 ### Parser Error Handling
 
 - `DbtParser` supports `strict_mode` (fail fast) vs. lenient mode (log warnings, continue)
