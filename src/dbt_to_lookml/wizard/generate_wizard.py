@@ -261,7 +261,7 @@ class GenerateWizard(BaseWizard):
         detected_input_dir: Path | None = None,
         detected_output_dir: Path | None = None,
         detected_schema: str | None = None,
-        saved_config: dict | None = None,
+        saved_config: dict[str, Any] | None = None,
     ) -> None:
         """Initialize generate wizard.
 

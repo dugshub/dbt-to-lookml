@@ -72,8 +72,8 @@ def load_last_run() -> dict[str, Any] | None:
         # Validate config structure
         if not isinstance(config, dict):
             console.print(
-                "[yellow]Warning: Invalid config format, ignoring saved config[/yellow]",
-                file=None,
+                "[yellow]Warning: Invalid config format, "
+                "ignoring saved config[/yellow]",
                 highlight=False,
             )
             return None
@@ -84,7 +84,6 @@ def load_last_run() -> dict[str, Any] | None:
             console.print(
                 f"[yellow]Warning: Config version {version} not supported, "
                 f"ignoring saved config[/yellow]",
-                file=None,
                 highlight=False,
             )
             return None
@@ -94,7 +93,6 @@ def load_last_run() -> dict[str, Any] | None:
     except (json.JSONDecodeError, OSError) as e:
         console.print(
             f"[yellow]Warning: Could not load config: {e}[/yellow]",
-            file=None,
             highlight=False,
         )
         return None
@@ -132,7 +130,6 @@ def save_last_run(
     except OSError as e:
         console.print(
             f"[yellow]Warning: Could not create config directory: {e}[/yellow]",
-            file=None,
             highlight=False,
         )
         return
@@ -159,7 +156,6 @@ def save_last_run(
     except OSError as e:
         console.print(
             f"[yellow]Warning: Could not save config: {e}[/yellow]",
-            file=None,
             highlight=False,
         )
 
@@ -176,6 +172,5 @@ def clear_config() -> None:
         except OSError as e:
             console.print(
                 f"[yellow]Warning: Could not clear config: {e}[/yellow]",
-                file=None,
                 highlight=False,
             )

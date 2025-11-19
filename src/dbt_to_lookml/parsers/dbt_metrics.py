@@ -70,8 +70,10 @@ class DbtMetricParser(Parser):
     of entity connectivity to ensure metrics can be successfully generated.
 
     Attributes:
-        strict_mode: If True, validation errors raise exceptions. If False, warnings logged.
-        semantic_models: Optional list of semantic models for entity connectivity validation.
+        strict_mode: If True, validation errors raise exceptions.
+            If False, warnings logged.
+        semantic_models: Optional list of semantic models for entity
+            connectivity validation.
 
     Example:
         >>> parser = DbtMetricParser(strict_mode=True)
@@ -95,8 +97,10 @@ class DbtMetricParser(Parser):
         """Initialize parser with optional semantic models for validation.
 
         Args:
-            strict_mode: If True, validation errors raise exceptions. If False, warnings logged.
-            semantic_models: Optional list of semantic models for entity connectivity validation.
+            strict_mode: If True, validation errors raise exceptions.
+                If False, warnings logged.
+            semantic_models: Optional list of semantic models for entity
+                connectivity validation.
         """
         super().__init__(strict_mode=strict_mode)
         self.semantic_models = semantic_models or []
@@ -198,8 +202,9 @@ class DbtMetricParser(Parser):
     def _validate_metrics(self, metrics: list[Metric]) -> None:
         """Validate metrics for entity connectivity.
 
-        Performs entity connectivity validation using the EntityConnectivityValidator.
-        In strict mode, raises ValidationError on errors. In lenient mode, logs warnings.
+        Performs entity connectivity validation using the
+        EntityConnectivityValidator. In strict mode, raises ValidationError on
+        errors. In lenient mode, logs warnings.
 
         Args:
             metrics: List of metrics to validate
@@ -221,8 +226,9 @@ class DbtMetricParser(Parser):
         if result.has_errors():
             if self.strict_mode:
                 console.print(result.format_report())
+                error_count = len([i for i in result.issues if i.severity == "error"])
                 raise ValidationError(
-                    f"Metric validation failed with {len([i for i in result.issues if i.severity == 'error'])} errors"
+                    f"Metric validation failed with {error_count} errors"
                 )
             else:
                 console.print("[yellow]Validation warnings:[/yellow]")
@@ -459,7 +465,8 @@ def resolve_primary_entity(metric: Metric, semantic_models: list[SemanticModel])
     # Priority 3: Cannot infer - require explicit specification
     raise ValueError(
         f"Cannot determine primary entity for metric '{metric.name}'. "
-        f"For {metric.type} metrics, primary entity must be specified explicitly in meta:\n"
+        f"For {metric.type} metrics, primary entity must be specified "
+        f"explicitly in meta:\n"
         f"  meta:\n"
         f"    primary_entity: <entity_name>"
     )

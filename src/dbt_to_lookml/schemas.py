@@ -155,7 +155,8 @@ class Entity(BaseModel):
                     result["view_label"] = view_label
                 result["group_label"] = "Join Keys"
 
-        # Hide all entities (typically surrogate keys) - natural keys should be defined as dimensions
+        # Hide all entities (typically surrogate keys)
+        # Natural keys should be defined as dimensions
         result["hidden"] = "yes"
 
         if self.description:
@@ -379,8 +380,10 @@ class Measure(BaseModel):
 
         Returns:
             Tuple of (view_label, group_label) where:
-            - view_label is from hierarchy.category, or " Metrics" if using flat/model fallback
-            - group_label is from hierarchy.subcategory, flat category, or model name
+            - view_label is from hierarchy.category, or " Metrics" if using
+              flat/model fallback
+            - group_label is from hierarchy.subcategory, flat category, or
+              model name
         """
         view_label = None
         group_label = None

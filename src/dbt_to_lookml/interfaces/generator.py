@@ -87,7 +87,8 @@ class Generator(ABC):
                     validation_errors.append(f"{filename}: {error_msg}")
                     if verbose:
                         console.print(
-                            f"    [red]✗[/red] Validation error in {filename}: {error_msg}"
+                            f"    [red]✗[/red] Validation error in "
+                            f"{filename}: {error_msg}"
                         )
 
             if dry_run:

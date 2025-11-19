@@ -1637,7 +1637,6 @@ class TestCLIConvertTzFlags:
             assert result.exit_code == 0
 
             # Verify files were created with prefixes
-            view_files = list(output_dir.glob("v_*.view.lkml"))
             # Some fixtures might not have views with the prefix pattern
             # Just verify the command succeeded
 
