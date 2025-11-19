@@ -6,11 +6,9 @@ from tempfile import NamedTemporaryFile
 import yaml
 
 from dbt_to_lookml.parsers.dbt import DbtParser
-from dbt_to_lookml.schemas import (
-    Config,
-    ConfigMeta,
+from dbt_to_lookml.schemas.config import Config, ConfigMeta, Hierarchy
+from dbt_to_lookml.schemas.semantic_layer import (
     Dimension,
-    Hierarchy,
     Measure,
 )
 from dbt_to_lookml.types import (

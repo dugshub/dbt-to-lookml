@@ -628,7 +628,9 @@ class TestEndToEndIntegration:
                         # For dimension groups, verify at least one timeframe field exists
                         for dg_name in dimension_group_names:
                             # Check if any field starts with the dimension_group name
-                            matching_fields = [f for f in fields if f.startswith(f"{dg_name}_")]
+                            matching_fields = [
+                                f for f in fields if f.startswith(f"{dg_name}_")
+                            ]
                             assert len(matching_fields) > 0, (
                                 f"No timeframe fields for dimension_group {dg_name} in view {view['name']}"
                             )

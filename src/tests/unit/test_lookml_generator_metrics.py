@@ -3,7 +3,7 @@
 import pytest
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator
-from dbt_to_lookml.schemas import (
+from dbt_to_lookml.schemas.semantic_layer import (
     DerivedMetricParams,
     Entity,
     Measure,

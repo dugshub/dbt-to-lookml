@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator, LookMLValidationError
 from dbt_to_lookml.parsers.dbt import DbtParser
-from dbt_to_lookml.schemas import (
+from dbt_to_lookml.schemas.semantic_layer import (
     Dimension,
     Measure,
     SemanticModel,

@@ -6,7 +6,7 @@ from typing import Any
 
 from rich.console import Console
 
-from dbt_to_lookml.schemas import SemanticModel
+from dbt_to_lookml.schemas.semantic_layer import SemanticModel
 
 console = Console()
 

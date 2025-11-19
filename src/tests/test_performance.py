@@ -11,9 +11,8 @@ import pytest
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator
 from dbt_to_lookml.parsers.dbt import DbtParser
-from dbt_to_lookml.schemas import (
-    Config,
-    ConfigMeta,
+from dbt_to_lookml.schemas.config import Config, ConfigMeta
+from dbt_to_lookml.schemas.semantic_layer import (
     Dimension,
     Entity,
     Measure,

@@ -8,15 +8,17 @@ import lkml
 import pytest
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator, LookMLValidationError
-from dbt_to_lookml.schemas import (
+from dbt_to_lookml.schemas.semantic_layer import (
     Dimension,
     Entity,
+    Measure,
+    SemanticModel,
+)
+from dbt_to_lookml.schemas.lookml import (
     LookMLDimension,
     LookMLDimensionGroup,
     LookMLMeasure,
     LookMLView,
-    Measure,
-    SemanticModel,
 )
 from dbt_to_lookml.types import (
     AggregationType,

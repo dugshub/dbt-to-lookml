@@ -33,7 +33,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from dbt_to_lookml.schemas import (
+from dbt_to_lookml.schemas.semantic_layer import (
     ConversionMetricParams,
     Metric,
     RatioMetricParams,

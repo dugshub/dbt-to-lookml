@@ -43,7 +43,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from dbt_to_lookml.interfaces.parser import Parser
-from dbt_to_lookml.schemas import (
+from dbt_to_lookml.schemas.semantic_layer import (
     ConversionMetricParams,
     DerivedMetricParams,
     Metric,

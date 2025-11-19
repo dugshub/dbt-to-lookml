@@ -313,6 +313,11 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
     help="Don't convert time dimensions to UTC (mutually exclusive with --convert-tz)",
 )
 @click.option(
+    "--bi-field-only",
+    is_flag=True,
+    help="Only include fields marked with bi_field: true in explores",
+)
+@click.option(
     "--yes",
     "-y",
     is_flag=True,
@@ -337,6 +342,7 @@ def generate(
     model_name: str,
     convert_tz: bool,
     no_convert_tz: bool,
+    bi_field_only: bool,
     yes: bool,
     preview: bool,
 ) -> None:
@@ -495,9 +501,7 @@ def generate(
                 semantic_models.extend(models)
                 # Show relative path for better context
                 rel_path = yaml_file.relative_to(input_dir)
-                console.print(
-                    f"  [green]✓[/green] {rel_path}: {len(models)} models"
-                )
+                console.print(f"  [green]✓[/green] {rel_path}: {len(models)} models")
             except Exception as e:
                 error_count += 1
                 rel_path = yaml_file.relative_to(input_dir)
@@ -513,9 +517,7 @@ def generate(
                 semantic_models.extend(models)
                 # Show relative path for better context
                 rel_path = yaml_file.relative_to(input_dir)
-                console.print(
-                    f"  [green]✓[/green] {rel_path}: {len(models)} models"
-                )
+                console.print(f"  [green]✓[/green] {rel_path}: {len(models)} models")
             except Exception as e:
                 error_count += 1
                 rel_path = yaml_file.relative_to(input_dir)
@@ -571,6 +573,7 @@ def generate(
             connection=connection,
             model_name=model_name,
             convert_tz=convert_tz_value,
+            use_bi_field_filter=bi_field_only,
         )
 
         # Generate files

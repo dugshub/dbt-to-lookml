@@ -3,25 +3,26 @@
 import pytest
 from pydantic import ValidationError
 
-from dbt_to_lookml.schemas import (
-    Config,
-    ConfigMeta,
+from dbt_to_lookml.schemas.config import Config, ConfigMeta
+from dbt_to_lookml.schemas.semantic_layer import (
     ConversionMetricParams,
     DerivedMetricParams,
     Dimension,
     Entity,
-    LookMLDimension,
-    LookMLDimensionGroup,
-    LookMLExplore,
-    LookMLMeasure,
-    LookMLSet,
-    LookMLView,
     Measure,
     Metric,
     MetricReference,
     RatioMetricParams,
     SemanticModel,
     SimpleMetricParams,
+)
+from dbt_to_lookml.schemas.lookml import (
+    LookMLDimension,
+    LookMLDimensionGroup,
+    LookMLExplore,
+    LookMLMeasure,
+    LookMLSet,
+    LookMLView,
 )
 from dbt_to_lookml.types import (
     AggregationType,

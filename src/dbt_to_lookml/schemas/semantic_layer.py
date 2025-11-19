@@ -1,4 +1,13 @@
-"""Schema definitions for dbt semantic models and LookML structures."""
+"""dbt Semantic Layer schemas for semantic models and metrics.
+
+This module contains all input schema definitions from dbt's semantic layer
+specification, including semantic models (entities, dimensions, measures) and
+metrics (simple, ratio, derived, conversion).
+
+The semantic layer is dbt's framework for defining business logic and metrics
+on top of data models, providing a consistent interface for analytics and
+reporting tools.
+"""
 
 from __future__ import annotations
 
@@ -7,88 +16,28 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from dbt_to_lookml.schemas.config import Config
 from dbt_to_lookml.types import LOOKML_TYPE_MAP, AggregationType, DimensionType
 
+__all__ = [
+    # Semantic Model schemas
+    "Entity",
+    "Dimension",
+    "Measure",
+    "SemanticModel",
+    # Metric schemas
+    "MetricReference",
+    "SimpleMetricParams",
+    "RatioMetricParams",
+    "DerivedMetricParams",
+    "ConversionMetricParams",
+    "Metric",
+]
+
+
 # ============================================================================
-# Semantic Model Schemas (Input)
+# Semantic Model Schemas
 # ============================================================================
-
-
-class Hierarchy(BaseModel):
-    """Represents the 3-tier hierarchy for labeling."""
-
-    entity: str | None = None
-    category: str | None = None
-    subcategory: str | None = None
-
-
-class ConfigMeta(BaseModel):
-    """Represents metadata in a config section.
-
-    Supports flexible metadata configuration for dimensions and measures, including
-    optional hierarchy labels, data governance tags, and feature-specific overrides
-    like timezone conversion.
-
-    Attributes:
-        domain: Data domain classification (e.g., "customer", "product").
-        owner: Owner or team responsible for this data element.
-        contains_pii: Whether the dimension contains personally identifiable
-            information.
-        update_frequency: How frequently the underlying data is updated
-            (e.g., "daily", "real-time").
-        subject: Flat structure view label for dimensions (preferred over
-            hierarchy).
-        category: Flat structure group label for dimensions/measures
-            (preferred over hierarchy).
-        hierarchy: Nested hierarchy structure for 3-tier labeling:
-            - entity: Maps to view_label for dimensions
-            - category: Maps to group_label for dimensions, view_label for measures
-            - subcategory: Maps to group_label for measures
-        convert_tz: Override timezone conversion behavior for this specific
-            dimension. Controls whether the dimension_group's convert_tz
-            parameter is set to yes/no.
-            - True/yes: Enable timezone conversion (convert_tz: yes in LookML)
-            - False/no: Disable timezone conversion (convert_tz: no in LookML)
-            - Omitted: Use generator or CLI default setting
-            This provides the highest-priority override in the configuration
-            precedence chain.
-
-    Example:
-        Dimension with timezone override and hierarchy labels:
-
-        ```yaml
-        config:
-          meta:
-            domain: "events"
-            owner: "analytics"
-            contains_pii: false
-            convert_tz: yes  # Override generator default for this dimension
-            hierarchy:
-              entity: "event"
-              category: "timing"
-              subcategory: "creation"
-        ```
-
-    See Also:
-        CLAUDE.md: "Timezone Conversion Configuration" section for detailed
-            precedence rules and configuration examples.
-    """
-
-    domain: str | None = None
-    owner: str | None = None
-    contains_pii: bool | None = None
-    update_frequency: str | None = None
-    # Support both flat structure (subject, category) and nested (hierarchy)
-    subject: str | None = None
-    category: str | None = None
-    hierarchy: Hierarchy | None = None
-    convert_tz: bool | None = None
-
-
-class Config(BaseModel):
-    """Represents a config section in a semantic model."""
-
-    meta: ConfigMeta | None = None
 
 
 class Entity(BaseModel):
@@ -582,7 +531,7 @@ class SemanticModel(BaseModel):
 
 
 # ============================================================================
-# Metric Schemas (Input)
+# Metric Schemas
 # ============================================================================
 
 
@@ -829,137 +778,3 @@ class Metric(BaseModel):
         if self.meta:
             return self.meta.get("primary_entity")
         return None
-
-
-# ============================================================================
-# LookML Schemas (Output)
-# ============================================================================
-
-
-class LookMLDimension(BaseModel):
-    """Represents a LookML dimension."""
-
-    name: str
-    type: str
-    sql: str
-    description: str | None = None
-    label: str | None = None
-    hidden: bool | None = None
-    primary_key: bool | None = None
-    view_label: str | None = None
-    group_label: str | None = None
-
-
-class LookMLDimensionGroup(BaseModel):
-    """Represents a LookML dimension_group for time dimensions."""
-
-    name: str
-    type: str = "time"
-    timeframes: list[str] = Field(
-        default_factory=lambda: ["date", "week", "month", "quarter", "year"]
-    )
-    sql: str
-    description: str | None = None
-    label: str | None = None
-    hidden: bool | None = None
-    view_label: str | None = None
-    group_label: str | None = None
-
-
-class LookMLMeasure(BaseModel):
-    """Represents a LookML measure."""
-
-    name: str
-    type: str
-    sql: str
-    description: str | None = None
-    label: str | None = None
-    hidden: bool | None = None
-    view_label: str | None = None
-    group_label: str | None = None
-
-
-class LookMLSet(BaseModel):
-    """Represents a LookML set for grouping fields."""
-
-    name: str
-    fields: list[str]
-
-
-class LookMLView(BaseModel):
-    """Represents a LookML view."""
-
-    name: str
-    sql_table_name: str
-    description: str | None = None
-    dimensions: list[LookMLDimension] = Field(default_factory=list)
-    dimension_groups: list[LookMLDimensionGroup] = Field(default_factory=list)
-    measures: list[LookMLMeasure] = Field(default_factory=list)
-    sets: list[LookMLSet] = Field(default_factory=list)
-
-    def to_lookml_dict(self) -> dict[str, Any]:
-        """Convert LookML view to dictionary format."""
-
-        def convert_bools(d: dict[str, Any]) -> dict[str, Any]:
-            """Convert boolean values to LookML-compatible strings."""
-            result: dict[str, Any] = {}
-            for k, v in d.items():
-                if isinstance(v, bool):
-                    result[k] = "yes" if v else "no"
-                elif isinstance(v, dict):
-                    result[k] = convert_bools(v)
-                elif isinstance(v, list):
-                    result[k] = [
-                        convert_bools(item) if isinstance(item, dict) else item
-                        for item in v
-                    ]
-                else:
-                    result[k] = v
-            return result
-
-        view_dict: dict[str, Any] = {
-            "name": self.name,
-            "sql_table_name": self.sql_table_name,
-        }
-
-        if self.description:
-            view_dict["description"] = self.description
-
-        if self.sets:
-            view_dict["sets"] = [
-                convert_bools(set_item.model_dump(exclude_none=True))
-                for set_item in self.sets
-            ]
-
-        if self.dimensions:
-            view_dict["dimensions"] = [
-                convert_bools(dim.model_dump(exclude_none=True))
-                for dim in self.dimensions
-            ]
-
-        if self.dimension_groups:
-            view_dict["dimension_groups"] = [
-                convert_bools(dg.model_dump(exclude_none=True))
-                for dg in self.dimension_groups
-            ]
-
-        if self.measures:
-            view_dict["measures"] = [
-                convert_bools(measure.model_dump(exclude_none=True))
-                for measure in self.measures
-            ]
-
-        return {"views": [view_dict]}
-
-
-class LookMLExplore(BaseModel):
-    """Represents a LookML explore."""
-
-    name: str
-    view_name: str
-    type: str | None = "table"  # Default type
-    description: str | None = None
-    hidden: bool | None = None
-    joins: list[dict[str, Any]] = Field(
-        default_factory=list
-    )  # For backward compatibility

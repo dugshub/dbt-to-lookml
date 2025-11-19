@@ -1,8 +1,7 @@
 """Unit tests for flat meta structure (subject, category) labeling."""
 
-from dbt_to_lookml.schemas import (
-    Config,
-    ConfigMeta,
+from dbt_to_lookml.schemas.config import Config, ConfigMeta
+from dbt_to_lookml.schemas.semantic_layer import (
     Dimension,
     Entity,
     Measure,

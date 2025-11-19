@@ -8,12 +8,10 @@ from typing import Any
 from pydantic import ValidationError
 
 from dbt_to_lookml.interfaces.parser import Parser
-from dbt_to_lookml.schemas import (
-    Config,
-    ConfigMeta,
+from dbt_to_lookml.schemas.config import Config, ConfigMeta, Hierarchy
+from dbt_to_lookml.schemas.semantic_layer import (
     Dimension,
     Entity,
-    Hierarchy,
     Measure,
     SemanticModel,
 )

@@ -12,7 +12,7 @@ from dbt_to_lookml.parsers.dbt_metrics import (
     find_measure_model,
     resolve_primary_entity,
 )
-from dbt_to_lookml.schemas import (
+from dbt_to_lookml.schemas.semantic_layer import (
     ConversionMetricParams,
     DerivedMetricParams,
     Entity,

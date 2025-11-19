@@ -9,7 +9,7 @@ import lkml
 from rich.console import Console
 
 from dbt_to_lookml.interfaces.generator import Generator
-from dbt_to_lookml.schemas import Metric, SemanticModel
+from dbt_to_lookml.schemas.semantic_layer import Metric, SemanticModel
 
 console = Console()
 
@@ -34,6 +34,7 @@ class LookMLGenerator(Generator):
         connection: str = "redshift_test",
         model_name: str = "semantic_model",
         convert_tz: bool | None = None,
+        use_bi_field_filter: bool = False,
     ) -> None:
         """Initialize the generator.
 
@@ -71,6 +72,11 @@ class LookMLGenerator(Generator):
                 This setting is overridden by per-dimension config.meta.convert_tz
                 in semantic models, allowing fine-grained control at the
                 dimension level.
+            use_bi_field_filter: Whether to filter explore fields based on
+                config.meta.bi_field settings.
+                - False (default): All fields included in explores (backward compatible)
+                - True: Only fields with bi_field: true included (selective exposure)
+                Primary keys (entities) are always included regardless of setting.
 
         Example:
             Enable timezone conversion globally:
@@ -98,9 +104,20 @@ class LookMLGenerator(Generator):
             generator = LookMLGenerator(view_prefix="stg_")
             ```
 
+            Enable bi_field filtering for selective field exposure:
+
+            ```python
+            generator = LookMLGenerator(
+                view_prefix="public_",
+                use_bi_field_filter=True
+            )
+            ```
+
         See Also:
             CLAUDE.md: "Timezone Conversion Configuration" section for
                 multi-level precedence rules and detailed examples.
+            CLAUDE.md: "Field Visibility Control" section for bi_field
+                filtering details.
             Dimension._to_dimension_group_dict(): Implements timezone
                 conversion logic with precedence handling.
         """
@@ -117,6 +134,7 @@ class LookMLGenerator(Generator):
         self.connection = connection
         self.model_name = model_name
         self.convert_tz = convert_tz
+        self.use_bi_field_filter = use_bi_field_filter
 
         # Backward compatibility attribute
         class MapperCompat:
@@ -678,6 +696,65 @@ class LookMLGenerator(Generator):
 
         return requirements
 
+    def _filter_fields_by_bi_field(
+        self, model: SemanticModel, fields_list: list[str]
+    ) -> list[str]:
+        """Filter explore fields based on bi_field metadata.
+
+        When use_bi_field_filter is enabled, only fields marked with
+        bi_field: true are included. Primary keys (entities) are always
+        included for join relationships.
+
+        Args:
+            model: The semantic model to filter fields for.
+            fields_list: The current list of field references (e.g., ["view.*"]).
+
+        Returns:
+            Filtered list of field references respecting bi_field settings.
+        """
+        if not self.use_bi_field_filter:
+            # No filtering if feature not enabled
+            return fields_list
+
+        # Start with an empty list - we'll add back fields explicitly
+        filtered_fields = []
+
+        # Always include primary keys (entities) - needed for joins
+        for entity in model.entities:
+            if entity.type == "primary":
+                # Primary keys are hidden by default but necessary for joins
+                filtered_fields.append(f"{self.view_prefix}{model.name}.{entity.name}")
+
+        # Include dimensions with bi_field: true
+        for dimension in model.dimensions:
+            if (
+                dimension.config
+                and dimension.config.meta
+                and dimension.config.meta.bi_field is True
+            ):
+                filtered_fields.append(
+                    f"{self.view_prefix}{model.name}.{dimension.name}"
+                )
+
+        # Include measures with bi_field: true
+        for measure in model.measures:
+            if (
+                measure.config
+                and measure.config.meta
+                and measure.config.meta.bi_field is True
+            ):
+                filtered_fields.append(f"{self.view_prefix}{model.name}.{measure.name}")
+
+        # If no fields matched, return the primary key only to maintain view integrity
+        if not filtered_fields and model.entities:
+            for entity in model.entities:
+                if entity.type == "primary":
+                    filtered_fields.append(
+                        f"{self.view_prefix}{model.name}.{entity.name}"
+                    )
+
+        return filtered_fields
+
     def _build_join_graph(
         self,
         fact_model: SemanticModel,
@@ -802,6 +879,9 @@ class LookMLGenerator(Generator):
                     required_measures = sorted(metric_requirements[target_model.name])
                     for measure_name in required_measures:
                         fields_list.append(f"{target_view_name}.{measure_name}")
+
+                # Apply bi_field filtering if enabled
+                fields_list = self._filter_fields_by_bi_field(target_model, fields_list)
 
                 join = {
                     "view_name": target_view_name,

@@ -7,7 +7,7 @@ Tests cover:
 - Helper functions (find_model_by_primary_entity, extract_measure_dependencies)
 """
 
-from dbt_to_lookml.schemas import (
+from dbt_to_lookml.schemas.semantic_layer import (
     ConversionMetricParams,
     DerivedMetricParams,
     Entity,
