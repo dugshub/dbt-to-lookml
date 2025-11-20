@@ -58,6 +58,13 @@ class ConfigMeta(BaseModel):
             - True: Field included in explores when --bi-field-only is enabled
             - False/None: Field excluded from filtered explores
             Used with LookMLGenerator use_bi_field_filter=True for opt-in.
+        use_group_item_label: Control group_item_label generation for dimension_groups.
+            - True: Generate group_item_label with Liquid template for clean labels
+            - False/None: No group_item_label parameter (default behavior)
+            When enabled, timeframe fields display as "Date", "Month", "Quarter"
+            instead of repeating the full dimension group name.
+            This provides the highest-priority override in the configuration
+            precedence chain (dimension > generator > CLI > default).
         time_dimension_group_label: Control top-level group label for time
             dimension_groups.
             - String value: Set custom group_label (e.g., "Time Periods")
@@ -79,6 +86,7 @@ class ConfigMeta(BaseModel):
             convert_tz: yes  # Override generator default for this dimension
             hidden: true  # Hide this internal dimension from LookML
             bi_field: false  # Don't include in bi_field filter
+            use_group_item_label: yes  # Enable clean labels for this dimension
             hierarchy:
               entity: "event"
               category: "timing"
@@ -90,6 +98,8 @@ class ConfigMeta(BaseModel):
             precedence rules and configuration examples.
         CLAUDE.md: "Field Visibility Control" section for hidden and bi_field
             parameters.
+        CLAUDE.md: "Field Label Customization (group_item_label)" section for
+            detailed precedence rules and usage examples.
     """
 
     domain: str | None = None
@@ -103,6 +113,7 @@ class ConfigMeta(BaseModel):
     convert_tz: bool | None = None
     hidden: bool | None = None
     bi_field: bool | None = None
+    use_group_item_label: bool | None = None
     time_dimension_group_label: str | None = None
 
 

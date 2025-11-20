@@ -35,16 +35,17 @@ class LookMLGenerator(Generator):
         model_name: str = "semantic_model",
         convert_tz: bool | None = None,
         use_bi_field_filter: bool = False,
+        use_group_item_label: bool | None = None,
         fact_models: list[str] | None = None,
         time_dimension_group_label: str | None = None,
     ) -> None:
         """Initialize the generator.
 
         Configures LookML generation with support for timezone conversion,
-        view/explore naming, syntax validation, and output formatting. The
-        convert_tz parameter establishes the default timezone behavior for all
-        generated dimension_groups, which can be overridden at the dimension
-        level through semantic model metadata.
+        field visibility control, view/explore naming, syntax validation, and
+        output formatting. The convert_tz and use_group_item_label parameters
+        establish the default behavior for all generated dimension_groups, which
+        can be overridden at the dimension level through semantic model metadata.
 
         Args:
             view_prefix: Prefix to add to all generated view names. Useful
@@ -79,6 +80,16 @@ class LookMLGenerator(Generator):
                 - False (default): All fields included in explores (backward compatible)
                 - True: Only fields with bi_field: true included (selective exposure)
                 Primary keys (entities) are always included regardless of setting.
+            use_group_item_label: Whether to add group_item_label to
+                dimension_groups for cleaner timeframe labels. When enabled,
+                timeframes display as "Date", "Month", "Quarter" instead of
+                repeating the dimension group name. Uses Liquid templating to
+                extract timeframe name from field name.
+                - True: Generate group_item_label with Liquid template
+                - False: No group_item_label (default, backward compatible)
+                - None: Use hardcoded default (False, disabled by default)
+                This setting is overridden by per-dimension
+                config.meta.use_group_item_label in semantic models.
             fact_models: Optional list of model names to generate explores for.
                 If provided, only these models will have explores generated.
                 If None, no explores will be generated.
@@ -94,55 +105,23 @@ class LookMLGenerator(Generator):
                 fine-grained control at the dimension level.
 
         Example:
-            Enable timezone conversion globally:
+            Enable group_item_label globally:
 
             ```python
             generator = LookMLGenerator(
                 view_prefix="fact_",
-                convert_tz=True
+                use_group_item_label=True
             )
             ```
 
-            Disable timezone conversion (explicit default):
+            Combine with other features:
 
             ```python
             generator = LookMLGenerator(
                 view_prefix="dim_",
-                convert_tz=False
-            )
-            ```
-
-            Use hardcoded default (False, but dimension metadata can
-            still override):
-
-            ```python
-            generator = LookMLGenerator(view_prefix="stg_")
-            ```
-
-            Enable bi_field filtering for selective field exposure:
-
-            ```python
-            generator = LookMLGenerator(
-                view_prefix="public_",
+                convert_tz=True,
+                use_group_item_label=True,
                 use_bi_field_filter=True
-            )
-            ```
-
-            Set custom group label for time dimensions:
-
-            ```python
-            generator = LookMLGenerator(
-                view_prefix="stg_",
-                time_dimension_group_label="Time Periods"
-            )
-            ```
-
-            Disable time dimension grouping:
-
-            ```python
-            generator = LookMLGenerator(
-                view_prefix="stg_",
-                time_dimension_group_label=None
             )
             ```
 
@@ -151,8 +130,9 @@ class LookMLGenerator(Generator):
                 multi-level precedence rules and detailed examples.
             CLAUDE.md: "Field Visibility Control" section for bi_field
                 filtering details.
-            Dimension._to_dimension_group_dict(): Implements timezone
-                conversion logic with precedence handling.
+            CLAUDE.md: "Field Label Customization (group_item_label)" section.
+            Dimension._to_dimension_group_dict(): Implements group_item_label
+                generation with precedence handling.
         """
         super().__init__(
             validate_syntax=validate_syntax,
@@ -168,6 +148,7 @@ class LookMLGenerator(Generator):
         self.model_name = model_name
         self.convert_tz = convert_tz
         self.use_bi_field_filter = use_bi_field_filter
+        self.use_group_item_label = use_group_item_label
         self.fact_models = fact_models
         self.time_dimension_group_label = time_dimension_group_label
 
@@ -1157,12 +1138,14 @@ class LookMLGenerator(Generator):
                     schema=self.schema,
                     convert_tz=self.convert_tz,
                     time_dimension_group_label=self.time_dimension_group_label,
+                    use_group_item_label=self.use_group_item_label,
                 )
             else:
                 view_dict = semantic_model.to_lookml_dict(
                     schema=self.schema,
                     convert_tz=self.convert_tz,
                     time_dimension_group_label=self.time_dimension_group_label,
+                    use_group_item_label=self.use_group_item_label,
                 )
         else:
             raise TypeError(

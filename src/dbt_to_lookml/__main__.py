@@ -330,6 +330,19 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
     help="Only include fields marked with bi_field: true in explores",
 )
 @click.option(
+    "--use-group-item-label",
+    is_flag=True,
+    default=False,
+    help="Add group_item_label to dimension_groups for cleaner timeframe labels "
+    "(e.g., 'Date', 'Month' instead of 'Rental Created Date', 'Rental Created Month')",
+)
+@click.option(
+    "--no-group-item-label",
+    is_flag=True,
+    default=False,
+    help="Explicitly disable group_item_label (useful to override defaults)",
+)
+@click.option(
     "--fact-models",
     type=str,
     default=None,
@@ -366,6 +379,8 @@ def generate(
     time_dimension_group_label: str | None,
     no_time_dimension_group_label: bool,
     bi_field_only: bool,
+    use_group_item_label: bool,
+    no_group_item_label: bool,
     fact_models: str | None,
     yes: bool,
     preview: bool,
@@ -426,6 +441,12 @@ def generate(
         raise click.ClickException(
             "--time-dimension-group-label and --no-time-dimension-group-label "
             "cannot be used together"
+        )
+
+    # Validate mutual exclusivity of group_item_label flags
+    if use_group_item_label and no_group_item_label:
+        raise click.UsageError(
+            "Cannot use both --use-group-item-label and --no-group-item-label"
         )
 
     # Preview mode implies dry run
@@ -612,6 +633,16 @@ def generate(
         elif no_time_dimension_group_label:
             time_dim_group_label_value = None
 
+        # Determine use_group_item_label value for generator
+        # If neither flag specified: None (use default/dimension-level settings)
+        # If --use-group-item-label specified: True
+        # If --no-group-item-label specified: False
+        group_item_label_value: bool | None = None
+        if use_group_item_label:
+            group_item_label_value = True
+        elif no_group_item_label:
+            group_item_label_value = False
+
         # Parse fact models if provided
         fact_model_names: list[str] | None = None
         if fact_models:
@@ -632,6 +663,7 @@ def generate(
             model_name=model_name,
             convert_tz=convert_tz_value,
             use_bi_field_filter=bi_field_only,
+            use_group_item_label=group_item_label_value,
             fact_models=fact_model_names,
             time_dimension_group_label=time_dim_group_label_value,
         )
