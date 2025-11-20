@@ -324,6 +324,13 @@ class DbtMetricParser(Parser):
             params_data = metric_data["type_params"]
             type_params = self._parse_type_params(metric_type, params_data)
 
+            # Extract meta from config.meta (dbt convention) or top-level meta
+            meta = None
+            if "config" in metric_data and isinstance(metric_data["config"], dict):
+                meta = metric_data["config"].get("meta")
+            elif "meta" in metric_data:
+                meta = metric_data.get("meta")
+
             # Construct metric object
             return Metric(
                 name=metric_data["name"],
@@ -331,7 +338,7 @@ class DbtMetricParser(Parser):
                 type_params=type_params,
                 label=metric_data.get("label"),
                 description=metric_data.get("description"),
-                meta=metric_data.get("meta"),
+                meta=meta,
             )
 
         except Exception as e:
