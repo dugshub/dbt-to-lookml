@@ -469,7 +469,7 @@ class TestDimensionTimeDimensionGroupLabel:
 
         # Act: Call with default_time_dimension_group_label
         result = dimension._to_dimension_group_dict(
-            default_time_dimension_group_label="Time Dimensions"
+            default_time_dimension_group_label=" Time Dimensions"
         )
 
         # Assert: Metadata override takes precedence
@@ -486,11 +486,11 @@ class TestDimensionTimeDimensionGroupLabel:
 
         # Act: Call with default_time_dimension_group_label
         result = dimension._to_dimension_group_dict(
-            default_time_dimension_group_label="Time Dimensions"
+            default_time_dimension_group_label=" Time Dimensions"
         )
 
         # Assert: Default parameter is used
-        assert result["group_label"] == "Time Dimensions"
+        assert result["group_label"] == " Time Dimensions"
 
     def test_dimension_group_default_time_group_label(self) -> None:
         """Test that time dimensions get default time dimension group_label."""
@@ -505,7 +505,7 @@ class TestDimensionTimeDimensionGroupLabel:
         result = dim.to_lookml_dict()
 
         # Assert
-        assert result.get("group_label") == "Time Dimensions"
+        assert result.get("group_label") == " Time Dimensions"
 
     def test_dimension_group_hierarchy_group_label_overrides_time_group_label(
         self,
@@ -522,7 +522,7 @@ class TestDimensionTimeDimensionGroupLabel:
                         entity="event",
                         category="event_tracking",
                     ),
-                    time_dimension_group_label="Time Dimensions",  # Should be ignored
+                    time_dimension_group_label=" Time Dimensions",  # Should be ignored
                 )
             ),
         )
@@ -552,14 +552,14 @@ class TestDimensionTimeDimensionGroupLabel:
 
         # Act: Generate with default
         result1 = dim1._to_dimension_group_dict(
-            default_time_dimension_group_label="Time Dimensions"
+            default_time_dimension_group_label=" Time Dimensions"
         )
         result2 = dim2._to_dimension_group_dict(
-            default_time_dimension_group_label="Time Dimensions"
+            default_time_dimension_group_label=" Time Dimensions"
         )
 
         # Assert: First uses default, second uses metadata override
-        assert result1["group_label"] == "Time Dimensions"
+        assert result1["group_label"] == " Time Dimensions"
         assert result2["group_label"] == "Custom Times"
 
     def test_dimension_group_generator_parameter_time_group_label(self) -> None:
@@ -613,7 +613,7 @@ class TestDimensionTimeDimensionGroupLabel:
 
         # Act - even with generator default
         result = dim.to_lookml_dict(
-            default_time_dimension_group_label="Time Dimensions"
+            default_time_dimension_group_label=" Time Dimensions"
         )
 
         # Assert - should have no group_label key
@@ -650,7 +650,7 @@ class TestDimensionTimeDimensionGroupLabel:
         result = dim.to_lookml_dict()
 
         # Assert - should use hardcoded default
-        assert result.get("group_label") == "Time Dimensions"
+        assert result.get("group_label") == " Time Dimensions"
 
     def test_dimension_group_time_label_precedence_chain(self) -> None:
         """Test full precedence chain: metadata > generator > default."""
@@ -683,7 +683,7 @@ class TestDimensionTimeDimensionGroupLabel:
             type=DimensionType.TIME,
             type_params={"time_granularity": "day"},
         )
-        assert dim3.to_lookml_dict()["group_label"] == "Time Dimensions"
+        assert dim3.to_lookml_dict()["group_label"] == " Time Dimensions"
 
     def test_dimension_group_time_label_with_convert_tz(self) -> None:
         """Test that time group_label works alongside convert_tz."""
@@ -713,7 +713,7 @@ class TestDimensionTimeDimensionGroupLabel:
             type_params={"time_granularity": "day"},
             label="Order Created",  # Sub-category
             config=Config(
-                meta=ConfigMeta(time_dimension_group_label="Time Dimensions")
+                meta=ConfigMeta(time_dimension_group_label=" Time Dimensions")
             ),
         )
 
@@ -722,7 +722,7 @@ class TestDimensionTimeDimensionGroupLabel:
 
         # Assert
         assert result.get("label") == "Order Created"
-        assert result.get("group_label") == "Time Dimensions"
+        assert result.get("group_label") == " Time Dimensions"
 
     def test_dimension_group_time_label_special_characters(self) -> None:
         """Test that special characters in time group_label are preserved."""
