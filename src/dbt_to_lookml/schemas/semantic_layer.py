@@ -19,6 +19,45 @@ from pydantic import BaseModel, Field
 from dbt_to_lookml.schemas.config import Config
 from dbt_to_lookml.types import LOOKML_TYPE_MAP, AggregationType, DimensionType
 
+
+def _smart_title(text: str) -> str:
+    """Convert text to title case while preserving common acronyms.
+
+    Replaces underscores with spaces and title-cases each word, but preserves
+    common acronyms like UTC, API, ID, URL, etc. in uppercase.
+
+    Args:
+        text: Input text with underscores (e.g., "rental_end_utc")
+
+    Returns:
+        Title-cased text with preserved acronyms (e.g., "Rental End UTC")
+
+    Examples:
+        >>> _smart_title("rental_end_utc")
+        "Rental End UTC"
+        >>> _smart_title("api_key_id")
+        "API Key ID"
+        >>> _smart_title("user_name")
+        "User Name"
+    """
+    # List of acronyms to preserve in uppercase
+    acronyms = {'UTC', 'API', 'ID', 'URL', 'HTTP', 'HTTPS', 'SQL', 'JSON',
+                'XML', 'CSV', 'HTML', 'PDF', 'UUID', 'URI', 'ISO'}
+
+    # Replace underscores and title case
+    words = text.replace("_", " ").title().split()
+
+    # Preserve acronyms
+    result_words = []
+    for word in words:
+        if word.upper() in acronyms:
+            result_words.append(word.upper())
+        else:
+            result_words.append(word)
+
+    return " ".join(result_words)
+
+
 __all__ = [
     # Semantic Model schemas
     "Entity",
@@ -200,9 +239,9 @@ class Dimension(BaseModel):
 
             # Format with proper capitalization if present
             if view_label:
-                view_label = view_label.replace("_", " ").title()
+                view_label = _smart_title(view_label)
             if group_label:
-                group_label = group_label.replace("_", " ").title()
+                group_label = _smart_title(group_label)
 
             return view_label, group_label
         return None, None
@@ -484,20 +523,20 @@ class Measure(BaseModel):
             if meta.hierarchy:
                 # category → view_label
                 if meta.hierarchy.category:
-                    view_label = meta.hierarchy.category.replace("_", " ").title()
+                    view_label = _smart_title(meta.hierarchy.category)
                 # subcategory → group_label
                 if meta.hierarchy.subcategory:
-                    group_label = meta.hierarchy.subcategory.replace("_", " ").title()
+                    group_label = _smart_title(meta.hierarchy.subcategory)
             # Fall back to flat structure for backward compatibility
             elif meta.category:
                 # For flat structure: " Metrics" → view_label, category → group_label
                 view_label = " Metrics"
-                group_label = meta.category.replace("_", " ").title()
+                group_label = _smart_title(meta.category)
 
         # If no labels from meta and model_name provided, use model_name fallback
         if not view_label and not group_label and model_name:
             # Convert model name to title case and add "Performance"
-            formatted_name = model_name.replace("_", " ").title()
+            formatted_name = _smart_title(model_name)
             group_label = f"{formatted_name} Performance"
             view_label = " Metrics"  # Default with leading space for sort order
 
@@ -597,18 +636,16 @@ class SemanticModel(BaseModel):
         # Extract view_label for entities from config.meta.subject
         entity_view_label = None
         if self.config and self.config.meta and self.config.meta.subject:
-            entity_view_label = self.config.meta.subject.replace("_", " ").title()
+            entity_view_label = _smart_title(self.config.meta.subject)
         # If not in model config, try to get from first dimension's subject
         elif self.dimensions:
             for dim in self.dimensions:
                 if dim.config and dim.config.meta and dim.config.meta.subject:
-                    entity_view_label = dim.config.meta.subject.replace(
-                        "_", " "
-                    ).title()
+                    entity_view_label = _smart_title(dim.config.meta.subject)
                     break
         # Fall back to model name if no subject found
         if not entity_view_label:
-            entity_view_label = self.name.replace("_", " ").title()
+            entity_view_label = _smart_title(self.name)
 
         # Convert entities to dimensions
         for entity in self.entities:

@@ -1,0 +1,164 @@
+epic:
+  title: "Epic: Fix Field Visibility Control Bugs in Metrics and bi_field Filtering"
+  description: |
+    ## Problem Statement
+
+    Two critical bugs are preventing proper field visibility control in generated LookML files, causing unintended data exposure and defeating security controls:
+
+    1. **Metric Hidden Parameter Bug**: The `_generate_metric_measure()` method in `generators/lookml.py` does not check for the `metric.meta.hidden` parameter when generating LookML measures from metrics. This causes all metrics to be visible in LookML output even when they should be marked as hidden, exposing sensitive or internal metrics to end users.
+
+    2. **bi_field Wildcard Filtering Bug**: The `_filter_fields_by_bi_field()` method incorrectly handles wildcard field references (like `dimensions_only*`). When wildcards are present, the method preserves them alongside filtered fields, which causes ALL dimensions to be included in explores regardless of their `bi_field` setting. This completely bypasses the bi_field filtering mechanism and exposes fields marked as `bi_field: false` or with no bi_field setting.
+
+    Both bugs were introduced during the metrics and field visibility feature implementation and affect production LookML generation.
+
+    ## Solution Approach
+
+    Fix both bugs with targeted code changes and comprehensive test coverage:
+
+    1. **Metric Hidden Fix**: Add logic to `_generate_metric_measure()` to check `metric.meta.hidden` and conditionally add `hidden: yes` to the generated measure dictionary, following the same pattern used for dimensions and measures.
+
+    2. **Wildcard Filtering Fix**: Update `_filter_fields_by_bi_field()` to replace wildcard references with explicit field lists when `use_bi_field_filter` is enabled. When filtering is active, build explicit field references for dimensions that have `bi_field: true`, ensuring wildcards don't bypass the filter.
+
+    Both fixes will maintain backward compatibility (no behavior change when features aren't used) and include unit tests covering all scenarios.
+
+    ## Success Criteria
+
+    - ✅ Metrics with `meta.hidden: true` generate `hidden: yes` in LookML output
+    - ✅ Metrics without hidden metadata maintain current behavior (visible)
+    - ✅ bi_field filtering excludes all fields without `bi_field: true` (no wildcard bypass)
+    - ✅ bi_field filtering disabled (default) maintains current behavior
+    - ✅ All existing unit and integration tests pass (backward compatibility)
+    - ✅ New unit tests cover both bug scenarios with edge cases
+    - ✅ Code changes follow project patterns and pass quality gates (lint, type-check, test)
+
+    ## Sub-Issues
+
+    1. Fix metric hidden parameter support in measure generation
+    2. Fix bi_field wildcard filtering to use explicit field lists
+  labels:
+    - stack:backend
+    - type:bug
+    - layer:organisms
+    - priority:high
+  status: Refinement
+
+  children:
+    - title: "Fix metric hidden parameter support in _generate_metric_measure()"
+      description: |
+        ## Objective
+
+        Update the `_generate_metric_measure()` method in `generators/lookml.py` to check for and apply the `metric.meta.hidden` parameter when generating LookML measures from metric definitions.
+
+        ## Problem
+
+        Currently, `_generate_metric_measure()` (lines 506-579) builds a measure dictionary with fields like name, type, sql, view_label, and group_label, but never checks whether `metric.meta.hidden` is set. This means metrics that should be hidden from BI tools are always visible in the generated LookML, exposing internal or sensitive metrics to end users.
+
+        ## Solution
+
+        Add logic after line 577 (where group_label is added) to check if `metric.meta` exists and contains `hidden: true`. If so, add `measure_dict["hidden"] = "yes"` to the output. This follows the same pattern used in `Measure.to_lookml_dict()` (schemas.py:530-533) and `Dimension._to_dimension_dict()` (schemas.py:231-233).
+
+        ## Technical Scope
+
+        **Files Modified**:
+        - `src/dbt_to_lookml/generators/lookml.py` (lines 506-579)
+
+        **Code Changes**:
+        ```python
+        # After line 577 (group_label addition), add:
+
+        # Add hidden parameter if specified in metric metadata
+        if metric.meta and metric.meta.get("hidden") is True:
+            measure_dict["hidden"] = "yes"
+        ```
+
+        **Testing Requirements**:
+        - Unit test: Metric with `meta.hidden: true` generates `hidden: yes`
+        - Unit test: Metric with `meta.hidden: false` has no hidden parameter
+        - Unit test: Metric without meta generates no hidden parameter (backward compat)
+        - Unit test: Metric with meta but no hidden field generates no hidden parameter
+        - Integration test: End-to-end LookML generation with hidden metrics
+
+        ## Acceptance Criteria
+
+        - ✅ Metrics with `meta.hidden: true` include `hidden: yes` in LookML
+        - ✅ Metrics without hidden metadata maintain current behavior
+        - ✅ All existing metric tests pass (no regression)
+        - ✅ New unit tests cover all hidden parameter scenarios
+        - ✅ Code passes mypy type checking
+        - ✅ Code follows project style (passes ruff lint)
+      labels:
+        - stack:backend
+        - type:bug
+        - layer:organisms
+        - priority:high
+      status: Refinement
+
+    - title: "Fix bi_field wildcard filtering to use explicit field lists"
+      description: |
+        ## Objective
+
+        Update the `_filter_fields_by_bi_field()` method in `generators/lookml.py` to replace wildcard field references with explicit field lists when bi_field filtering is enabled, ensuring only fields with `bi_field: true` are exposed.
+
+        ## Problem
+
+        Currently, `_filter_fields_by_bi_field()` (lines 738-827) has flawed wildcard handling logic (lines 758-788). When `fields_list` contains wildcards like `dimensions_only*`, the method preserves the wildcard AND adds filtered non-wildcard fields. The preserved wildcard causes ALL dimensions to be included in the explore, completely bypassing bi_field filtering. This means fields with `bi_field: false` or no bi_field setting are exposed when they shouldn't be.
+
+        Example of the bug:
+        ```python
+        # Input: ["view.dimensions_only*", "view.metric1"]
+        # Current broken behavior: ["view.dimensions_only*", "view.metric1"]
+        #   - Wildcard exposes ALL dimensions (including non-bi fields)
+        # Expected behavior: ["view.dim1", "view.dim2", "view.metric1"]
+        #   - Only dimensions with bi_field: true
+        ```
+
+        ## Solution
+
+        When `use_bi_field_filter` is enabled, replace wildcard references with explicit field lists built from dimensions/measures that have `bi_field: true`. The wildcard logic should be removed entirely when filtering is active.
+
+        **Algorithm**:
+        1. If `use_bi_field_filter` is False, return fields_list unchanged (current behavior)
+        2. If `use_bi_field_filter` is True:
+           - Build explicit list of fields with `bi_field: true`
+           - Always include primary key entities (needed for joins)
+           - Check dimensions, dimension_groups, and measures for `bi_field: true`
+           - For dimension_groups (time dimensions), include all timeframes for each bi_field dimension
+           - Return explicit list (no wildcards)
+
+        ## Technical Scope
+
+        **Files Modified**:
+        - `src/dbt_to_lookml/generators/lookml.py` (lines 738-827)
+
+        **Code Changes**:
+        - Remove wildcard preservation logic (lines 758-788)
+        - Simplify to always build explicit field lists when filtering is enabled
+        - Add logic to handle dimension_groups (time dimensions) properly
+        - Ensure primary keys always included
+
+        **Testing Requirements**:
+        - Unit test: Wildcard fields replaced with explicit bi_field list when filtering enabled
+        - Unit test: Non-bi fields excluded from explicit list
+        - Unit test: Primary keys always included regardless of bi_field
+        - Unit test: Dimension groups (time dimensions) with bi_field handled correctly
+        - Unit test: Filtering disabled preserves current behavior with wildcards
+        - Integration test: End-to-end explore generation with bi_field filtering
+        - Update existing `test_bi_field_filter.py` tests to cover wildcard scenarios
+
+        ## Acceptance Criteria
+
+        - ✅ Wildcard references replaced with explicit fields when `use_bi_field_filter=True`
+        - ✅ Only fields with `bi_field: true` included in filtered explores
+        - ✅ Fields with `bi_field: false` or no bi_field setting excluded
+        - ✅ Primary key entities always included (required for joins)
+        - ✅ Filtering disabled (default) maintains backward compatibility
+        - ✅ All existing bi_field tests pass
+        - ✅ New tests cover wildcard replacement scenarios
+        - ✅ Code passes mypy type checking
+        - ✅ Code follows project style (passes ruff lint)
+      labels:
+        - stack:backend
+        - type:bug
+        - layer:organisms
+        - priority:high
+      status: Refinement

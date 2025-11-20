@@ -9,7 +9,7 @@ import lkml
 from rich.console import Console
 
 from dbt_to_lookml.interfaces.generator import Generator
-from dbt_to_lookml.schemas.semantic_layer import Metric, SemanticModel
+from dbt_to_lookml.schemas.semantic_layer import Metric, SemanticModel, _smart_title
 
 console = Console()
 
@@ -497,10 +497,10 @@ class LookMLGenerator(Generator):
         if metric.meta and "category" in metric.meta:
             category = metric.meta["category"]
             if isinstance(category, str):
-                return category.replace("_", " ").title()
+                return _smart_title(category)
 
         # Default: "{Model} Performance"
-        model_name = primary_model.name.replace("_", " ").title()
+        model_name = _smart_title(primary_model.name)
         return f"{model_name} Performance"
 
     def _generate_metric_measure(
