@@ -8,6 +8,7 @@ import lkml
 import pytest
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator, LookMLValidationError
+from dbt_to_lookml.schemas.config import Config, ConfigMeta
 from dbt_to_lookml.schemas.lookml import (
     LookMLDimension,
     LookMLDimensionGroup,
@@ -3679,3 +3680,181 @@ class TestLookMLGeneratorTimeDimensionGroupLabel:
         assert "events.view.lkml" in output
         content = output["events.view.lkml"]
         assert 'group_label: "Custom Times"' in content
+
+
+class TestLookMLGeneratorGroupItemLabel:
+    """Test cases for group_item_label support in LookMLGenerator."""
+
+    def test_generator_use_group_item_label_default_none(self) -> None:
+        """Test that generator defaults use_group_item_label to None."""
+        # Arrange & Act
+        generator = LookMLGenerator()
+
+        # Assert
+        assert generator.use_group_item_label is None
+
+    def test_generator_use_group_item_label_true(self) -> None:
+        """Test initializing generator with use_group_item_label=True."""
+        # Arrange & Act
+        generator = LookMLGenerator(use_group_item_label=True)
+
+        # Assert
+        assert generator.use_group_item_label is True
+
+    def test_generator_use_group_item_label_false_explicit(self) -> None:
+        """Test explicitly setting use_group_item_label=False."""
+        # Arrange & Act
+        generator = LookMLGenerator(use_group_item_label=False)
+
+        # Assert
+        assert generator.use_group_item_label is False
+
+    def test_generator_use_group_item_label_none(self) -> None:
+        """Test that generator can be initialized with None."""
+        # Arrange & Act
+        generator = LookMLGenerator(use_group_item_label=None)
+
+        # Assert
+        assert generator.use_group_item_label is None
+
+    def test_generate_with_group_item_label_enabled(self) -> None:
+        """Test that group_item_label is generated when enabled."""
+        # Arrange
+        generator = LookMLGenerator(schema="test_schema", use_group_item_label=True)
+
+        model = SemanticModel(
+            name="events",
+            model="ref('events')",
+            dimensions=[
+                Dimension(
+                    name="event_date",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                )
+            ],
+        )
+
+        # Act
+        output = generator.generate([model])
+
+        # Assert
+        assert "events.view.lkml" in output
+        content = output["events.view.lkml"]
+        assert "group_item_label:" in content
+        # Check for the Liquid template
+        assert "{% assign tf =" in content or "_field._name" in content
+
+    def test_generate_with_group_item_label_disabled(self) -> None:
+        """Test that group_item_label is not generated when disabled."""
+        # Arrange
+        generator = LookMLGenerator(schema="test_schema", use_group_item_label=False)
+
+        model = SemanticModel(
+            name="events",
+            model="ref('events')",
+            dimensions=[
+                Dimension(
+                    name="event_date",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                )
+            ],
+        )
+
+        # Act
+        output = generator.generate([model])
+
+        # Assert
+        assert "events.view.lkml" in output
+        content = output["events.view.lkml"]
+        # group_item_label should not appear in the generated content
+        assert "group_item_label:" not in content
+
+    def test_generate_respects_dimension_meta_override_group_item_label(self) -> None:
+        """Test that dimension meta overrides generator default for group_item_label."""
+        # Arrange
+        generator = LookMLGenerator(schema="test_schema", use_group_item_label=False)
+
+        model = SemanticModel(
+            name="events",
+            model="ref('events')",
+            dimensions=[
+                Dimension(
+                    name="event_date",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                    config=Config(meta=ConfigMeta(use_group_item_label=True)),
+                )
+            ],
+        )
+
+        # Act
+        output = generator.generate([model])
+
+        # Assert: dimension meta override should win
+        assert "events.view.lkml" in output
+        content = output["events.view.lkml"]
+        assert "group_item_label:" in content
+
+    def test_generate_group_item_label_with_multiple_dimensions(self) -> None:
+        """Test group_item_label with multiple time dimensions."""
+        # Arrange
+        generator = LookMLGenerator(schema="test_schema", use_group_item_label=True)
+
+        model = SemanticModel(
+            name="orders",
+            model="ref('orders')",
+            entities=[Entity(name="order_id", type="primary")],
+            dimensions=[
+                Dimension(
+                    name="created_at",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                ),
+                Dimension(
+                    name="updated_at",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "hour"},
+                ),
+            ],
+            measures=[Measure(name="order_count", agg=AggregationType.COUNT)],
+        )
+
+        # Act
+        output = generator.generate([model])
+
+        # Assert
+        assert "orders.view.lkml" in output
+        content = output["orders.view.lkml"]
+        # Both dimension_groups should have group_item_label
+        assert content.count("group_item_label:") >= 2
+
+    def test_generate_group_item_label_combined_with_time_group_label(self) -> None:
+        """Test group_item_label works alongside time_dimension_group_label."""
+        # Arrange
+        generator = LookMLGenerator(
+            schema="test_schema",
+            use_group_item_label=True,
+            time_dimension_group_label="Event Dates",
+        )
+
+        model = SemanticModel(
+            name="events",
+            model="ref('events')",
+            dimensions=[
+                Dimension(
+                    name="event_date",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                )
+            ],
+        )
+
+        # Act
+        output = generator.generate([model])
+
+        # Assert
+        assert "events.view.lkml" in output
+        content = output["events.view.lkml"]
+        assert 'group_label: "Event Dates"' in content
+        assert "group_item_label:" in content
