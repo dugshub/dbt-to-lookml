@@ -755,7 +755,39 @@ class LookMLGenerator(Generator):
             # No filtering if feature not enabled
             return fields_list
 
-        # Start with an empty list - we'll add back fields explicitly
+        # Check if fields_list contains wildcard - preserve it for cleaner LookML
+        has_wildcard = any("*" in field for field in fields_list)
+
+        if has_wildcard:
+            # Keep wildcard and only filter additional (non-wildcard) fields
+            wildcard_fields = [f for f in fields_list if "*" in f]
+            non_wildcard_fields = [f for f in fields_list if "*" not in f]
+
+            # Filter non-wildcard fields based on bi_field
+            filtered_non_wildcard = []
+            for field in non_wildcard_fields:
+                # Extract measure/dimension name from field reference
+                field_name = field.split(".")[-1]
+
+                # Check if this field has bi_field: true
+                has_bi_field = False
+                for measure in model.measures:
+                    if (
+                        measure.name == field_name
+                        and measure.config
+                        and measure.config.meta
+                        and measure.config.meta.bi_field is True
+                    ):
+                        has_bi_field = True
+                        break
+
+                if has_bi_field:
+                    filtered_non_wildcard.append(field)
+
+            # Return wildcard + filtered non-wildcard fields
+            return wildcard_fields + filtered_non_wildcard
+
+        # No wildcard - build explicit field list
         filtered_fields = []
 
         # Always include primary keys (entities) - needed for joins
