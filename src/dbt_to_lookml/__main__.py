@@ -602,7 +602,8 @@ def generate(
             convert_tz_value = False
 
         # Determine time_dimension_group_label value for generator
-        # If --no-time-dimension-group-label specified: None (explicit disable, preserve hierarchy)
+        # If --no-time-dimension-group-label specified: None (explicit disable,
+        # preserve hierarchy)
         # If --time-dimension-group-label specified: custom value
         # If neither specified: None (preserve hierarchy labels from metadata)
         time_dim_group_label_value: str | None = None

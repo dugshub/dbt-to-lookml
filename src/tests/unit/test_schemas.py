@@ -463,9 +463,7 @@ class TestDimensionTimeDimensionGroupLabel:
             type=DimensionType.TIME,
             type_params={"time_granularity": "day"},
             config=Config(
-                meta=ConfigMeta(
-                    time_dimension_group_label="Event Timestamps"
-                )
+                meta=ConfigMeta(time_dimension_group_label="Event Timestamps")
             ),
         )
 
@@ -494,48 +492,48 @@ class TestDimensionTimeDimensionGroupLabel:
         # Assert: Default parameter is used
         assert result["group_label"] == "Time Dimensions"
 
-    def test_time_dimension_group_label_disabled(self) -> None:
-        """Test that None disables time dimension grouping."""
-        # Arrange: Create dimension without time_dimension_group_label
-        dimension = Dimension(
-            name="processed_at",
+    def test_dimension_group_default_time_group_label(self) -> None:
+        """Test that time dimensions get default time dimension group_label."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
             type=DimensionType.TIME,
             type_params={"time_granularity": "day"},
         )
 
-        # Act: Call with default_time_dimension_group_label=None
-        result = dimension._to_dimension_group_dict(
-            default_time_dimension_group_label=None
-        )
+        # Act - no parameters provided
+        result = dim.to_lookml_dict()
 
-        # Assert: group_label not in result (no grouping)
-        assert "group_label" not in result
+        # Assert
+        assert result.get("group_label") == "Time Dimensions"
 
-    def test_time_dimension_group_label_overrides_hierarchy(self) -> None:
-        """Test that time_dimension_group_label overrides hierarchy labels."""
-        # Arrange: Create dimension with hierarchy category and time group label
+    def test_dimension_group_hierarchy_group_label_overrides_time_group_label(
+        self,
+    ) -> None:
+        """Test that hierarchy-based group_label takes precedence over time group_label."""
+        # Arrange - dimension has hierarchy with category
         dimension = Dimension(
-            name="event_date",
+            name="created_at",
             type=DimensionType.TIME,
             type_params={"time_granularity": "day"},
             config=Config(
                 meta=ConfigMeta(
                     hierarchy=Hierarchy(
                         entity="event",
-                        category="event_details",
+                        category="event_tracking",
                     ),
-                    time_dimension_group_label="Time Dimensions",
+                    time_dimension_group_label="Time Dimensions",  # Should be ignored
                 )
             ),
         )
 
-        # Act: Generate dimension group dict
+        # Act
         result = dimension._to_dimension_group_dict()
 
-        # Assert: time_dimension_group_label overrides hierarchy category
-        assert result["group_label"] == "Time Dimensions"
+        # Assert - hierarchy group_label wins
+        assert result.get("group_label") == "Event Tracking"  # From hierarchy
         # view_label from hierarchy is still preserved
-        assert result["view_label"] == "Event"
+        assert result.get("view_label") == "Event"
 
     def test_time_dimension_group_label_with_generator_default(self) -> None:
         """Test that generator default applies to all time dimensions."""
@@ -549,9 +547,7 @@ class TestDimensionTimeDimensionGroupLabel:
             name="shipped_at",
             type=DimensionType.TIME,
             type_params={"time_granularity": "hour"},
-            config=Config(
-                meta=ConfigMeta(time_dimension_group_label="Custom Times")
-            ),
+            config=Config(meta=ConfigMeta(time_dimension_group_label="Custom Times")),
         )
 
         # Act: Generate with default
@@ -565,6 +561,186 @@ class TestDimensionTimeDimensionGroupLabel:
         # Assert: First uses default, second uses metadata override
         assert result1["group_label"] == "Time Dimensions"
         assert result2["group_label"] == "Custom Times"
+
+    def test_dimension_group_generator_parameter_time_group_label(self) -> None:
+        """Test that generator parameter overrides default time group_label."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+        )
+
+        # Act - generator provides custom label
+        result = dim.to_lookml_dict(
+            default_time_dimension_group_label="Custom Time Dims"
+        )
+
+        # Assert
+        assert result.get("group_label") == "Custom Time Dims"
+
+    def test_dimension_group_metadata_overrides_generator_time_group_label(
+        self,
+    ) -> None:
+        """Test that dimension metadata overrides generator parameter."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(time_dimension_group_label="Event Times")),
+        )
+
+        # Act - generator provides different label
+        result = dim.to_lookml_dict(
+            default_time_dimension_group_label="Custom Time Dims"
+        )
+
+        # Assert - metadata should win
+        assert result.get("group_label") == "Event Times"
+
+    def test_dimension_group_disable_time_group_label_with_empty_string_metadata(
+        self,
+    ) -> None:
+        """Test that empty string in metadata disables time group_label."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(time_dimension_group_label="")),
+        )
+
+        # Act - even with generator default
+        result = dim.to_lookml_dict(
+            default_time_dimension_group_label="Time Dimensions"
+        )
+
+        # Assert - should have no group_label key
+        assert "group_label" not in result
+
+    def test_dimension_group_disable_time_group_label_with_empty_string_generator(
+        self,
+    ) -> None:
+        """Test that empty string in generator parameter disables time group_label."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+        )
+
+        # Act
+        result = dim.to_lookml_dict(default_time_dimension_group_label="")
+
+        # Assert
+        assert "group_label" not in result
+
+    def test_dimension_group_none_uses_default_time_group_label(self) -> None:
+        """Test that None in metadata falls through to default."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(time_dimension_group_label=None)),
+        )
+
+        # Act - no generator parameter
+        result = dim.to_lookml_dict()
+
+        # Assert - should use hardcoded default
+        assert result.get("group_label") == "Time Dimensions"
+
+    def test_dimension_group_time_label_precedence_chain(self) -> None:
+        """Test full precedence chain: metadata > generator > default."""
+        # Case 1: Metadata wins
+        dim1 = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(time_dimension_group_label="Meta")),
+        )
+        assert (
+            dim1.to_lookml_dict(default_time_dimension_group_label="Gen")["group_label"]
+            == "Meta"
+        )
+
+        # Case 2: Generator wins (no metadata)
+        dim2 = Dimension(
+            name="updated_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+        )
+        assert (
+            dim2.to_lookml_dict(default_time_dimension_group_label="Gen")["group_label"]
+            == "Gen"
+        )
+
+        # Case 3: Default wins (neither metadata nor generator)
+        dim3 = Dimension(
+            name="deleted_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+        )
+        assert dim3.to_lookml_dict()["group_label"] == "Time Dimensions"
+
+    def test_dimension_group_time_label_with_convert_tz(self) -> None:
+        """Test that time group_label works alongside convert_tz."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(meta=ConfigMeta(convert_tz=True)),
+        )
+
+        # Act
+        result = dim.to_lookml_dict(
+            default_convert_tz=False, default_time_dimension_group_label="Events"
+        )
+
+        # Assert - both parameters applied
+        assert result.get("group_label") == "Events"
+        assert result.get("convert_tz") == "yes"  # Metadata overrides
+
+    def test_dimension_group_label_and_time_group_label(self) -> None:
+        """Test that label and time group_label can coexist."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            label="Order Created",  # Sub-category
+            config=Config(
+                meta=ConfigMeta(time_dimension_group_label="Time Dimensions")
+            ),
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert
+        assert result.get("label") == "Order Created"
+        assert result.get("group_label") == "Time Dimensions"
+
+    def test_dimension_group_time_label_special_characters(self) -> None:
+        """Test that special characters in time group_label are preserved."""
+        # Arrange
+        dim = Dimension(
+            name="created_at",
+            type=DimensionType.TIME,
+            type_params={"time_granularity": "day"},
+            config=Config(
+                meta=ConfigMeta(time_dimension_group_label="Time/Dates & Events")
+            ),
+        )
+
+        # Act
+        result = dim.to_lookml_dict()
+
+        # Assert
+        assert result.get("group_label") == "Time/Dates & Events"
 
 
 class TestMeasure:

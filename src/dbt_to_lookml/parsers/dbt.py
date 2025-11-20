@@ -174,6 +174,11 @@ class DbtParser(Parser):
                         contains_pii=meta_data.get("contains_pii"),
                         update_frequency=meta_data.get("update_frequency"),
                         convert_tz=meta_data.get("convert_tz"),
+                        hidden=meta_data.get("hidden"),
+                        bi_field=meta_data.get("bi_field"),
+                        time_dimension_group_label=meta_data.get(
+                            "time_dimension_group_label"
+                        ),
                     )
                 config = Config(meta=config_meta)
 
@@ -264,6 +269,11 @@ class DbtParser(Parser):
                                 category=meta_data.get("category"),
                                 hierarchy=hierarchy,
                                 convert_tz=meta_data.get("convert_tz"),
+                                hidden=meta_data.get("hidden"),
+                                bi_field=meta_data.get("bi_field"),
+                                time_dimension_group_label=meta_data.get(
+                                    "time_dimension_group_label"
+                                ),
                             )
                         dim_config = Config(meta=config_meta)
 
@@ -353,6 +363,11 @@ class DbtParser(Parser):
                                 category=meta_data.get("category"),
                                 hierarchy=hierarchy,
                                 convert_tz=meta_data.get("convert_tz"),
+                                hidden=meta_data.get("hidden"),
+                                bi_field=meta_data.get("bi_field"),
+                                time_dimension_group_label=meta_data.get(
+                                    "time_dimension_group_label"
+                                ),
                             )
                         measure_config = Config(meta=config_meta)
 

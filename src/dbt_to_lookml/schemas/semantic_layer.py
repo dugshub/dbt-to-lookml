@@ -246,11 +246,26 @@ class Dimension(BaseModel):
                 - None: Use generator default (False)
 
             default_time_dimension_group_label: Default group label for time
-                dimension_groups from generator or CLI.
-                - String value: Set as group_label for time dimensions
-                - None: No group labeling (preserves hierarchy labels)
-                This is overridden by dimension-level
-                meta.time_dimension_group_label
+                dimensions. Controls the group_label parameter in generated
+                dimension_groups through multi-level precedence:
+
+                1. Dimension-level override via
+                   config.meta.time_dimension_group_label (highest priority)
+                2. Generator default via default_time_dimension_group_label
+                   parameter
+                3. Hardcoded default of "Time Dimensions" (lowest priority)
+
+                Values:
+                - String value: Use as group_label for time dimension
+                  organization
+                - None: Use next level in precedence chain (or hardcoded
+                  default)
+                - Empty string (""): Explicitly disable group_label
+                  (backward compatible)
+
+                Note: Hierarchy-based group_label (from category/subcategory)
+                takes precedence over time_dimension_group_label for
+                organizational specificity.
 
         Returns:
             Dictionary with dimension_group configuration including:
@@ -323,26 +338,30 @@ class Dimension(BaseModel):
         if group_label:
             result["group_label"] = group_label
 
-        # Determine time_dimension_group_label with two-tier precedence:
+        # Determine time_dimension_group_label with three-tier precedence:
         # 1. Dimension-level meta.time_dimension_group_label (highest priority)
         # 2. default_time_dimension_group_label parameter (from generator/CLI)
-        # 3. No group label (lowest priority, None means no grouping)
-        time_dim_group_label = None  # Default: no grouping
+        # 3. Hardcoded default: "Time Dimensions" (lowest priority)
+        #
+        # IMPORTANT: Only applies if no hierarchy-based group_label exists.
+        # Hierarchy group_label (from category/subcategory) takes precedence
+        # over time dimension grouping for organizational specificity.
+        # Empty string explicitly disables group_label (backward compatible).
+        # None means "use next level in precedence chain".
+        time_group_label = "Time Dimensions"  # Default
         if default_time_dimension_group_label is not None:
-            time_dim_group_label = default_time_dimension_group_label
+            time_group_label = default_time_dimension_group_label
         if (
             self.config
             and self.config.meta
             and self.config.meta.time_dimension_group_label is not None
         ):
-            time_dim_group_label = self.config.meta.time_dimension_group_label
+            time_group_label = self.config.meta.time_dimension_group_label
 
-        # Apply time dimension group label if present
-        # This overrides group_label from hierarchy for time dimensions
-        if time_dim_group_label:
-            # IMPORTANT: This overrides group_label set above
-            # Time dimension group label takes precedence for consistent organization
-            result["group_label"] = time_dim_group_label
+        # Apply time dimension group_label if not explicitly disabled
+        # and no hierarchy group_label exists (hierarchy takes precedence)
+        if time_group_label and "group_label" not in result:
+            result["group_label"] = time_group_label
 
         # Determine convert_tz with three-tier precedence:
         # 1. Dimension-level meta.convert_tz (highest priority if present)

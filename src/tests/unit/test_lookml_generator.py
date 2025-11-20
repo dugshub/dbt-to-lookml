@@ -3640,9 +3640,7 @@ class TestLookMLGeneratorTimeDimensionGroupLabel:
     def test_generator_time_dimension_group_label_parameter_custom(self) -> None:
         """Test that generator stores custom time_dimension_group_label value."""
         # Arrange & Act: Create generator with custom value
-        generator = LookMLGenerator(
-            time_dimension_group_label="Time Periods"
-        )
+        generator = LookMLGenerator(time_dimension_group_label="Time Periods")
 
         # Assert: Custom value is stored
         assert generator.time_dimension_group_label == "Time Periods"
@@ -3650,9 +3648,7 @@ class TestLookMLGeneratorTimeDimensionGroupLabel:
     def test_generator_time_dimension_group_label_parameter_none(self) -> None:
         """Test that generator stores None to disable time dimension grouping."""
         # Arrange & Act: Create generator with None
-        generator = LookMLGenerator(
-            time_dimension_group_label=None
-        )
+        generator = LookMLGenerator(time_dimension_group_label=None)
 
         # Assert: None value is stored
         assert generator.time_dimension_group_label is None
@@ -3661,8 +3657,7 @@ class TestLookMLGeneratorTimeDimensionGroupLabel:
         """Test that generator passes time_dimension_group_label to model conversion."""
         # Arrange
         generator = LookMLGenerator(
-            schema="test_schema",
-            time_dimension_group_label="Custom Times"
+            schema="test_schema", time_dimension_group_label="Custom Times"
         )
 
         model = SemanticModel(
