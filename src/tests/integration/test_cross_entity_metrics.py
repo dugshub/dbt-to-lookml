@@ -74,7 +74,8 @@ class TestCrossEntityMetricExplores:
         # For this test, we'll check if any metric exists or just verify the backward compat
 
         # Generate LookML with metrics
-        generator = LookMLGenerator()
+        # Specify rental_orders as fact model to generate explores
+        generator = LookMLGenerator(fact_models=["rental_orders"])
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)

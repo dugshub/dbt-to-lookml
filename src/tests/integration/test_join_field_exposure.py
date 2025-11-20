@@ -99,7 +99,8 @@ class TestJoinFieldExposure:
         Expected: Join should have fields: [users.dimensions_only*]
         """
         parser = DbtParser()
-        generator = LookMLGenerator()
+        # Specify rental_orders as fact model to generate explores
+        generator = LookMLGenerator(fact_models=["rental_orders"])
 
         # Parse rental_orders (fact) and users (dimension)
         all_models = parser.parse_directory(semantic_models_dir)
@@ -160,7 +161,8 @@ class TestJoinFieldExposure:
         Expected: Both joins should have fields parameter
         """
         parser = DbtParser()
-        generator = LookMLGenerator()
+        # Specify rental_orders as fact model to generate explores
+        generator = LookMLGenerator(fact_models=["rental_orders"])
 
         all_models = parser.parse_directory(semantic_models_dir)
 
@@ -409,7 +411,8 @@ class TestJoinFieldExposure:
         - Fields reference correct view's dimensions_only set
         """
         parser = DbtParser()
-        generator = LookMLGenerator()
+        # Specify rental_orders as fact model to generate explores
+        generator = LookMLGenerator(fact_models=["rental_orders"])
 
         all_models = parser.parse_directory(semantic_models_dir)
 

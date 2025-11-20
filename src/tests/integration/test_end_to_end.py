@@ -30,7 +30,8 @@ class TestEndToEndIntegration:
         assert len(semantic_models) > 0
 
         # Generate LookML files
-        generator = LookMLGenerator()
+        # Specify rentals as fact model to generate explores
+        generator = LookMLGenerator(fact_models=["rentals"])
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -67,6 +68,7 @@ class TestEndToEndIntegration:
         generator = LookMLGenerator(
             view_prefix="v_",
             explore_prefix="e_",
+            fact_models=["rentals"],  # Specify fact models to generate explores
         )
 
         with TemporaryDirectory() as temp_dir:

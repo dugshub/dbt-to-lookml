@@ -752,12 +752,16 @@ def generate(
             console.print(success_panel)
 
             # Save config for future regeneration (only on successful execution)
+            # Default explore_prefix to view_prefix if not specified
+            effective_explore_prefix = (
+                explore_prefix if explore_prefix is not None else view_prefix
+            )
             save_last_run(
                 input_dir=input_dir,
                 output_dir=output_dir,
                 schema=schema,
                 view_prefix=view_prefix,
-                explore_prefix=explore_prefix if explore_prefix is not None else view_prefix,
+                explore_prefix=effective_explore_prefix,
                 connection=connection,
                 model_name=model_name,
                 convert_tz=convert_tz
