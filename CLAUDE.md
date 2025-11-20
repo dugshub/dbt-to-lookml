@@ -652,6 +652,193 @@ dimension_group: created_at {
 }
 ```
 
+#### Enhanced Organization with group_item_label
+
+The `group_item_label` feature provides cleaner field labels in Looker's field picker by using a Liquid template
+to extract just the timeframe name (e.g., "Date", "Week") instead of repeating the dimension name for each timeframe.
+
+##### Example 4: Using group_item_label for Cleaner Labels
+```yaml
+# semantic_models/rentals.yaml
+semantic_model:
+  name: rentals
+  dimensions:
+    - name: created_at
+      type: time
+      type_params:
+        time_granularity: day
+      config:
+        meta:
+          group_item_label: true  # Enable cleaner timeframe labels
+```
+
+**CLI Command**:
+```bash
+# Enable group_item_label for all time dimensions
+dbt-to-lookml generate -i semantic_models/ -o build/lookml \
+    --use-group-item-label
+```
+
+**Generated LookML**:
+```lookml
+dimension_group: rental_created {
+  label: "Rental Created"
+  group_label: "Time Dimensions"
+  group_item_label: "{% assign tf = _field._name | remove: 'rental_created_' | replace: '_', ' ' | capitalize %}{{ tf }}"
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.rental_created_at ;;
+  convert_tz: no
+}
+```
+
+**Field Picker Result** (with `group_item_label`):
+```
+Time Dimensions
+  Rental Created
+    Date         ← Cleaner: "Date" instead of "Rental Created Date"
+    Week         ← Cleaner: "Week" instead of "Rental Created Week"
+    Month
+    Quarter
+    Year
+```
+
+#### Field Picker Organization: Before and After
+
+**Before** (Without time dimension organization):
+```
+DIMENSIONS
+  Rental Created Date
+  Rental Created Week
+  Rental Created Month
+  Rental Created Quarter
+  Rental Created Year
+  Rental Updated Date
+  Rental Updated Week
+  Rental Updated Month
+  Rental Updated Quarter
+  Rental Updated Year
+  Customer Name
+  Location
+```
+Problem: All timeframes are in a flat list, mixed with other dimensions.
+
+**After** (With default time dimension organization):
+```
+DIMENSIONS
+  Time Dimensions
+    Rental Created
+      Rental Created Date
+      Rental Created Week
+      Rental Created Month
+      Rental Created Quarter
+      Rental Created Year
+    Rental Updated
+      Rental Updated Date
+      Rental Updated Week
+      Rental Updated Month
+      Rental Updated Quarter
+      Rental Updated Year
+  Customer Name
+  Location
+```
+Solution: Time dimensions are grouped hierarchically under "Time Dimensions".
+
+**After** (With group_item_label enabled):
+```
+DIMENSIONS
+  Time Dimensions
+    Rental Created
+      Date         ← Cleaner labels
+      Week
+      Month
+      Quarter
+      Year
+    Rental Updated
+      Date
+      Week
+      Month
+      Quarter
+      Year
+  Customer Name
+  Location
+```
+Enhancement: `group_item_label` removes redundant dimension name repetition.
+
+#### Combined Example: All Features Together
+
+This example demonstrates combining `group_label`, `group_item_label`, and `convert_tz`:
+
+```yaml
+semantic_model:
+  name: transactions
+  dimensions:
+    - name: transaction_date
+      type: time
+      type_params:
+        time_granularity: day
+      config:
+        meta:
+          time_dimension_group_label: "Transaction Timeline"  # Custom group
+          group_item_label: true                              # Clean labels
+          convert_tz: yes                                     # Timezone conversion
+```
+
+**Generated LookML**:
+```lookml
+dimension_group: transaction_date {
+  label: "Transaction Date"
+  group_label: "Transaction Timeline"
+  group_item_label: "{% assign tf = _field._name | remove: 'transaction_date_' | replace: '_', ' ' | capitalize %}{{ tf }}"
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.transaction_date ;;
+  convert_tz: yes
+}
+```
+
+#### Extended Implementation Details
+
+- **group_item_label Parameter** (`LookMLGenerator`):
+  - `use_group_item_label: bool = False`
+  - Enables `group_item_label` in all time dimension_groups
+  - Uses Liquid templating to extract timeframe names
+  - Disabled by default (backward compatible)
+
+- **Dimension._to_dimension_group_dict()**: Extended logic
+  - Checks `config.meta.group_item_label` for dimension-level override
+  - Falls back to `use_group_item_label` parameter from generator
+  - Generates Liquid template when enabled:
+    - Extracts field name suffix (the timeframe part)
+    - Removes dimension name prefix
+    - Capitalizes for display (Date, Week, etc.)
+
+- **CLI Flag**: `--use-group-item-label`
+  - Enables group_item_label feature for all time dimensions
+  - Works in combination with `--time-dimension-group-label`
+  - Optional flag (disabled by default)
+
+#### Configuration Precedence Summary
+
+For time dimension organization, the complete precedence chain is:
+
+1. **Dimension Metadata** (Highest priority)
+   - `time_dimension_group_label` - Custom group label for this dimension
+   - `group_item_label` - Enable clean timeframe labels for this dimension
+
+2. **Generator Parameters**
+   - `time_dimension_group_label` - Apply group label to all dimensions
+   - `use_group_item_label` - Enable clean labels for all dimensions
+
+3. **CLI Flags**
+   - `--time-dimension-group-label TEXT` - Custom group label
+   - `--no-time-dimension-group-label` - Disable grouping
+   - `--use-group-item-label` - Enable clean labels
+
+4. **Defaults** (Lowest priority)
+   - `group_label: "Time Dimensions"` - Default grouping
+   - `group_item_label` disabled - Default is full field names
+
 ### Parser Error Handling
 
 - `DbtParser` supports `strict_mode` (fail fast) vs. lenient mode (log warnings, continue)
