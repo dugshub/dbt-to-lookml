@@ -27,7 +27,7 @@ class LookMLGenerator(Generator):
     def __init__(
         self,
         view_prefix: str = "",
-        explore_prefix: str = "",
+        explore_prefix: str | None = None,
         validate_syntax: bool = True,
         format_output: bool = True,
         schema: str = "",
@@ -51,7 +51,8 @@ class LookMLGenerator(Generator):
             view_prefix: Prefix to add to all generated view names. Useful
                 for namespacing views by environment or project.
             explore_prefix: Prefix to add to all generated explore names.
-                Works alongside view_prefix for consistent naming conventions.
+                Defaults to view_prefix value if not specified to ensure
+                consistent naming and avoid join reference errors.
             validate_syntax: Whether to validate generated LookML syntax
                 using the lkml library. Validation runs automatically unless
                 explicitly disabled.
@@ -134,6 +135,11 @@ class LookMLGenerator(Generator):
             Dimension._to_dimension_group_dict(): Implements group_item_label
                 generation with precedence handling.
         """
+        # Default explore_prefix to view_prefix if not specified
+        # This ensures consistent naming and avoids join reference errors
+        if explore_prefix is None:
+            explore_prefix = view_prefix
+
         super().__init__(
             validate_syntax=validate_syntax,
             format_output=format_output,

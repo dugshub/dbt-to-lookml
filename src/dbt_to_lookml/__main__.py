@@ -242,6 +242,13 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
     help="Directory containing semantic model YAML files",
 )
 @click.option(
+    "--metrics-dir",
+    "-md",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help="Directory containing metric YAML files (defaults to input-dir)",
+)
+@click.option(
     "--output-dir",
     "-o",
     type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
@@ -264,8 +271,8 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
 @click.option(
     "--explore-prefix",
     type=str,
-    default="",
-    help="Prefix to add to explore names",
+    default=None,
+    help="Prefix to add to explore names (defaults to view-prefix)",
 )
 @click.option(
     "--dry-run",
@@ -364,10 +371,11 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
 )
 def generate(
     input_dir: Path,
+    metrics_dir: Path | None,
     output_dir: Path,
     schema: str,
     view_prefix: str,
-    explore_prefix: str,
+    explore_prefix: str | None,
     dry_run: bool,
     no_validation: bool,
     no_formatting: bool,
@@ -483,7 +491,7 @@ def generate(
         output_dir,
         schema,
         view_prefix=view_prefix,
-        explore_prefix=explore_prefix,
+        explore_prefix=explore_prefix if explore_prefix is not None else view_prefix,
         connection=connection,
         model_name=model_name,
         convert_tz=convert_tz if convert_tz else (False if no_convert_tz else None),
@@ -602,6 +610,65 @@ def generate(
                 f"were skipped[/yellow]"
             )
 
+        # Parse metrics if metrics directory specified or defaults to input directory
+        metrics: list[Any] | None = None
+        if metrics_dir is None:
+            metrics_dir = input_dir  # Default to input directory
+
+        console.print(f"[bold blue]Parsing metrics from {metrics_dir}[/bold blue]")
+
+        from dbt_to_lookml.parsers.dbt_metrics import DbtMetricParser
+
+        metric_parser = DbtMetricParser(semantic_models=semantic_models)
+        metrics = []
+        metrics_file_count = 0
+        metrics_error_count = 0
+
+        # Parse metric files individually
+        for yaml_file in metrics_dir.rglob("*.yml"):
+            metrics_file_count += 1
+            try:
+                parsed_metrics = metric_parser.parse_file(yaml_file)
+                metrics.extend(parsed_metrics)
+                rel_path = yaml_file.relative_to(metrics_dir)
+                console.print(
+                    f"  [green]✓[/green] {rel_path}: {len(parsed_metrics)} metrics"
+                )
+            except Exception as e:
+                metrics_error_count += 1
+                rel_path = yaml_file.relative_to(metrics_dir)
+                console.print(f"  [yellow]Warning:[/yellow] {rel_path}: {e}")
+                console.print("    [dim]Skipping file (metrics are optional)...[/dim]")
+
+        for yaml_file in metrics_dir.rglob("*.yaml"):
+            metrics_file_count += 1
+            try:
+                parsed_metrics = metric_parser.parse_file(yaml_file)
+                metrics.extend(parsed_metrics)
+                rel_path = yaml_file.relative_to(metrics_dir)
+                console.print(
+                    f"  [green]✓[/green] {rel_path}: {len(parsed_metrics)} metrics"
+                )
+            except Exception as e:
+                metrics_error_count += 1
+                rel_path = yaml_file.relative_to(metrics_dir)
+                console.print(f"  [yellow]Warning:[/yellow] {rel_path}: {e}")
+                console.print("    [dim]Skipping file (metrics are optional)...[/dim]")
+
+        if len(metrics) > 0:
+            console.print(
+                f"Found {len(metrics)} metrics from {metrics_file_count} files"
+            )
+        else:
+            console.print("[dim]No metrics found (metrics are optional)[/dim]")
+            metrics = None  # Set to None if no metrics found
+
+        if metrics_error_count > 0:
+            console.print(
+                f"[yellow]Warning: {metrics_error_count} metric files had parse "
+                f"errors and were skipped[/yellow]"
+            )
+
         if not dry_run:
             console.print(
                 f"[bold blue]Generating LookML files to {output_dir}[/bold blue]"
@@ -669,8 +736,11 @@ def generate(
         )
 
         # Generate files
-        generated_files, validation_errors = generator.generate_lookml_files(
-            semantic_models, output_dir, dry_run=dry_run
+        output_files = generator.generate(semantic_models, metrics=metrics)
+
+        # Write files
+        generated_files, validation_errors = generator.write_files(
+            output_dir, output_files, dry_run=dry_run, verbose=True
         )
 
         # Show results
@@ -687,7 +757,7 @@ def generate(
                 output_dir=output_dir,
                 schema=schema,
                 view_prefix=view_prefix,
-                explore_prefix=explore_prefix,
+                explore_prefix=explore_prefix if explore_prefix is not None else view_prefix,
                 connection=connection,
                 model_name=model_name,
                 convert_tz=convert_tz
