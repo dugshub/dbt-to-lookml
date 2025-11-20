@@ -313,9 +313,30 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
     help="Don't convert time dimensions to UTC (mutually exclusive with --convert-tz)",
 )
 @click.option(
+    "--time-dimension-group-label",
+    type=str,
+    default=None,
+    help="Group label for time dimension_groups (default: 'Time Dimensions'). "
+    "Groups all time dimensions under a common label in Looker's field picker.",
+)
+@click.option(
+    "--no-time-dimension-group-label",
+    is_flag=True,
+    help="Disable time dimension group labeling (preserves hierarchy labels)",
+)
+@click.option(
     "--bi-field-only",
     is_flag=True,
     help="Only include fields marked with bi_field: true in explores",
+)
+@click.option(
+    "--fact-models",
+    type=str,
+    default=None,
+    help=(
+        "Comma-separated list of model names to generate explores for "
+        "(e.g., 'rentals,orders'). If not specified, no explores will be generated."
+    ),
 )
 @click.option(
     "--yes",
@@ -342,7 +363,10 @@ def generate(
     model_name: str,
     convert_tz: bool,
     no_convert_tz: bool,
+    time_dimension_group_label: str | None,
+    no_time_dimension_group_label: bool,
     bi_field_only: bool,
+    fact_models: str | None,
     yes: bool,
     preview: bool,
 ) -> None:
@@ -354,19 +378,20 @@ def generate(
 
     Examples:
 
-      Basic generation:
+      Basic generation (uses default "Time Dimensions" grouping):
       $ dbt-to-lookml generate -i semantic_models/ -o build/lookml -s prod_schema
 
-      With prefixes and dry-run preview:
+      With custom time dimension group label:
       $ dbt-to-lookml generate -i models/ -o lookml/ -s analytics \\
-          --view-prefix "sm_" --explore-prefix "exp_" --dry-run
+          --time-dimension-group-label "Time Periods"
 
-      With timezone conversion:
-      $ dbt-to-lookml generate -i models/ -o lookml/ -s dwh --convert-tz
+      Disable time dimension grouping:
+      $ dbt-to-lookml generate -i models/ -o lookml/ -s dwh \\
+          --no-time-dimension-group-label
 
-      With custom connection and model name:
-      $ dbt-to-lookml generate -i models/ -o lookml/ -s redshift_prod \\
-          --connection "redshift_analytics" --model-name "semantic_layer"
+      With prefixes and timezone conversion:
+      $ dbt-to-lookml generate -i models/ -o lookml/ -s analytics \\
+          --view-prefix "sm_" --explore-prefix "exp_" --convert-tz
 
     For interactive mode, use:
       $ dbt-to-lookml wizard generate
@@ -388,6 +413,19 @@ def generate(
         console.print(error_panel)
         raise click.ClickException(
             "--convert-tz and --no-convert-tz cannot be used together"
+        )
+
+    # Validate mutual exclusivity of time dimension group label flags
+    if time_dimension_group_label is not None and no_time_dimension_group_label:
+        error_panel = format_error(
+            "Conflicting time dimension group label options provided",
+            context="Use either --time-dimension-group-label OR "
+            "--no-time-dimension-group-label, not both",
+        )
+        console.print(error_panel)
+        raise click.ClickException(
+            "--time-dimension-group-label and --no-time-dimension-group-label "
+            "cannot be used together"
         )
 
     # Preview mode implies dry run
@@ -563,6 +601,25 @@ def generate(
         elif no_convert_tz:
             convert_tz_value = False
 
+        # Determine time_dimension_group_label value for generator
+        # If --no-time-dimension-group-label specified: None (explicit disable, preserve hierarchy)
+        # If --time-dimension-group-label specified: custom value
+        # If neither specified: None (preserve hierarchy labels from metadata)
+        time_dim_group_label_value: str | None = None
+        if time_dimension_group_label is not None:
+            time_dim_group_label_value = time_dimension_group_label
+        elif no_time_dimension_group_label:
+            time_dim_group_label_value = None
+
+        # Parse fact models if provided
+        fact_model_names: list[str] | None = None
+        if fact_models:
+            fact_model_names = [name.strip() for name in fact_models.split(",")]
+            model_list = ", ".join(fact_model_names)
+            console.print(
+                f"[blue]Generating explores for fact models: {model_list}[/blue]"
+            )
+
         # Configure generator
         generator = LookMLGenerator(
             view_prefix=view_prefix,
@@ -574,6 +631,8 @@ def generate(
             model_name=model_name,
             convert_tz=convert_tz_value,
             use_bi_field_filter=bi_field_only,
+            fact_models=fact_model_names,
+            time_dimension_group_label=time_dim_group_label_value,
         )
 
         # Generate files

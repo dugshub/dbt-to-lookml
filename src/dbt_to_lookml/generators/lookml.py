@@ -35,6 +35,8 @@ class LookMLGenerator(Generator):
         model_name: str = "semantic_model",
         convert_tz: bool | None = None,
         use_bi_field_filter: bool = False,
+        fact_models: list[str] | None = None,
+        time_dimension_group_label: str | None = None,
     ) -> None:
         """Initialize the generator.
 
@@ -77,6 +79,19 @@ class LookMLGenerator(Generator):
                 - False (default): All fields included in explores (backward compatible)
                 - True: Only fields with bi_field: true included (selective exposure)
                 Primary keys (entities) are always included regardless of setting.
+            fact_models: Optional list of model names to generate explores for.
+                If provided, only these models will have explores generated.
+                If None, no explores will be generated.
+                Join relationships are discovered automatically via foreign keys.
+            time_dimension_group_label: Top-level group label for time
+                dimension_groups. Controls the group_label parameter for organizing
+                time dimensions in Looker's field picker.
+                - String value: Set as group_label for all time dimension_groups
+                - None: Disable group labeling (no group_label set)
+                - Default: "Time Dimensions" (provides better organization)
+                This setting is overridden by per-dimension
+                config.meta.time_dimension_group_label in semantic models, allowing
+                fine-grained control at the dimension level.
 
         Example:
             Enable timezone conversion globally:
@@ -113,6 +128,24 @@ class LookMLGenerator(Generator):
             )
             ```
 
+            Set custom group label for time dimensions:
+
+            ```python
+            generator = LookMLGenerator(
+                view_prefix="stg_",
+                time_dimension_group_label="Time Periods"
+            )
+            ```
+
+            Disable time dimension grouping:
+
+            ```python
+            generator = LookMLGenerator(
+                view_prefix="stg_",
+                time_dimension_group_label=None
+            )
+            ```
+
         See Also:
             CLAUDE.md: "Timezone Conversion Configuration" section for
                 multi-level precedence rules and detailed examples.
@@ -135,6 +168,8 @@ class LookMLGenerator(Generator):
         self.model_name = model_name
         self.convert_tz = convert_tz
         self.use_bi_field_filter = use_bi_field_filter
+        self.fact_models = fact_models
+        self.time_dimension_group_label = time_dimension_group_label
 
         # Backward compatibility attribute
         class MapperCompat:
@@ -557,15 +592,32 @@ class LookMLGenerator(Generator):
         return measure_dict
 
     def _identify_fact_models(self, models: list[SemanticModel]) -> list[SemanticModel]:
-        """Identify fact tables (models with measures) that should become base explores.
+        """Identify which models should have explores generated.
 
         Args:
             models: List of semantic models to analyze.
 
         Returns:
-            List of semantic models that have measures (fact tables).
+            List of models that should have explores.
         """
-        return [model for model in models if len(model.measures) > 0]
+        if self.fact_models is not None:
+            # Explicit mode: only generate explores for specified models
+            fact_model_set = set(self.fact_models)
+            identified = [model for model in models if model.name in fact_model_set]
+
+            # Warn about missing models
+            found_names = {model.name for model in identified}
+            missing = fact_model_set - found_names
+            if missing:
+                missing_list = ", ".join(missing)
+                console.print(
+                    f"[yellow]Warning: Fact models not found: {missing_list}[/yellow]"
+                )
+
+            return identified
+        else:
+            # No fact models specified - no explores will be generated
+            return []
 
     def _infer_relationship(
         self, from_entity_type: str, to_entity_type: str, entity_name_match: bool
@@ -1102,11 +1154,15 @@ class LookMLGenerator(Generator):
                     },
                 )
                 view_dict = prefixed_model.to_lookml_dict(
-                    schema=self.schema, convert_tz=self.convert_tz
+                    schema=self.schema,
+                    convert_tz=self.convert_tz,
+                    time_dimension_group_label=self.time_dimension_group_label,
                 )
             else:
                 view_dict = semantic_model.to_lookml_dict(
-                    schema=self.schema, convert_tz=self.convert_tz
+                    schema=self.schema,
+                    convert_tz=self.convert_tz,
+                    time_dimension_group_label=self.time_dimension_group_label,
                 )
         else:
             raise TypeError(
@@ -1163,8 +1219,18 @@ class LookMLGenerator(Generator):
             view_filename = f"{self.view_prefix}{model.name}.view.lkml"
             include_statements.append(f'include: "{view_filename}"')
 
-        # Identify fact models (those with measures)
+        # Identify fact models (requires explicit --fact-models flag)
         fact_models = self._identify_fact_models(semantic_models)
+
+        if self.fact_models is not None:
+            count = len(fact_models)
+            console.print(
+                f"[blue]Generating {count} explores from specified fact models[/blue]"
+            )
+        else:
+            msg = "No fact models specified. Use --fact-models to generate explores."
+            console.print(f"[yellow]{msg}[/yellow]")
+            console.print("[dim]Example: --fact-models rentals,orders[/dim]")
 
         explores = []
 

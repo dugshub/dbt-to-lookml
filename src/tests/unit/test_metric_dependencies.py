@@ -4,15 +4,13 @@ Tests the get_required_measures() method on Metric class for extracting
 dependencies from different metric types.
 """
 
-import pytest
-
 from dbt_to_lookml.schemas.semantic_layer import (
+    ConversionMetricParams,
+    DerivedMetricParams,
     Metric,
     MetricReference,
-    SimpleMetricParams,
     RatioMetricParams,
-    DerivedMetricParams,
-    ConversionMetricParams,
+    SimpleMetricParams,
 )
 
 
@@ -249,9 +247,7 @@ class TestMetricDependenciesEdgeCases:
             Metric(
                 name="conversion",
                 type="conversion",
-                type_params=ConversionMetricParams(
-                    conversion_type_params={}
-                ),
+                type_params=ConversionMetricParams(conversion_type_params={}),
             ),
         ]
 

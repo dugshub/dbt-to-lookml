@@ -58,6 +58,14 @@ class ConfigMeta(BaseModel):
             - True: Field included in explores when --bi-field-only is enabled
             - False/None: Field excluded from filtered explores
             Used with LookMLGenerator use_bi_field_filter=True for opt-in.
+        time_dimension_group_label: Control top-level group label for time
+            dimension_groups.
+            - String value: Set custom group_label (e.g., "Time Periods")
+            - None: Disable time dimension grouping (preserves hierarchy labels)
+            - Default in generator: "Time Dimensions" (better organization)
+            This provides highest-priority override in configuration precedence chain.
+            When set, overrides any group_label from hierarchy metadata for time
+            dimensions.
 
     Example:
         Dimension with timezone override and hierarchy labels:
@@ -95,6 +103,7 @@ class ConfigMeta(BaseModel):
     convert_tz: bool | None = None
     hidden: bool | None = None
     bi_field: bool | None = None
+    time_dimension_group_label: str | None = None
 
 
 class Config(BaseModel):

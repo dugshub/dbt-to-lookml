@@ -4,14 +4,12 @@ Tests the hidden parameter functionality across all field types (dimensions,
 measures, metrics) and ensures proper LookML output generation.
 """
 
-import pytest
-
 from dbt_to_lookml.schemas.config import Config, ConfigMeta
 from dbt_to_lookml.schemas.semantic_layer import (
+    AggregationType,
     Dimension,
     DimensionType,
     Measure,
-    AggregationType,
 )
 
 
@@ -85,9 +83,7 @@ class TestHiddenParameterDimensionGroup:
             name="updated_at",
             type=DimensionType.TIME,
             type_params={"time_granularity": "hour"},
-            config=Config(
-                meta=ConfigMeta(hidden=True, convert_tz=True)
-            ),
+            config=Config(meta=ConfigMeta(hidden=True, convert_tz=True)),
         )
         result = dim.to_lookml_dict()
         assert result["hidden"] == "yes"

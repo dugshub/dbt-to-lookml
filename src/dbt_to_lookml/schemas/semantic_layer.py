@@ -125,15 +125,24 @@ class Dimension(BaseModel):
     type_params: dict[str, Any] | None = None
     config: Config | None = None
 
-    def to_lookml_dict(self, default_convert_tz: bool | None = None) -> dict[str, Any]:
+    def to_lookml_dict(
+        self,
+        default_convert_tz: bool | None = None,
+        default_time_dimension_group_label: str | None = None,
+    ) -> dict[str, Any]:
         """Convert dimension to LookML format.
 
         Args:
             default_convert_tz: Optional default timezone conversion setting
                 for time dimensions.
+            default_time_dimension_group_label: Optional default group label
+                for time dimension_groups.
         """
         if self.type == DimensionType.TIME:
-            return self._to_dimension_group_dict(default_convert_tz=default_convert_tz)
+            return self._to_dimension_group_dict(
+                default_convert_tz=default_convert_tz,
+                default_time_dimension_group_label=default_time_dimension_group_label,
+            )
         else:
             return self._to_dimension_dict()
 
@@ -218,17 +227,15 @@ class Dimension(BaseModel):
         return timeframes
 
     def _to_dimension_group_dict(
-        self, default_convert_tz: bool | None = None
+        self,
+        default_convert_tz: bool | None = None,
+        default_time_dimension_group_label: str | None = None,
     ) -> dict[str, Any]:
         """Convert time dimension to LookML dimension_group.
 
         Generates a LookML dimension_group block with appropriate timeframes
         based on the dimension's time_granularity setting. Supports timezone
-        conversion configuration through multi-level precedence:
-
-        1. Dimension-level override via config.meta.convert_tz (highest priority)
-        2. Generator default via default_convert_tz parameter
-        3. Hardcoded default of False (lowest priority)
+        conversion and group labeling through multi-level precedence.
 
         Args:
             default_convert_tz: Default timezone conversion setting from
@@ -238,6 +245,13 @@ class Dimension(BaseModel):
                 - False: Disable timezone conversion (default behavior)
                 - None: Use generator default (False)
 
+            default_time_dimension_group_label: Default group label for time
+                dimension_groups from generator or CLI.
+                - String value: Set as group_label for time dimensions
+                - None: No group labeling (preserves hierarchy labels)
+                This is overridden by dimension-level
+                meta.time_dimension_group_label
+
         Returns:
             Dictionary with dimension_group configuration including:
             - name: Dimension name
@@ -245,12 +259,14 @@ class Dimension(BaseModel):
             - timeframes: List of appropriate timeframes based on granularity
             - sql: SQL expression for the timestamp column
             - convert_tz: "yes" or "no" based on precedence rules
+            - group_label: Time dimension group label (if configured)
             - description: Optional description
             - label: Optional label
-            - view_label/group_label: Optional hierarchy labels
+            - view_label: Optional hierarchy view label (if no group label
+              override)
 
         Example:
-            Dimension with metadata override (enables timezone conversion):
+            Dimension with group label metadata override:
 
             ```python
             dimension = Dimension(
@@ -258,14 +274,16 @@ class Dimension(BaseModel):
                 type=DimensionType.TIME,
                 type_params={"time_granularity": "day"},
                 config=Config(meta=ConfigMeta(
-                    convert_tz=True  # Override any generator default
+                    time_dimension_group_label="Event Timestamps"  # Override
                 ))
             )
-            result = dimension._to_dimension_group_dict(default_convert_tz=False)
-            # Result includes: "convert_tz": "yes" (meta override takes precedence)
+            result = dimension._to_dimension_group_dict(
+                default_time_dimension_group_label="Time Dimensions"
+            )
+            # Result includes: "group_label": "Event Timestamps"
             ```
 
-            Dimension without override (uses generator default):
+            Dimension with generator default:
 
             ```python
             dimension = Dimension(
@@ -273,13 +291,15 @@ class Dimension(BaseModel):
                 type=DimensionType.TIME,
                 type_params={"time_granularity": "hour"}
             )
-            result = dimension._to_dimension_group_dict(default_convert_tz=True)
-            # Result includes: "convert_tz": "yes" (from default_convert_tz parameter)
+            result = dimension._to_dimension_group_dict(
+                default_time_dimension_group_label="Time Dimensions"
+            )
+            # Result includes: "group_label": "Time Dimensions"
             ```
 
         See Also:
-            CLAUDE.md: "Timezone Conversion Configuration" section for detailed
-                precedence rules and usage examples.
+            CLAUDE.md: "Timezone Conversion Configuration" section for similar
+                multi-level precedence pattern.
         """
         # Determine timeframes based on granularity
         timeframes = self._get_timeframes()
@@ -302,6 +322,27 @@ class Dimension(BaseModel):
             result["view_label"] = view_label
         if group_label:
             result["group_label"] = group_label
+
+        # Determine time_dimension_group_label with two-tier precedence:
+        # 1. Dimension-level meta.time_dimension_group_label (highest priority)
+        # 2. default_time_dimension_group_label parameter (from generator/CLI)
+        # 3. No group label (lowest priority, None means no grouping)
+        time_dim_group_label = None  # Default: no grouping
+        if default_time_dimension_group_label is not None:
+            time_dim_group_label = default_time_dimension_group_label
+        if (
+            self.config
+            and self.config.meta
+            and self.config.meta.time_dimension_group_label is not None
+        ):
+            time_dim_group_label = self.config.meta.time_dimension_group_label
+
+        # Apply time dimension group label if present
+        # This overrides group_label from hierarchy for time dimensions
+        if time_dim_group_label:
+            # IMPORTANT: This overrides group_label set above
+            # Time dimension group label takes precedence for consistent organization
+            result["group_label"] = time_dim_group_label
 
         # Determine convert_tz with three-tier precedence:
         # 1. Dimension-level meta.convert_tz (highest priority if present)
@@ -424,7 +465,10 @@ class SemanticModel(BaseModel):
     measures: list[Measure] = Field(default_factory=list)
 
     def to_lookml_dict(
-        self, schema: str = "", convert_tz: bool | None = None
+        self,
+        schema: str = "",
+        convert_tz: bool | None = None,
+        time_dimension_group_label: str | None = None,
     ) -> dict[str, Any]:
         """Convert entire semantic model to lkml views format.
 
@@ -433,6 +477,9 @@ class SemanticModel(BaseModel):
             convert_tz: Optional timezone conversion setting. Passed to time
                 dimensions as default_convert_tz. None means use
                 dimension-level defaults.
+            time_dimension_group_label: Optional default group label for time
+                dimension_groups. Passed to time dimensions. None means no
+                group label applied at generator level.
 
         Returns:
             Dictionary in LookML views format.
@@ -469,9 +516,13 @@ class SemanticModel(BaseModel):
 
         # Convert dimensions (separate regular dims from time dims)
         for dim in self.dimensions:
-            # Pass convert_tz to time dimensions to propagate generator default
+            # Pass convert_tz and time_dimension_group_label to time dimensions
+            # to propagate generator defaults
             if dim.type == DimensionType.TIME:
-                dim_dict = dim.to_lookml_dict(default_convert_tz=convert_tz)
+                dim_dict = dim.to_lookml_dict(
+                    default_convert_tz=convert_tz,
+                    default_time_dimension_group_label=time_dimension_group_label,
+                )
             else:
                 dim_dict = dim.to_lookml_dict()
 
@@ -805,9 +856,7 @@ class Metric(BaseModel):
         """
         if self.type == "simple" and isinstance(self.type_params, SimpleMetricParams):
             return [self.type_params.measure]
-        elif self.type == "ratio" and isinstance(
-            self.type_params, RatioMetricParams
-        ):
+        elif self.type == "ratio" and isinstance(self.type_params, RatioMetricParams):
             return [self.type_params.numerator, self.type_params.denominator]
         elif self.type == "derived" and isinstance(
             self.type_params, DerivedMetricParams

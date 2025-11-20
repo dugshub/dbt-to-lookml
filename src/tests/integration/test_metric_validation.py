@@ -195,9 +195,9 @@ def test_parser_integration_validation_disabled(semantic_models, metrics_dir):
 def test_generator_integration_validation(semantic_models):
     """Test generator integration with validation before generation."""
     from dbt_to_lookml.schemas.semantic_layer import (
-    Metric,
-    RatioMetricParams,
-)
+        Metric,
+        RatioMetricParams,
+    )
 
     # Create metric with unreachable measure
     bad_metric = Metric(
@@ -220,9 +220,9 @@ def test_generator_integration_validation(semantic_models):
 def test_generator_integration_validation_disabled(semantic_models):
     """Test generator with validation disabled."""
     from dbt_to_lookml.schemas.semantic_layer import (
-    Metric,
-    RatioMetricParams,
-)
+        Metric,
+        RatioMetricParams,
+    )
 
     # Create metric with unreachable measure
     bad_metric = Metric(

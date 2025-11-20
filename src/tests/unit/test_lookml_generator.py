@@ -8,17 +8,17 @@ import lkml
 import pytest
 
 from dbt_to_lookml.generators.lookml import LookMLGenerator, LookMLValidationError
-from dbt_to_lookml.schemas.semantic_layer import (
-    Dimension,
-    Entity,
-    Measure,
-    SemanticModel,
-)
 from dbt_to_lookml.schemas.lookml import (
     LookMLDimension,
     LookMLDimensionGroup,
     LookMLMeasure,
     LookMLView,
+)
+from dbt_to_lookml.schemas.semantic_layer import (
+    Dimension,
+    Entity,
+    Measure,
+    SemanticModel,
 )
 from dbt_to_lookml.types import (
     AggregationType,
@@ -106,9 +106,9 @@ class TestLookMLGenerator:
         """Test generating LookML content for explores with join graphs."""
         from dbt_to_lookml.schemas import Entity, Measure, SemanticModel
 
-        generator = LookMLGenerator()
+        generator = LookMLGenerator(fact_models=["users", "orders"])
 
-        # Create fact models (with measures) that should generate explores
+        # Create fact models that should generate explores
         models = [
             SemanticModel(
                 name="users",
@@ -155,7 +155,7 @@ class TestLookMLGenerator:
 
     def test_lookml_files_generation(self) -> None:
         """Test complete LookML files generation."""
-        generator = LookMLGenerator()
+        generator = LookMLGenerator(fact_models=["users", "orders"])
 
         semantic_models = [
             SemanticModel(
@@ -331,15 +331,15 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         """Test generation with view and explore prefixes."""
         from dbt_to_lookml.schemas import Measure
 
-        generator = LookMLGenerator(view_prefix="v_", explore_prefix="e_")
+        generator = LookMLGenerator(
+            view_prefix="v_", explore_prefix="e_", fact_models=["users"]
+        )
 
         semantic_models = [
             SemanticModel(
                 name="users",
                 model="dim_users",
-                measures=[
-                    Measure(name="user_count", agg="count")
-                ],  # Add measure to make it a fact model
+                measures=[Measure(name="user_count", agg="count")],
             )
         ]
 
@@ -763,8 +763,8 @@ class TestIdentifyFactModels:
     """Tests for _identify_fact_models method."""
 
     def test_identify_models_with_measures(self) -> None:
-        """Test identifying fact models that have measures."""
-        generator = LookMLGenerator()
+        """Test identifying fact models with explicit fact_models list."""
+        generator = LookMLGenerator(fact_models=["orders", "rentals"])
 
         models = [
             SemanticModel(
@@ -825,8 +825,8 @@ class TestIdentifyFactModels:
         assert len(fact_models) == 0
 
     def test_identify_with_single_measure(self) -> None:
-        """Test identifying model with single measure."""
-        generator = LookMLGenerator()
+        """Test identifying model with explicit fact_models."""
+        generator = LookMLGenerator(fact_models=["events"])
 
         models = [
             SemanticModel(
@@ -1356,7 +1356,7 @@ class TestGenerateExploreslookml:
 
     def test_generate_explores_with_explores_without_joins(self) -> None:
         """Test generating explores when there are no join relationships."""
-        generator = LookMLGenerator()
+        generator = LookMLGenerator(fact_models=["events"])
 
         models = [
             SemanticModel(
@@ -1376,7 +1376,7 @@ class TestGenerateExploreslookml:
 
     def test_generate_explores_with_description(self) -> None:
         """Test that explore description is included when present."""
-        generator = LookMLGenerator()
+        generator = LookMLGenerator(fact_models=["orders"])
 
         models = [
             SemanticModel(
@@ -1394,7 +1394,7 @@ class TestGenerateExploreslookml:
 
     def test_generate_explores_with_multiple_fact_models(self) -> None:
         """Test generating explores for multiple fact models."""
-        generator = LookMLGenerator()
+        generator = LookMLGenerator(fact_models=["orders", "returns"])
 
         models = [
             SemanticModel(
@@ -1420,7 +1420,9 @@ class TestGenerateExploreslookml:
 
     def test_generate_explores_with_prefixes(self) -> None:
         """Test that prefixes are applied to explore names."""
-        generator = LookMLGenerator(explore_prefix="e_", view_prefix="v_")
+        generator = LookMLGenerator(
+            explore_prefix="e_", view_prefix="v_", fact_models=["rentals"]
+        )
 
         models = [
             SemanticModel(
@@ -1438,7 +1440,7 @@ class TestGenerateExploreslookml:
 
     def test_generate_explores_with_complex_joins(self) -> None:
         """Test generating explores with complex multi-hop joins."""
-        generator = LookMLGenerator()
+        generator = LookMLGenerator(fact_models=["rentals"])
 
         models = [
             SemanticModel(
@@ -1472,7 +1474,7 @@ class TestGenerateExploreslookml:
 
     def test_generate_explores_includes_fields_in_joins(self) -> None:
         """Test that generated explores include fields parameter in join blocks."""
-        generator = LookMLGenerator()
+        generator = LookMLGenerator(fact_models=["rentals"])
 
         models = [
             SemanticModel(
@@ -2262,7 +2264,7 @@ class TestJoinFieldsParameter:
     def test_explore_lookml_contains_fields_parameter(self) -> None:
         """Test that fields parameter appears in serialized explore output."""
         # Arrange
-        generator = LookMLGenerator()
+        generator = LookMLGenerator(fact_models=["orders"])
         models = [
             SemanticModel(
                 name="orders",
@@ -2290,7 +2292,7 @@ class TestJoinFieldsParameter:
     def test_fields_parameter_serialization_order(self) -> None:
         """Test that lkml library serializes fields in correct position."""
         # Arrange
-        generator = LookMLGenerator()
+        generator = LookMLGenerator(fact_models=["orders"])
         models = [
             SemanticModel(
                 name="orders",
@@ -3622,3 +3624,63 @@ class TestMetricRequirementsForExplores:
         session_join = next(j for j in joins if j["view_name"] == "sessions")
         assert "sessions.dimensions_only*" in session_join["fields"]
         assert "sessions.session_count" in session_join["fields"]
+
+
+class TestLookMLGeneratorTimeDimensionGroupLabel:
+    """Test cases for time_dimension_group_label support in LookMLGenerator."""
+
+    def test_generator_time_dimension_group_label_parameter_default(self) -> None:
+        """Test that generator defaults to None for time_dimension_group_label."""
+        # Arrange & Act: Create generator without time_dimension_group_label parameter
+        generator = LookMLGenerator()
+
+        # Assert: Default value is None (preserves hierarchy labels)
+        assert generator.time_dimension_group_label is None
+
+    def test_generator_time_dimension_group_label_parameter_custom(self) -> None:
+        """Test that generator stores custom time_dimension_group_label value."""
+        # Arrange & Act: Create generator with custom value
+        generator = LookMLGenerator(
+            time_dimension_group_label="Time Periods"
+        )
+
+        # Assert: Custom value is stored
+        assert generator.time_dimension_group_label == "Time Periods"
+
+    def test_generator_time_dimension_group_label_parameter_none(self) -> None:
+        """Test that generator stores None to disable time dimension grouping."""
+        # Arrange & Act: Create generator with None
+        generator = LookMLGenerator(
+            time_dimension_group_label=None
+        )
+
+        # Assert: None value is stored
+        assert generator.time_dimension_group_label is None
+
+    def test_generator_time_dimension_group_label_propagation(self) -> None:
+        """Test that generator passes time_dimension_group_label to model conversion."""
+        # Arrange
+        generator = LookMLGenerator(
+            schema="test_schema",
+            time_dimension_group_label="Custom Times"
+        )
+
+        model = SemanticModel(
+            name="events",
+            model="ref('events')",
+            dimensions=[
+                Dimension(
+                    name="event_date",
+                    type=DimensionType.TIME,
+                    type_params={"time_granularity": "day"},
+                )
+            ],
+        )
+
+        # Act: Generate LookML for the model
+        output = generator.generate([model])
+
+        # Assert: Generated view contains the custom group label
+        assert "events.view.lkml" in output
+        content = output["events.view.lkml"]
+        assert 'group_label: "Custom Times"' in content

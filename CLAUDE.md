@@ -83,6 +83,37 @@ dbt-to-lookml generate -i semantic_models/ -o build/lookml/ -s public --preview
 dbt-to-lookml generate -i semantic_models/ -o build/lookml/ -s public --yes
 ```
 
+### Explicit Fact Model Selection
+
+Specify which models should generate explores using the `--fact-models` flag:
+
+```bash
+# Generate explores only for specified fact models
+dbt-to-lookml generate \
+  -i semantic_models/ \
+  -o build/lookml/ \
+  -s public \
+  --fact-models rentals,orders
+
+# Joins are discovered automatically via foreign key relationships
+```
+
+**Important:** The `--fact-models` flag is required to generate explores. If not specified, no explores will be generated (only view files).
+
+**When to use:**
+- When you want to create explores for fact tables
+- When you have dimension models without measures that should be explores
+- For explicit control over which models become explores
+
+**Behavior:**
+
+| Scenario | Behavior |
+|----------|----------|
+| No `--fact-models` flag | No explores generated (views only) |
+| `--fact-models rentals` | Only `rentals` gets explore |
+| `--fact-models rentals,orders` | Both `rentals` and `orders` get explores |
+| Model not found | Warning + continue with found models |
+
 ### Test Organization
 
 - **Unit tests** (`src/tests/unit/`): Fast, isolated tests for parsers, generators, schemas
@@ -424,6 +455,202 @@ semantic_model:
 - `warehouse_id` dimension: In explores without `--bi-field-only`, excluded with flag
 - `revenue` measure: In explores with `--bi-field-only`
 - `internal_cost` measure: Not in LookML (hidden)
+
+### Time Dimension Group Label Configuration
+
+Time dimension_groups support hierarchical organization through the `group_label` parameter,
+which controls how time dimensions are grouped in Looker's field picker. This feature uses
+multi-level configuration with a sensible precedence chain, similar to timezone conversion.
+
+#### Default Behavior
+
+- **Default**: `group_label: "Time Dimensions"` (groups all time dimensions together)
+- This provides better organization in Looker's field picker out-of-box
+- Users can customize or disable this grouping as needed
+
+#### Configuration Levels (Precedence: Highest to Lowest)
+
+1. **Dimension Metadata Override** (Highest priority)
+   ```yaml
+   dimensions:
+     - name: created_at
+       type: time
+       config:
+         meta:
+           time_dimension_group_label: "Event Timestamps"  # Custom group for this dimension
+   ```
+
+2. **Generator Parameter**
+   ```python
+   generator = LookMLGenerator(
+       view_prefix="my_",
+       time_dimension_group_label="Time Periods"  # Apply to all dimensions
+   )
+   ```
+
+3. **CLI Flag**
+   ```bash
+   # Use custom group label
+   dbt-to-lookml generate -i semantic_models -o build/lookml \
+       --time-dimension-group-label "Time Periods"
+
+   # Disable grouping (preserves hierarchy labels)
+   dbt-to-lookml generate -i semantic_models -o build/lookml \
+       --no-time-dimension-group-label
+   ```
+
+4. **Default** (Lowest priority)
+   - `group_label: "Time Dimensions"` - Applied when no explicit configuration provided
+
+#### Examples
+
+##### Example 1: Override at Dimension Level
+```yaml
+# semantic_models/orders.yaml
+semantic_model:
+  name: orders
+  dimensions:
+    - name: created_at
+      type: time
+      type_params:
+        time_granularity: day
+      config:
+        meta:
+          time_dimension_group_label: "Order Timestamps"  # Override
+
+    - name: shipped_at
+      type: time
+      type_params:
+        time_granularity: day
+      # No override, uses generator/CLI/default
+```
+
+**Generated LookML**:
+```lookml
+dimension_group: created_at {
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.created_at ;;
+  group_label: "Order Timestamps"
+}
+
+dimension_group: shipped_at {
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.shipped_at ;;
+  group_label: "Time Dimensions"
+}
+```
+
+##### Example 2: Generator-Level Configuration
+```python
+from dbt_to_lookml.generators.lookml import LookMLGenerator
+from dbt_to_lookml.parsers.dbt import DbtParser
+
+parser = DbtParser()
+models = parser.parse_directory("semantic_models/")
+
+# Set custom group label for all time dimensions
+generator = LookMLGenerator(
+    view_prefix="stg_",
+    time_dimension_group_label="Time Periods"
+)
+
+output = generator.generate(models)
+generator.write_files("build/lookml", output)
+```
+
+##### Example 3: CLI Usage
+```bash
+# Generate with custom time dimension group label
+dbt-to-lookml generate -i semantic_models/ -o build/lookml \
+    --time-dimension-group-label "Time Fields"
+
+# Generate with grouping disabled (preserves hierarchy labels)
+dbt-to-lookml generate -i semantic_models/ -o build/lookml \
+    --no-time-dimension-group-label
+
+# Generate with default behavior
+dbt-to-lookml generate -i semantic_models/ -o build/lookml
+# Uses default "Time Dimensions" grouping
+```
+
+#### Important: Group Label Overrides Hierarchy
+
+When `time_dimension_group_label` is set (either by default or explicitly), it **overrides**
+any `group_label` from the hierarchy metadata for time dimensions. This ensures consistent
+organization of all time dimensions under a common grouping.
+
+**Example**: Hierarchy override behavior
+```yaml
+dimensions:
+  - name: event_date
+    type: time
+    config:
+      meta:
+        hierarchy:
+          category: "Event Details"  # Would normally set group_label
+# With default time_dimension_group_label="Time Dimensions":
+# group_label will be "Time Dimensions" (not "Event Details")
+```
+
+To preserve hierarchy-based group labels for time dimensions, use
+`--no-time-dimension-group-label` to disable this feature.
+
+#### Implementation Details
+
+- **Dimension._to_dimension_group_dict()**: Accepts `default_time_dimension_group_label` parameter
+  - Checks `config.meta.time_dimension_group_label` first (dimension-level override)
+  - Falls back to `default_time_dimension_group_label` parameter
+  - Falls back to no grouping if neither specified
+  - Overrides hierarchy `group_label` when present
+
+- **LookMLGenerator.__init__()**: Accepts optional `time_dimension_group_label: str | None` parameter
+  - Defaults to "Time Dimensions" for better organization
+  - Stores setting as instance variable
+  - Propagates to `SemanticModel.to_lookml_dict()` during generation
+
+- **SemanticModel.to_lookml_dict()**: Accepts `time_dimension_group_label` parameter
+  - Passes to each `Dimension._to_dimension_group_dict()` call
+
+- **CLI Flags**: Mutually exclusive `--time-dimension-group-label TEXT` / `--no-time-dimension-group-label` options
+  - `--time-dimension-group-label TEXT`: Sets custom group label
+  - `--no-time-dimension-group-label`: Disables grouping (None value)
+  - Neither: Uses default "Time Dimensions"
+
+#### LookML Output Examples
+
+With `group_label: "Time Dimensions"` (default):
+```lookml
+dimension_group: created_at {
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.created_at ;;
+  group_label: "Time Dimensions"
+  convert_tz: no
+}
+```
+
+With custom `group_label: "Time Periods"`:
+```lookml
+dimension_group: created_at {
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.created_at ;;
+  group_label: "Time Periods"
+  convert_tz: no
+}
+```
+
+With grouping disabled (None):
+```lookml
+dimension_group: created_at {
+  type: time
+  timeframes: [date, week, month, quarter, year]
+  sql: ${TABLE}.created_at ;;
+  convert_tz: no
+}
+```
 
 ### Parser Error Handling
 
