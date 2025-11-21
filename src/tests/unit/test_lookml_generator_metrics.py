@@ -880,7 +880,7 @@ class TestMetricMeasureGeneration:
         assert measure_dict["name"] == "total_orders"
         assert measure_dict["type"] == "number"
         assert measure_dict["sql"] == "${order_count_measure}"
-        assert measure_dict["view_label"] == " Metrics"
+        assert measure_dict["view_label"] == "  Metrics"
         assert measure_dict["label"] == "Total Orders"
         assert measure_dict["description"] == "Total count of orders"
         assert measure_dict["group_label"] == "Orders Performance"
@@ -911,7 +911,7 @@ class TestMetricMeasureGeneration:
         assert "NULLIF" in measure_dict["sql"]
         assert "${order_count_measure}" in measure_dict["sql"]
         assert "${searches.search_count_measure}" in measure_dict["sql"]
-        assert measure_dict["view_label"] == " Metrics"
+        assert measure_dict["view_label"] == "  Metrics"
         assert measure_dict["value_format_name"] == "percent_2"
         assert measure_dict["required_fields"] == ["searches.search_count_measure"]
         assert measure_dict["group_label"] == "Performance"
@@ -1028,7 +1028,7 @@ class TestMetricMeasureGeneration:
             metric, primary_model, all_models
         )
 
-        assert measure_dict["view_label"] == " Metrics"
+        assert measure_dict["view_label"] == "  Metrics"
         assert measure_dict["view_label"].startswith(" ")
 
     def test_generate_metric_measure_group_label(

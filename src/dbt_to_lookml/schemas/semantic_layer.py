@@ -443,7 +443,8 @@ class Dimension(BaseModel):
         # Empty string explicitly disables group_label (backward compatible).
         # None means "use next level in precedence chain".
         # Leading space in default ensures time dimensions sort to top of field picker.
-        time_group_label = " Time Dimensions"  # Default (leading space for sort order)
+        # Default time dimension group label (space prefix added when applied)
+        time_group_label = "Date Dimensions - Local Time"
         if default_time_dimension_group_label is not None:
             time_group_label = default_time_dimension_group_label
         if (
@@ -455,8 +456,9 @@ class Dimension(BaseModel):
 
         # Apply time dimension group_label if not explicitly disabled
         # and no hierarchy group_label exists (hierarchy takes precedence)
+        # Prefix with 1 space for sort order (after Metrics with 2 spaces)
         if time_group_label and "group_label" not in result:
-            result["group_label"] = time_group_label
+            result["group_label"] = f" {time_group_label.lstrip()}"  # 1 space prefix
 
         # Determine convert_tz with three-tier precedence:
         # 1. Dimension-level meta.convert_tz (highest priority if present)
@@ -547,8 +549,8 @@ class Measure(BaseModel):
                     group_label = _smart_title(meta.hierarchy.subcategory)
             # Fall back to flat structure for backward compatibility
             elif meta.category:
-                # For flat structure: "  Metrics" → view_label, category → group_label
-                view_label = "  Metrics"  # Two spaces for top sort order
+                # For flat structure: "Metrics" → view_label, category → group_label
+                view_label = "Metrics"  # Space prefix added when applied
                 group_label = _smart_title(meta.category)
 
         # If no labels from meta and model_name provided, use model_name fallback
@@ -556,7 +558,7 @@ class Measure(BaseModel):
             # Convert model name to title case and add "Performance"
             formatted_name = _smart_title(model_name)
             group_label = f"{formatted_name} Performance"
-            view_label = "  Metrics"  # Two leading spaces for top sort order
+            view_label = "Metrics"  # Space prefix added when applied
 
         return view_label, group_label
 
@@ -600,10 +602,10 @@ class Measure(BaseModel):
         if self.label:
             result["label"] = self.label
 
-        # Add measure labels
+        # Add measure labels (prefix view_label with 2 spaces for sort order)
         view_label, group_label = self.get_measure_labels(model_name)
         if view_label:
-            result["view_label"] = view_label
+            result["view_label"] = f"  {view_label.lstrip()}"  # 2 spaces prefix
         if group_label:
             result["group_label"] = group_label
 

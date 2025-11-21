@@ -67,16 +67,16 @@ def test_multiple_time_dimensions_with_group_label() -> None:
         # Assert
         view_content = output["orders.view.lkml"]
 
-        # created_at should use metadata override
+        # created_at should use metadata override (with 1 space prefix)
         assert "dimension_group: created_at" in view_content
         assert view_content.index("dimension_group: created_at") < view_content.index(
-            'group_label: "Event Times"'
+            'group_label: " Event Times"'
         )
 
-        # updated_at should use generator default
+        # updated_at should use generator default (with 1 space prefix)
         assert "dimension_group: updated_at" in view_content
         assert view_content.index("dimension_group: updated_at") < view_content.index(
-            'group_label: "Order Times"'
+            'group_label: " Order Times"'
         )
 
         # shipped_at should have NO group_label (explicitly disabled)

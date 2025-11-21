@@ -583,12 +583,12 @@ class LookMLGenerator(Generator):
             metric, primary_model, all_models
         )
 
-        # Build measure dict
+        # Build measure dict (2 space prefix on view_label for sort order)
         measure_dict: dict[str, Any] = {
             "name": metric.name,
             "type": "number",  # Always number for cross-entity metrics
             "sql": sql,
-            "view_label": " Metrics",  # Leading space for sort order
+            "view_label": "  Metrics",  # 2 spaces prefix for top sort order
         }
 
         # Add value format

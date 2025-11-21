@@ -3676,10 +3676,10 @@ class TestLookMLGeneratorTimeDimensionGroupLabel:
         # Act: Generate LookML for the model
         output = generator.generate([model])
 
-        # Assert: Generated view contains the custom group label
+        # Assert: Generated view contains the custom group label (with 1 space prefix)
         assert "events.view.lkml" in output
         content = output["events.view.lkml"]
-        assert 'group_label: "Custom Times"' in content
+        assert 'group_label: " Custom Times"' in content
 
 
 class TestLookMLGeneratorGroupItemLabel:
@@ -3853,8 +3853,8 @@ class TestLookMLGeneratorGroupItemLabel:
         # Act
         output = generator.generate([model])
 
-        # Assert
+        # Assert (1 space prefix on time dimension group_label)
         assert "events.view.lkml" in output
         content = output["events.view.lkml"]
-        assert 'group_label: "Event Dates"' in content
+        assert 'group_label: " Event Dates"' in content
         assert "group_item_label:" in content

@@ -60,7 +60,8 @@ class TestFlatMetaLabeling:
         )
 
         view_label, group_label = measure.get_measure_labels()
-        assert view_label == "  Metrics"
+        # get_measure_labels returns raw value; to_lookml_dict adds the prefix
+        assert view_label == "Metrics"
         assert group_label == "Revenue Metrics"
 
     def test_measure_without_meta_uses_model_name(self) -> None:
@@ -72,7 +73,8 @@ class TestFlatMetaLabeling:
         )
 
         view_label, group_label = measure.get_measure_labels(model_name="rentals")
-        assert view_label == "  Metrics"
+        # get_measure_labels returns raw value; to_lookml_dict adds the prefix
+        assert view_label == "Metrics"
         assert group_label == "Rentals Performance"
 
     def test_measure_lookml_with_flat_meta(self) -> None:

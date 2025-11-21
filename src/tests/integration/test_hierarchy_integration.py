@@ -195,21 +195,21 @@ class TestHierarchyIntegration:
                 (m for m in measures if m["name"] == "total_revenue_measure"), None
             )
             assert revenue_measure is not None
-            assert revenue_measure.get("view_label") == "Revenue"
+            assert revenue_measure.get("view_label") == "  Revenue"  # 2 space prefix
             assert revenue_measure.get("group_label") == "Booking Revenue"
 
             count_measure = next(
                 (m for m in measures if m["name"] == "booking_count_measure"), None
             )
             assert count_measure is not None
-            assert count_measure.get("view_label") == "Volume"
+            assert count_measure.get("view_label") == "  Volume"  # 2 space prefix
             assert count_measure.get("group_label") == "Booking Count"
 
             avg_measure = next(
                 (m for m in measures if m["name"] == "avg_lead_time_measure"), None
             )
             assert avg_measure is not None
-            assert avg_measure.get("view_label") == "Operational"
+            assert avg_measure.get("view_label") == "  Operational"  # 2 space prefix
             assert avg_measure.get("group_label") == "Lead Time"
 
     def test_mixed_hierarchy_and_no_hierarchy(self) -> None:
@@ -313,7 +313,7 @@ class TestHierarchyIntegration:
                 (m for m in measures if m["name"] == "measure_with_hierarchy_measure"),
                 None,
             )
-            assert measure_with.get("view_label") == "Revenue"
+            assert measure_with.get("view_label") == "  Revenue"  # 2 space prefix
             assert measure_with.get("group_label") == "Net Revenue"
 
             measure_without = next(

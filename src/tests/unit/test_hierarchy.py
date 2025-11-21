@@ -96,8 +96,8 @@ class TestHierarchyLabeling:
         )
 
         lookml_dict = measure.to_lookml_dict()
-        # With hierarchy: category → view_label, subcategory → group_label
-        assert lookml_dict["view_label"] == "Volume"  # from category
+        # With hierarchy: category → view_label (with 2 space prefix), subcategory → group_label
+        assert lookml_dict["view_label"] == "  Volume"  # from category, 2 space prefix
         assert lookml_dict["group_label"] == "Booking Count"  # from subcategory
         assert lookml_dict["name"] == "rental_count_measure"
         assert lookml_dict["type"] == "count"
