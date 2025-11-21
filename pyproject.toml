@@ -1,6 +1,6 @@
 [project]
 name = "dbt-to-lookml"
-version = "0.1.0"
+version = "0.2.0"
 description = "Convert dbt semantic models to LookML views and explores"
 readme = "README.md"
 license = {text = "MIT"}
