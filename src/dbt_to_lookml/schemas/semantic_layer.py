@@ -635,6 +635,7 @@ class SemanticModel(BaseModel):
         time_dimension_group_label: str | None = None,
         use_group_item_label: bool | None = None,
         use_bi_field_filter: bool = False,
+        required_measures: set[str] | None = None,
     ) -> dict[str, Any]:
         """Convert entire semantic model to lkml views format.
 
@@ -658,6 +659,9 @@ class SemanticModel(BaseModel):
                 metadata. When True, only dimensions and measures with
                 config.meta.bi_field=True are included in the generated view.
                 Entities are always included (needed for joins). Default: False.
+            required_measures: Optional set of measure names that should be
+                included regardless of bi_field status (e.g., measures needed
+                by metrics with bi_field=True).
 
         Returns:
             Dictionary with LookML view configuration including dimensions,
@@ -739,6 +743,7 @@ class SemanticModel(BaseModel):
         # Convert measures (pass model name for group_label inference)
         # Apply bi_field filtering if enabled
         measures = []
+        required_measure_names = required_measures or set()
         for measure in self.measures:
             if use_bi_field_filter:
                 has_bi_field = (
@@ -746,8 +751,9 @@ class SemanticModel(BaseModel):
                     and measure.config.meta
                     and measure.config.meta.bi_field is True
                 )
-                if not has_bi_field:
-                    continue  # Skip measures without bi_field: true
+                is_required = measure.name in required_measure_names
+                if not has_bi_field and not is_required:
+                    continue  # Skip unless bi_field or required by metrics
             measures.append(measure.to_lookml_dict(model_name=self.name))
 
         # Collect all dimension field names for the dimensions_only set

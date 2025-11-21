@@ -999,14 +999,46 @@ class LookMLGenerator(Generator):
                     metric_map[owner_model.name] = []
                 metric_map[owner_model.name].append(metric)
 
+        # Calculate required measures for each model from bi_field metrics
+        # This ensures measures needed by metrics are included even without bi_field
+        required_measures_map: dict[str, set[str]] = {}
+        if self.use_bi_field_filter and metrics:
+            from dbt_to_lookml.parsers.dbt_metrics import extract_measure_dependencies
+
+            for metric in metrics:
+                # Check if metric has bi_field: true (in meta dict)
+                has_bi_field = (
+                    metric.meta
+                    and metric.meta.get("bi_field") is True
+                )
+                if not has_bi_field:
+                    continue
+
+                # Find the owner model for this metric
+                primary_entity = metric.primary_entity
+                if not primary_entity:
+                    continue
+                owner_model = self._find_model_by_primary_entity(primary_entity, models)
+                if not owner_model:
+                    continue
+
+                # Extract measure dependencies and add to required set
+                measure_deps = extract_measure_dependencies(metric)
+                if owner_model.name not in required_measures_map:
+                    required_measures_map[owner_model.name] = set()
+                required_measures_map[owner_model.name].update(measure_deps)
+
         # Generate individual view files
         for i, model in enumerate(models, 1):
             console.print(
                 f"  [{i}/{len(models)}] Processing [cyan]{model.name}[/cyan]..."
             )
 
+            # Get required measures for this model (from bi_field metrics)
+            required_measures = required_measures_map.get(model.name)
+
             # Generate view content
-            view_content = self._generate_view_lookml(model)
+            view_content = self._generate_view_lookml(model, required_measures)
 
             # Check if we need to add metrics to this view
             owned_metrics = metric_map.get(model.name, [])
@@ -1018,9 +1050,17 @@ class LookMLGenerator(Generator):
                 # Parse the existing view content back to dict to append measures
                 view_dict = lkml.load(view_content)
 
-                # Generate metric measures
+                # Generate metric measures (filter by bi_field if enabled)
                 metric_measures = []
                 for metric in owned_metrics:
+                    # Skip metrics without bi_field when filtering is enabled
+                    if self.use_bi_field_filter:
+                        has_bi_field = (
+                            metric.meta and metric.meta.get("bi_field") is True
+                        )
+                        if not has_bi_field:
+                            continue
+
                     try:
                         measure_dict = self._generate_metric_measure(
                             metric, model, models, metrics
@@ -1115,11 +1155,17 @@ class LookMLGenerator(Generator):
 
         return written_files, validation_errors
 
-    def _generate_view_lookml(self, semantic_model: SemanticModel) -> str:
+    def _generate_view_lookml(
+        self,
+        semantic_model: SemanticModel,
+        required_measures: set[str] | None = None,
+    ) -> str:
         """Generate LookML content for a semantic model or LookMLView.
 
         Args:
             semantic_model: The semantic model or LookMLView to generate content for.
+            required_measures: Optional set of measure names that must be included
+                regardless of bi_field status (e.g., measures needed by metrics).
 
         Returns:
             The LookML content as a string.
@@ -1147,6 +1193,7 @@ class LookMLGenerator(Generator):
                     time_dimension_group_label=self.time_dimension_group_label,
                     use_group_item_label=self.use_group_item_label,
                     use_bi_field_filter=self.use_bi_field_filter,
+                    required_measures=required_measures,
                 )
             else:
                 view_dict = semantic_model.to_lookml_dict(
@@ -1155,6 +1202,7 @@ class LookMLGenerator(Generator):
                     time_dimension_group_label=self.time_dimension_group_label,
                     use_group_item_label=self.use_group_item_label,
                     use_bi_field_filter=self.use_bi_field_filter,
+                    required_measures=required_measures,
                 )
         else:
             raise TypeError(
