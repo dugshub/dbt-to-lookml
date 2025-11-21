@@ -75,7 +75,7 @@ class TestHelperMethods:
         result = generator._resolve_measure_reference(
             "order_count", "order", models_dict
         )
-        assert result == "${order_count}"
+        assert result == "${order_count_measure}"
 
     def test_resolve_measure_reference_cross_view(
         self, generator: LookMLGenerator, models_dict: dict[str, SemanticModel]
@@ -84,7 +84,7 @@ class TestHelperMethods:
         result = generator._resolve_measure_reference(
             "search_count", "order", models_dict
         )
-        assert result == "${searches.search_count}"
+        assert result == "${searches.search_count_measure}"
 
     def test_resolve_measure_reference_with_prefix(
         self, models_dict: dict[str, SemanticModel]
@@ -94,7 +94,7 @@ class TestHelperMethods:
         result = generator._resolve_measure_reference(
             "search_count", "order", models_dict
         )
-        assert result == "${v_searches.search_count}"
+        assert result == "${v_searches.search_count_measure}"
 
     def test_resolve_measure_reference_missing_measure(
         self, generator: LookMLGenerator, models_dict: dict[str, SemanticModel]
@@ -150,7 +150,7 @@ class TestSQLGenerationSimple:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_simple_sql(metric, models_dict)
-        assert sql == "${order_count}"
+        assert sql == "${order_count_measure}"
 
     def test_generate_simple_sql_cross_view(
         self, generator: LookMLGenerator, models_dict: dict[str, SemanticModel]
@@ -163,7 +163,7 @@ class TestSQLGenerationSimple:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_simple_sql(metric, models_dict)
-        assert sql == "${searches.search_count}"
+        assert sql == "${searches.search_count_measure}"
 
     def test_generate_simple_sql_with_prefix(
         self, models_dict: dict[str, SemanticModel]
@@ -177,7 +177,7 @@ class TestSQLGenerationSimple:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_simple_sql(metric, models_dict)
-        assert sql == "${v_searches.search_count}"
+        assert sql == "${v_searches.search_count_measure}"
 
     def test_generate_simple_sql_missing_primary_entity(
         self, generator: LookMLGenerator, models_dict: dict[str, SemanticModel]
@@ -249,7 +249,7 @@ class TestSQLGenerationRatio:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_ratio_sql(metric, models_dict)
-        assert sql == "1.0 * ${revenue} / NULLIF(${order_count}, 0)"
+        assert sql == "1.0 * ${revenue_measure} / NULLIF(${order_count_measure}, 0)"
 
     def test_generate_ratio_sql_both_cross_view(
         self, generator: LookMLGenerator, models_dict: dict[str, SemanticModel]
@@ -272,7 +272,8 @@ class TestSQLGenerationRatio:
         )
         sql = generator._generate_ratio_sql(metric, models_dict)
         assert (
-            sql == "1.0 * ${orders.order_count} / NULLIF(${searches.search_count}, 0)"
+            sql
+            == "1.0 * ${orders.order_count_measure} / NULLIF(${searches.search_count_measure}, 0)"
         )
 
     def test_generate_ratio_sql_num_same_denom_cross(
@@ -288,7 +289,10 @@ class TestSQLGenerationRatio:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_ratio_sql(metric, models_dict)
-        assert sql == "1.0 * ${order_count} / NULLIF(${searches.search_count}, 0)"
+        assert (
+            sql
+            == "1.0 * ${order_count_measure} / NULLIF(${searches.search_count_measure}, 0)"
+        )
 
     def test_generate_ratio_sql_num_cross_denom_same(
         self, generator: LookMLGenerator, models_dict: dict[str, SemanticModel]
@@ -303,7 +307,10 @@ class TestSQLGenerationRatio:
             meta={"primary_entity": "search"},
         )
         sql = generator._generate_ratio_sql(metric, models_dict)
-        assert sql == "1.0 * ${orders.order_count} / NULLIF(${search_count}, 0)"
+        assert (
+            sql
+            == "1.0 * ${orders.order_count_measure} / NULLIF(${search_count_measure}, 0)"
+        )
 
     def test_generate_ratio_sql_with_prefix(
         self, models_dict: dict[str, SemanticModel]
@@ -319,7 +326,10 @@ class TestSQLGenerationRatio:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_ratio_sql(metric, models_dict)
-        assert sql == "1.0 * ${order_count} / NULLIF(${v_searches.search_count}, 0)"
+        assert (
+            sql
+            == "1.0 * ${order_count_measure} / NULLIF(${v_searches.search_count_measure}, 0)"
+        )
 
     def test_generate_ratio_sql_nullif_safety(
         self, generator: LookMLGenerator, models_dict: dict[str, SemanticModel]
@@ -425,7 +435,7 @@ class TestSQLGenerationDerived:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
-        assert sql == "${order_count} + ${searches.search_count}"
+        assert sql == "${order_count_measure} + ${searches.search_count_measure}"
 
     def test_generate_derived_sql_simple_subtraction(
         self,
@@ -447,7 +457,7 @@ class TestSQLGenerationDerived:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
-        assert sql == "${order_count} - ${searches.search_count}"
+        assert sql == "${order_count_measure} - ${searches.search_count_measure}"
 
     def test_generate_derived_sql_with_parentheses(
         self,
@@ -469,7 +479,7 @@ class TestSQLGenerationDerived:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
-        assert sql == "(${order_count} + ${searches.search_count}) / 2"
+        assert sql == "(${order_count_measure} + ${searches.search_count_measure}) / 2"
 
     def test_generate_derived_sql_cross_view_refs(
         self,
@@ -491,7 +501,7 @@ class TestSQLGenerationDerived:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
-        assert sql == "${revenue} + ${searches.search_count}"
+        assert sql == "${revenue_measure} + ${searches.search_count_measure}"
 
     def test_generate_derived_sql_missing_primary_entity(
         self,
@@ -863,7 +873,7 @@ class TestMetricMeasureGeneration:
 
         assert measure_dict["name"] == "total_orders"
         assert measure_dict["type"] == "number"
-        assert measure_dict["sql"] == "${order_count}"
+        assert measure_dict["sql"] == "${order_count_measure}"
         assert measure_dict["view_label"] == " Metrics"
         assert measure_dict["label"] == "Total Orders"
         assert measure_dict["description"] == "Total count of orders"
@@ -893,6 +903,8 @@ class TestMetricMeasureGeneration:
         assert measure_dict["name"] == "conversion_rate"
         assert measure_dict["type"] == "number"
         assert "NULLIF" in measure_dict["sql"]
+        assert "${order_count_measure}" in measure_dict["sql"]
+        assert "${searches.search_count_measure}" in measure_dict["sql"]
         assert measure_dict["view_label"] == " Metrics"
         assert measure_dict["value_format_name"] == "percent_2"
         assert measure_dict["required_fields"] == ["searches.search_count"]
@@ -936,8 +948,8 @@ class TestMetricMeasureGeneration:
 
         assert measure_dict["name"] == "total_count"
         assert measure_dict["type"] == "number"
-        assert "${order_count}" in measure_dict["sql"]
-        assert "${searches.search_count}" in measure_dict["sql"]
+        assert "${order_count_measure}" in measure_dict["sql"]
+        assert "${searches.search_count_measure}" in measure_dict["sql"]
         assert measure_dict["required_fields"] == ["searches.search_count"]
 
     def test_generate_metric_measure_required_fields(

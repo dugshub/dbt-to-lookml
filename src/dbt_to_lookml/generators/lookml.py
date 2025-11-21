@@ -250,7 +250,8 @@ class LookMLGenerator(Generator):
             models: Dictionary mapping model names to SemanticModel objects.
 
         Returns:
-            LookML reference: "${measure}" or "${view_prefix}{model}.{measure}"
+            LookML reference with suffix: "${measure_measure}" or
+            "${view_prefix}{model}.{measure_measure}"
 
         Raises:
             ValueError: If measure not found in any model.
@@ -270,11 +271,11 @@ class LookMLGenerator(Generator):
 
         # Same view reference (no prefix needed)
         if source_model.name == primary_model.name:
-            return f"${{{measure_name}}}"
+            return f"${{{measure_name}_measure}}"
 
         # Cross-view reference (apply view prefix)
         view_name = f"{self.view_prefix}{source_model.name}"
-        return f"${{{view_name}.{measure_name}}}"
+        return f"${{{view_name}.{measure_name}_measure}}"
 
     def _generate_simple_sql(
         self, metric: Metric, models: dict[str, SemanticModel]
