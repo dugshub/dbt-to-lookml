@@ -59,6 +59,10 @@ def _smart_title(text: str) -> str:
         "ISO",
     }
 
+    # Preserve leading whitespace for sort order control
+    leading_spaces = len(text) - len(text.lstrip())
+    prefix = text[:leading_spaces]
+
     # Replace underscores and title case
     words = text.replace("_", " ").title().split()
 
@@ -70,7 +74,7 @@ def _smart_title(text: str) -> str:
         else:
             result_words.append(word)
 
-    return " ".join(result_words)
+    return prefix + " ".join(result_words)
 
 
 __all__ = [
