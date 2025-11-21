@@ -580,7 +580,7 @@ class TestRequiredFieldsExtraction:
         )
         primary_model = all_models[0]  # orders
         required = generator._extract_required_fields(metric, primary_model, all_models)
-        assert required == ["searches.search_count"]
+        assert required == ["searches.search_count_measure"]
 
     def test_extract_required_fields_ratio_both_cross(
         self, generator: LookMLGenerator, all_models: list[SemanticModel]
@@ -605,7 +605,10 @@ class TestRequiredFieldsExtraction:
         )
         primary_model = all_models[2]  # users
         required = generator._extract_required_fields(metric, primary_model, all_models)
-        assert sorted(required) == ["orders.order_count", "searches.search_count"]
+        assert sorted(required) == [
+            "orders.order_count_measure",
+            "searches.search_count_measure",
+        ]
 
     def test_extract_required_fields_ratio_mixed(
         self, generator: LookMLGenerator, all_models: list[SemanticModel]
@@ -621,7 +624,7 @@ class TestRequiredFieldsExtraction:
         )
         primary_model = all_models[0]  # orders
         required = generator._extract_required_fields(metric, primary_model, all_models)
-        assert required == ["searches.search_count"]
+        assert required == ["searches.search_count_measure"]
 
     def test_extract_required_fields_derived_multiple(
         self, generator: LookMLGenerator, all_models: list[SemanticModel]
@@ -641,7 +644,7 @@ class TestRequiredFieldsExtraction:
         )
         primary_model = all_models[0]  # orders
         required = generator._extract_required_fields(metric, primary_model, all_models)
-        assert required == ["searches.search_count"]
+        assert required == ["searches.search_count_measure"]
 
     def test_extract_required_fields_with_prefix(
         self, all_models: list[SemanticModel]
@@ -658,7 +661,7 @@ class TestRequiredFieldsExtraction:
         )
         primary_model = all_models[0]  # orders
         required = generator._extract_required_fields(metric, primary_model, all_models)
-        assert required == ["v_searches.search_count"]
+        assert required == ["v_searches.search_count_measure"]
 
     def test_extract_required_fields_sorted(
         self, generator: LookMLGenerator, all_models: list[SemanticModel]
@@ -688,7 +691,10 @@ class TestRequiredFieldsExtraction:
         primary_model = all_models[2]  # users
         required = generator._extract_required_fields(metric, primary_model, all_models)
         # Should be sorted alphabetically
-        assert required == ["orders.order_count", "searches.search_count"]
+        assert required == [
+            "orders.order_count_measure",
+            "searches.search_count_measure",
+        ]
 
 
 class TestInferenceMethods:
@@ -907,7 +913,7 @@ class TestMetricMeasureGeneration:
         assert "${searches.search_count_measure}" in measure_dict["sql"]
         assert measure_dict["view_label"] == " Metrics"
         assert measure_dict["value_format_name"] == "percent_2"
-        assert measure_dict["required_fields"] == ["searches.search_count"]
+        assert measure_dict["required_fields"] == ["searches.search_count_measure"]
         assert measure_dict["group_label"] == "Performance"
 
     def test_generate_metric_measure_derived(
@@ -950,7 +956,7 @@ class TestMetricMeasureGeneration:
         assert measure_dict["type"] == "number"
         assert "${order_count_measure}" in measure_dict["sql"]
         assert "${searches.search_count_measure}" in measure_dict["sql"]
-        assert measure_dict["required_fields"] == ["searches.search_count"]
+        assert measure_dict["required_fields"] == ["searches.search_count_measure"]
 
     def test_generate_metric_measure_required_fields(
         self, generator: LookMLGenerator, all_models: list[SemanticModel]
@@ -968,7 +974,7 @@ class TestMetricMeasureGeneration:
         )
 
         assert "required_fields" in measure_dict
-        assert measure_dict["required_fields"] == ["searches.search_count"]
+        assert measure_dict["required_fields"] == ["searches.search_count_measure"]
 
     def test_generate_metric_measure_no_required_fields(
         self, generator: LookMLGenerator, all_models: list[SemanticModel]

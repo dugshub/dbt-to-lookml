@@ -3402,7 +3402,7 @@ class TestMetricRequirementsForExplores:
         # Assert - fields list includes dimensions_only* AND required measure
         assert len(joins) == 1
         assert "searches.dimensions_only*" in joins[0]["fields"]
-        assert "searches.search_count" in joins[0]["fields"]
+        assert "searches.search_count_measure" in joins[0]["fields"]
 
     @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
     def test_build_join_graph_multiple_required_measures(
@@ -3458,8 +3458,8 @@ class TestMetricRequirementsForExplores:
         # Assert - all required measures included
         assert len(joins) == 1
         assert "searches.dimensions_only*" in joins[0]["fields"]
-        assert "searches.search_count" in joins[0]["fields"]
-        assert "searches.avg_duration" in joins[0]["fields"]
+        assert "searches.search_count_measure" in joins[0]["fields"]
+        assert "searches.avg_duration_measure" in joins[0]["fields"]
 
     @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
     def test_build_join_graph_fields_deterministic(
@@ -3512,9 +3512,9 @@ class TestMetricRequirementsForExplores:
         # Check measures are sorted (after dimensions_only*)
         measure_fields = [f for f in joins1[0]["fields"] if "dimensions_only" not in f]
         assert measure_fields == [
-            "searches.alpha",
-            "searches.mike",
-            "searches.zulu",
+            "searches.alpha_measure",
+            "searches.mike_measure",
+            "searches.zulu_measure",
         ]
 
     @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
@@ -3561,7 +3561,7 @@ class TestMetricRequirementsForExplores:
 
         # Assert - prefixed view names used
         assert "v_searches.dimensions_only*" in joins[0]["fields"]
-        assert "v_searches.search_count" in joins[0]["fields"]
+        assert "v_searches.search_count_measure" in joins[0]["fields"]
 
     @patch("dbt_to_lookml.parsers.dbt_metrics.extract_measure_dependencies")
     def test_build_join_graph_multi_hop_with_metrics(
@@ -3624,7 +3624,7 @@ class TestMetricRequirementsForExplores:
         assert len(joins) == 2  # B and C
         session_join = next(j for j in joins if j["view_name"] == "sessions")
         assert "sessions.dimensions_only*" in session_join["fields"]
-        assert "sessions.session_count" in session_join["fields"]
+        assert "sessions.session_count_measure" in session_join["fields"]
 
 
 class TestLookMLGeneratorTimeDimensionGroupLabel:

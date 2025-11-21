@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import lkml
 from rich.console import Console
 
 from dbt_to_lookml.interfaces.generator import Generator
 from dbt_to_lookml.schemas.semantic_layer import Metric, SemanticModel, _smart_title
+
+if TYPE_CHECKING:
+    from dbt_to_lookml.schemas.semantic_layer import Measure
 
 console = Console()
 
@@ -28,6 +31,7 @@ class LookMLGenerator(Generator):
         self,
         view_prefix: str = "",
         explore_prefix: str | None = None,
+        measure_suffix: str = "_measure",
         validate_syntax: bool = True,
         format_output: bool = True,
         schema: str = "",
@@ -149,6 +153,7 @@ class LookMLGenerator(Generator):
         )
         self.view_prefix = view_prefix
         self.explore_prefix = explore_prefix
+        self.measure_suffix = measure_suffix
         self.schema = schema
         self.connection = connection
         self.model_name = model_name
@@ -169,6 +174,24 @@ class LookMLGenerator(Generator):
                 return model
 
         self.mapper = MapperCompat(view_prefix, explore_prefix)
+
+    def get_measure_lookml_name(self, measure: Measure) -> str:
+        """Translate dbt measure name to LookML field name.
+
+        Applies the generator's measure naming convention (suffix).
+        All dbt measures are translated to hidden LookML measures with a suffix
+        to distinguish them from user-facing metrics (also measures in LookML).
+
+        This is the single source of truth for measure name translation.
+
+        Args:
+            measure: The dbt Measure object to translate.
+
+        Returns:
+            LookML field name with suffix (e.g., 'revenue_measure').
+        """
+
+        return f"{measure.name}{self.measure_suffix}"
 
     def _validate_metrics(
         self, metrics: list[Metric], models: list[SemanticModel]
@@ -269,13 +292,17 @@ class LookMLGenerator(Generator):
         if not primary_model:
             raise ValueError(f"No model found with primary entity '{primary_entity}'")
 
+        # Find the dbt Measure object to translate its name
+        measure = next(m for m in source_model.measures if m.name == measure_name)
+        lookml_name = self.get_measure_lookml_name(measure)
+
         # Same view reference (no prefix needed)
         if source_model.name == primary_model.name:
-            return f"${{{measure_name}_measure}}"
+            return f"${{{lookml_name}}}"
 
         # Cross-view reference (apply view prefix)
         view_name = f"{self.view_prefix}{source_model.name}"
-        return f"${{{view_name}.{measure_name}_measure}}"
+        return f"${{{view_name}.{lookml_name}}}"
 
     def _generate_simple_sql(
         self, metric: Metric, models: dict[str, SemanticModel]
@@ -446,8 +473,13 @@ class LookMLGenerator(Generator):
         for measure_name in measures:
             source_model = self._find_model_with_measure(measure_name, models_dict)
             if source_model and source_model.name != primary_model.name:
+                # Find the dbt Measure object to translate its name
+                measure = next(
+                    m for m in source_model.measures if m.name == measure_name
+                )
+                lookml_name = self.get_measure_lookml_name(measure)
                 view_name = f"{self.view_prefix}{source_model.name}"
-                required.add(f"{view_name}.{measure_name}")
+                required.add(f"{view_name}.{lookml_name}")
 
         return sorted(list(required))
 
@@ -784,9 +816,8 @@ class LookMLGenerator(Generator):
                 and measure.config.meta
                 and measure.config.meta.bi_field is True
             ):
-                filtered_fields.append(
-                    f"{self.view_prefix}{model.name}.{measure.name}_measure"
-                )
+                lookml_name = self.get_measure_lookml_name(measure)
+                filtered_fields.append(f"{self.view_prefix}{model.name}.{lookml_name}")
 
         # If no fields matched, return the primary key only to maintain view integrity
         if not filtered_fields and model.entities:
@@ -921,7 +952,12 @@ class LookMLGenerator(Generator):
                 if target_model.name in metric_requirements:
                     required_measures = sorted(metric_requirements[target_model.name])
                     for measure_name in required_measures:
-                        fields_list.append(f"{target_view_name}.{measure_name}")
+                        # Find the dbt Measure object to translate its name
+                        measure = next(
+                            m for m in target_model.measures if m.name == measure_name
+                        )
+                        lookml_name = self.get_measure_lookml_name(measure)
+                        fields_list.append(f"{target_view_name}.{lookml_name}")
 
                 # Apply bi_field filtering if enabled
                 fields_list = self._filter_fields_by_bi_field(target_model, fields_list)

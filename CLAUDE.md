@@ -134,14 +134,25 @@ Test markers: `unit`, `integration`, `golden`, `cli`, `performance`, `error_hand
 
 ### Semantic Model → LookML Conversion
 
+The LookMLGenerator translates dbt semantic layer concepts to LookML:
+
 1. **Entities** → dimensions with `hidden: yes` (all entity types are hidden by default since they typically represent surrogate keys)
    - **Primary entities**: Get `primary_key: yes` + `hidden: yes`
    - **Foreign entities**: Get `hidden: yes` (used for join relationships)
    - **Unique entities**: Get `hidden: yes`
    - Natural keys should be exposed as regular dimensions instead
 2. **Dimensions** → dimensions or dimension_groups (for time dimensions)
-3. **Measures** → measures with aggregation type mapping (see `types.py:LOOKML_TYPE_MAP`)
-4. **Time dimensions**: Automatically generate appropriate timeframes based on `type_params.time_granularity`
+3. **Measures** → measures with `_measure` suffix and `hidden: yes`
+   - ALL dbt measures receive `_measure` suffix (e.g., `revenue` → `revenue_measure`)
+   - ALL dbt measures are hidden (internal building blocks)
+   - Naming logic centralized in `LookMLGenerator.get_measure_lookml_name()`
+   - Aggregation type mapping: see `types.py:LOOKML_TYPE_MAP`
+4. **Metrics** → measures (visible, no suffix)
+   - dbt metrics become user-facing LookML measures
+   - References to dbt measures use suffixed names in SQL expressions
+5. **Time dimensions**: Automatically generate appropriate timeframes based on `type_params.time_granularity`
+
+**Translation Architecture**: The semantic layer models (`schemas/semantic_layer.py`) represent dbt's data model and remain format-agnostic. All LookML-specific naming conventions (view prefix, explore prefix, measure suffix) are owned by `LookMLGenerator`.
 
 ### Hierarchy Labels
 

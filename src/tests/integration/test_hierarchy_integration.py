@@ -310,13 +310,19 @@ class TestHierarchyIntegration:
             # Same for measures (measures now have _measure suffix)
             measures = view.get("measures", [])
             measure_with = next(
-                (m for m in measures if m["name"] == "measure_with_hierarchy_measure"), None
+                (m for m in measures if m["name"] == "measure_with_hierarchy_measure"),
+                None,
             )
             assert measure_with.get("view_label") == "Revenue"
             assert measure_with.get("group_label") == "Net Revenue"
 
             measure_without = next(
-                (m for m in measures if m["name"] == "measure_without_hierarchy_measure"), None
+                (
+                    m
+                    for m in measures
+                    if m["name"] == "measure_without_hierarchy_measure"
+                ),
+                None,
             )
             # Measures without hierarchy get default "  Metrics" view_label (2 spaces)
             # and model_name-based group_label as fallback
