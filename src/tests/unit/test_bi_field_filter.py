@@ -116,7 +116,7 @@ class TestBiFieldFilterEnabled:
 
         # Fields marked as bi_field: true should be included
         assert any("customer_id" in field for field in result)
-        assert any("revenue" in field for field in result)
+        assert any("revenue_measure" in field for field in result)
 
     def test_bi_field_false_excluded(self, sample_model):
         """Test that fields with bi_field: false are excluded."""
@@ -126,7 +126,7 @@ class TestBiFieldFilterEnabled:
 
         # Fields marked as bi_field: false should be excluded
         assert not any("internal_notes" in field for field in result)
-        assert not any("internal_cost" in field for field in result)
+        assert not any("internal_cost_measure" in field for field in result)
 
     def test_bi_field_none_excluded(self):
         """Test that fields without bi_field setting are excluded."""

@@ -1,12 +1,12 @@
 # Task Index
 
-Last updated: 2025-11-21 09:24:34
+Last updated: 2025-11-21 09:47:40
 
 ## Statistics
 
 - Total Issues: 35
 - Epics: 5
-- Active: 1
+- Active: 4
 - Completed: 0
 
 ## Issues by Status
@@ -52,6 +52,9 @@ Last updated: 2025-11-21 09:24:34
 
 ### In Review
 - 🔹 [DTL-008: Update Dimension schema to support convert_tz parameter](issues/DTL-008.md) `feature`
+- 🔹 [DTL-023: Modify Measure.to_lookml_dict() to add suffix and hidden property](issues/DTL-023.md) `feature`
+- 🔹 [DTL-025: Update test expectations for measure generation](issues/DTL-025.md) `chore`
+- 🔹 [DTL-024: Update LookMLGenerator._resolve_measure_reference() to append suffix](issues/DTL-024.md) `feature`
 
 ### Blocked
 *No issues*

@@ -188,25 +188,25 @@ class TestHierarchyIntegration:
             assert created_date_group.get("view_label") == "Rental"
             assert created_date_group.get("group_label") == "Temporal"
 
-            # Check measures have correct labels
+            # Check measures have correct labels (measures now have _measure suffix)
             measures = view.get("measures", [])
 
             revenue_measure = next(
-                (m for m in measures if m["name"] == "total_revenue"), None
+                (m for m in measures if m["name"] == "total_revenue_measure"), None
             )
             assert revenue_measure is not None
             assert revenue_measure.get("view_label") == "Revenue"
             assert revenue_measure.get("group_label") == "Booking Revenue"
 
             count_measure = next(
-                (m for m in measures if m["name"] == "booking_count"), None
+                (m for m in measures if m["name"] == "booking_count_measure"), None
             )
             assert count_measure is not None
             assert count_measure.get("view_label") == "Volume"
             assert count_measure.get("group_label") == "Booking Count"
 
             avg_measure = next(
-                (m for m in measures if m["name"] == "avg_lead_time"), None
+                (m for m in measures if m["name"] == "avg_lead_time_measure"), None
             )
             assert avg_measure is not None
             assert avg_measure.get("view_label") == "Operational"
@@ -307,18 +307,18 @@ class TestHierarchyIntegration:
             assert "view_label" not in without_hierarchy
             assert "group_label" not in without_hierarchy
 
-            # Same for measures
+            # Same for measures (measures now have _measure suffix)
             measures = view.get("measures", [])
             measure_with = next(
-                (m for m in measures if m["name"] == "measure_with_hierarchy"), None
+                (m for m in measures if m["name"] == "measure_with_hierarchy_measure"), None
             )
             assert measure_with.get("view_label") == "Revenue"
             assert measure_with.get("group_label") == "Net Revenue"
 
             measure_without = next(
-                (m for m in measures if m["name"] == "measure_without_hierarchy"), None
+                (m for m in measures if m["name"] == "measure_without_hierarchy_measure"), None
             )
-            # Measures without hierarchy get default " Metrics" view_label
+            # Measures without hierarchy get default "  Metrics" view_label (2 spaces)
             # and model_name-based group_label as fallback
-            assert measure_without.get("view_label") == " Metrics"
+            assert measure_without.get("view_label") == "  Metrics"
             assert measure_without.get("group_label") == "Mixed Model Performance"
