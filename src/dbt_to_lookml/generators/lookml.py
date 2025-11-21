@@ -771,63 +771,23 @@ class LookMLGenerator(Generator):
     def _filter_fields_by_bi_field(
         self, model: SemanticModel, fields_list: list[str]
     ) -> list[str]:
-        """Filter explore fields based on bi_field metadata.
+        """Pass through fields list (filtering now happens at view generation).
 
-        When use_bi_field_filter is enabled, only fields marked with
-        bi_field: true are included. Primary keys (entities) are always
-        included for join relationships.
+        Previously this method expanded wildcards and filtered fields based on
+        bi_field metadata. Now filtering happens earlier during view generation
+        via the use_bi_field_filter parameter to SemanticModel.to_lookml_dict().
+        This keeps explores clean by using dimension sets (dimensions_only*).
 
         Args:
-            model: The semantic model to filter fields for.
-            fields_list: The current list of field references (e.g., ["view.*"]).
+            model: The semantic model (unused, kept for API compatibility).
+            fields_list: The current list of field references.
 
         Returns:
-            Filtered list of field references respecting bi_field settings.
+            The same fields_list unchanged.
         """
-        if not self.use_bi_field_filter:
-            # No filtering if feature not enabled
-            return fields_list
-
-        # When bi_field filtering is enabled, always build explicit field list
-        # (wildcards are expanded to specific fields based on bi_field criteria)
-        filtered_fields = []
-
-        # Always include primary keys (entities) - needed for joins
-        for entity in model.entities:
-            if entity.type == "primary":
-                # Primary keys are hidden by default but necessary for joins
-                filtered_fields.append(f"{self.view_prefix}{model.name}.{entity.name}")
-
-        # Include dimensions with bi_field: true
-        for dimension in model.dimensions:
-            if (
-                dimension.config
-                and dimension.config.meta
-                and dimension.config.meta.bi_field is True
-            ):
-                filtered_fields.append(
-                    f"{self.view_prefix}{model.name}.{dimension.name}"
-                )
-
-        # Include measures with bi_field: true
-        for measure in model.measures:
-            if (
-                measure.config
-                and measure.config.meta
-                and measure.config.meta.bi_field is True
-            ):
-                lookml_name = self.get_measure_lookml_name(measure)
-                filtered_fields.append(f"{self.view_prefix}{model.name}.{lookml_name}")
-
-        # If no fields matched, return the primary key only to maintain view integrity
-        if not filtered_fields and model.entities:
-            for entity in model.entities:
-                if entity.type == "primary":
-                    filtered_fields.append(
-                        f"{self.view_prefix}{model.name}.{entity.name}"
-                    )
-
-        return filtered_fields
+        # Filtering now happens at view generation time
+        # This method kept for API compatibility but no longer modifies fields
+        return fields_list
 
     def _build_join_graph(
         self,
@@ -1168,6 +1128,7 @@ class LookMLGenerator(Generator):
 
         # Handle both SemanticModel and LookMLView objects
         if isinstance(semantic_model, LookMLView):
+            # LookMLView.to_lookml_dict() doesn't accept parameters
             view_dict = semantic_model.to_lookml_dict()
         elif isinstance(semantic_model, SemanticModel):
             # Apply view prefix if configured
@@ -1185,6 +1146,7 @@ class LookMLGenerator(Generator):
                     convert_tz=self.convert_tz,
                     time_dimension_group_label=self.time_dimension_group_label,
                     use_group_item_label=self.use_group_item_label,
+                    use_bi_field_filter=self.use_bi_field_filter,
                 )
             else:
                 view_dict = semantic_model.to_lookml_dict(
@@ -1192,6 +1154,7 @@ class LookMLGenerator(Generator):
                     convert_tz=self.convert_tz,
                     time_dimension_group_label=self.time_dimension_group_label,
                     use_group_item_label=self.use_group_item_label,
+                    use_bi_field_filter=self.use_bi_field_filter,
                 )
         else:
             raise TypeError(

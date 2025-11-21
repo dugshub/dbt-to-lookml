@@ -628,6 +628,7 @@ class SemanticModel(BaseModel):
         convert_tz: bool | None = None,
         time_dimension_group_label: str | None = None,
         use_group_item_label: bool | None = None,
+        use_bi_field_filter: bool = False,
     ) -> dict[str, Any]:
         """Convert entire semantic model to lkml views format.
 
@@ -647,6 +648,10 @@ class SemanticModel(BaseModel):
                 time dimensions as default. Individual dimensions can override
                 via config.meta.use_group_item_label. When enabled, generates
                 Liquid templates for cleaner timeframe labels.
+            use_bi_field_filter: Whether to filter fields based on bi_field
+                metadata. When True, only dimensions and measures with
+                config.meta.bi_field=True are included in the generated view.
+                Entities are always included (needed for joins). Default: False.
 
         Returns:
             Dictionary with LookML view configuration including dimensions,
@@ -693,7 +698,22 @@ class SemanticModel(BaseModel):
             )
 
         # Convert dimensions (separate regular dims from time dims)
+        # Track which dimensions were included for the dimensions_only set
+        included_dimensions: list[Dimension] = []
         for dim in self.dimensions:
+            # Apply bi_field filtering if enabled
+            if use_bi_field_filter:
+                has_bi_field = (
+                    dim.config
+                    and dim.config.meta
+                    and dim.config.meta.bi_field is True
+                )
+                if not has_bi_field:
+                    continue  # Skip dimensions without bi_field: true
+
+            # Track this dimension as included
+            included_dimensions.append(dim)
+
             # Pass convert_tz, time_dimension_group_label, and use_group_item_label
             # to time dimensions to propagate generator defaults
             if dim.type == DimensionType.TIME:
@@ -711,15 +731,25 @@ class SemanticModel(BaseModel):
                 dimensions.append(dim_dict)
 
         # Convert measures (pass model name for group_label inference)
-        measures = [
-            measure.to_lookml_dict(model_name=self.name) for measure in self.measures
-        ]
+        # Apply bi_field filtering if enabled
+        measures = []
+        for measure in self.measures:
+            if use_bi_field_filter:
+                has_bi_field = (
+                    measure.config
+                    and measure.config.meta
+                    and measure.config.meta.bi_field is True
+                )
+                if not has_bi_field:
+                    continue  # Skip measures without bi_field: true
+            measures.append(measure.to_lookml_dict(model_name=self.name))
 
         # Collect all dimension field names for the dimensions_only set
+        # Only include entities and dimensions that passed filtering
         dimension_field_names: list[str] = []
         for entity in self.entities:
             dimension_field_names.append(entity.name)
-        for dim in self.dimensions:
+        for dim in included_dimensions:
             # For time dimensions, add each individual timeframe field
             # (e.g., created_at_date, created_at_week, created_at_month)
             # For regular dimensions, use the base name
