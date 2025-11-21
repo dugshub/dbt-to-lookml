@@ -1,778 +1,661 @@
----
-id: DTL-025-strategy
-issue: DTL-025
-title: "Implementation Strategy: Cross-Entity Measure Generation in LookMLGenerator"
-created: 2025-11-18
-status: draft
----
+# DTL-025: Update test expectations for measure generation - Implementation Strategy
 
-# Implementation Strategy: DTL-025 - Cross-Entity Measure Generation
+## Overview
 
-## Executive Summary
+This strategy outlines the comprehensive test updates required to validate the new measure suffix (`_measure`) and hiding behavior (`hidden: yes`) across all test suites. The changes impact unit tests, integration tests, and golden files.
 
-This strategy outlines the implementation approach for adding cross-entity metric support to `LookMLGenerator`. The core challenge is converting dbt metrics (which reference measures across multiple semantic models) into LookML measures that use `${view.measure}` syntax and `required_fields` parameters.
+## Problem Context
 
-**Key Architectural Decisions**:
-1. **Primary Entity Ownership**: Metrics are generated in the view corresponding to their `primary_entity`
-2. **Progressive Enhancement**: Metrics are optional input to `generate()` method (backward compatible)
-3. **SQL Generation by Type**: Type-specific methods handle simple, ratio, and derived metric SQL generation
-4. **Required Fields Extraction**: Automatic detection of cross-view dependencies for `required_fields` parameter
-5. **View Prefix Handling**: Consistent application of view prefix to cross-view references
+**Parent Issue**: [DTL-022: Epic: Universal Measure Suffix and Hiding Strategy](../epics/DTL-022.md)
 
-## Architecture Overview
+**Scope**: Update test expectations across all test layers to reflect:
+1. Measure names now have `_measure` suffix in generated LookML
+2. All measures have `hidden: yes` property in generated LookML
+3. Metric measure references now include `_measure` suffix in SQL expressions
 
-### Data Flow
+**Dependencies**:
+- [DTL-023: Modify Measure.to_lookml_dict()](../issues/DTL-023.md) - Must be completed first
+- [DTL-024: Update _resolve_measure_reference()](../issues/DTL-024.md) - Must be completed first
+
+## Current Architecture Analysis
+
+### Test Organization
 
 ```
-Metrics (from DTL-024) + SemanticModels
-         ↓
-LookMLGenerator.generate(models, metrics)
-         ↓
-Filter metrics by primary_entity → semantic model mapping
-         ↓
-For each metric:
-  1. _generate_metric_measure() → measure dict
-  2. _generate_[type]_sql() → SQL expression
-  3. _extract_required_fields() → dependency list
-  4. _infer_value_format() → format name
-         ↓
-Append metric measures to view's measures list
-         ↓
-Standard view generation continues
+src/tests/
+├── unit/                           # Fast, isolated unit tests
+│   ├── test_schemas.py            # Schema model tests (Entity, Dimension, Measure)
+│   ├── test_lookml_generator.py   # Generator main functionality tests
+│   ├── test_lookml_generator_metrics.py  # Metric SQL generation tests
+│   └── test_*.py                  # Other unit tests
+├── integration/                    # End-to-end integration tests
+│   ├── test_end_to_end.py         # Full pipeline tests
+│   ├── test_cross_entity_metrics.py  # Cross-entity metric tests
+│   └── test_*.py                  # Other integration tests
+├── golden/                         # Expected output files
+│   ├── expected_users.view.lkml
+│   ├── expected_searches.view.lkml
+│   ├── expected_rental_orders.view.lkml
+│   └── expected_explores.lkml
+└── test_golden.py                 # Golden file comparison tests
 ```
 
-### Key Components
+### Affected Test Files by Layer
 
-#### 1. Metric-to-Measure Conversion (`_generate_metric_measure`)
+#### Unit Tests (7 files)
+1. **test_schemas.py** - Tests for Measure model and to_lookml_dict()
+2. **test_lookml_generator.py** - Tests for view/measure generation
+3. **test_lookml_generator_metrics.py** - Tests for _resolve_measure_reference()
+4. **test_metric_dependencies.py** - Tests for metric dependency resolution
+5. **test_bi_field_filter.py** - Tests for field filtering (if measures included)
+6. **test_hidden_parameter.py** - Tests for hidden parameter handling
+7. **test_flat_meta.py** - Tests for flat metadata structure (if measures included)
 
-**Purpose**: Convert a `Metric` object to a LookML measure dictionary.
+#### Integration Tests (3 files)
+1. **test_end_to_end.py** - End-to-end pipeline tests
+2. **test_cross_entity_metrics.py** - Cross-entity metric generation
+3. **test_metric_validation.py** - Metric validation integration tests
 
-**Inputs**:
-- `metric: Metric` - The metric to convert
-- `primary_model: SemanticModel` - The semantic model that owns this metric
-- `all_models: list[SemanticModel]` - All models (for resolving cross-view references)
+#### Golden Tests (1 file + 4 golden files)
+1. **test_golden.py** - Golden file comparison tests
+2. **expected_users.view.lkml** - User measures (3 measures)
+3. **expected_searches.view.lkml** - Search measures (1+ measures)
+4. **expected_rental_orders.view.lkml** - Rental order measures (multiple)
+5. **expected_explores.lkml** - May contain metric references
 
-**Outputs**:
-- `dict[str, Any]` - LookML measure dictionary
+### Current Test Patterns
 
-**Logic**:
+#### Measure Generation Pattern (from test_schemas.py)
 ```python
-def _generate_metric_measure(
-    self,
-    metric: Metric,
-    primary_model: SemanticModel,
-    all_models: list[SemanticModel]
-) -> dict[str, Any]:
-    """
-    Generate LookML measure dict from metric definition.
+class TestMeasure:
+    def test_measure_to_lookml_dict(self) -> None:
+        measure = Measure(name="revenue", agg=AggregationType.SUM)
+        result = measure.to_lookml_dict()
 
-    Algorithm:
-    1. Generate SQL based on metric type (dispatch to type-specific method)
-    2. Extract required_fields (cross-view dependencies)
-    3. Infer value_format_name from metric type/name
-    4. Build metadata (label, description, view_label, group_label)
-    5. Return complete measure dict
-    """
-    # Build models lookup dict for SQL generation
-    models_dict = {model.name: model for model in all_models}
-
-    # Generate SQL based on metric type
-    if isinstance(metric.type_params, SimpleMetricParams):
-        sql = self._generate_simple_sql(metric, models_dict)
-    elif isinstance(metric.type_params, RatioMetricParams):
-        sql = self._generate_ratio_sql(metric, models_dict)
-    elif isinstance(metric.type_params, DerivedMetricParams):
-        sql = self._generate_derived_sql(metric, models_dict)
-    else:
-        raise ValueError(f"Unsupported metric type: {type(metric.type_params)}")
-
-    # Extract required fields
-    required_fields = self._extract_required_fields(metric, primary_model, all_models)
-
-    # Build measure dict
-    measure_dict = {
-        "name": metric.name,
-        "type": "number",  # Always number for cross-entity metrics
-        "sql": sql,
-        "value_format_name": self._infer_value_format(metric),
-        "view_label": " Metrics",  # Leading space for sort order
-    }
-
-    # Add optional fields
-    if metric.label:
-        measure_dict["label"] = metric.label
-    if metric.description:
-        measure_dict["description"] = metric.description
-    if required_fields:
-        measure_dict["required_fields"] = required_fields
-
-    # Add group_label (infer from meta or model name)
-    group_label = self._infer_group_label(metric, primary_model)
-    if group_label:
-        measure_dict["group_label"] = group_label
-
-    return measure_dict
+        assert result["name"] == "revenue"  # ← WILL CHANGE
+        assert result["type"] == "sum"
+        assert "hidden" not in result  # ← WILL CHANGE
 ```
 
-#### 2. SQL Generation by Metric Type
-
-##### Simple Metrics (`_generate_simple_sql`)
-
-**Purpose**: Generate SQL for simple metrics (direct measure reference).
-
-**Logic**:
+#### Measure Reference Pattern (from test_lookml_generator_metrics.py)
 ```python
-def _generate_simple_sql(
-    self,
-    metric: Metric,
-    models: dict[str, SemanticModel]
-) -> str:
-    """
-    Generate SQL for simple metric.
-
-    Algorithm:
-    1. Extract measure name from type_params.measure
-    2. Find which semantic model contains this measure
-    3. If same model as primary_entity: ${measure}
-    4. If different model: ${view_prefix}{model_name}.{measure}
-    """
-    params = metric.type_params  # SimpleMetricParams
-    measure_name = params.measure
-
-    # Find model containing this measure
-    source_model = self._find_model_with_measure(measure_name, models)
-    if not source_model:
-        raise ValueError(f"Measure '{measure_name}' not found in any semantic model")
-
-    # Determine primary model from metric.meta.primary_entity
-    primary_entity = metric.primary_entity
-    primary_model = self._find_model_by_primary_entity(primary_entity, list(models.values()))
-
-    # Same view reference (no prefix needed)
-    if source_model.name == primary_model.name:
-        return f"${{{measure_name}}}"
-
-    # Cross-view reference (apply view prefix)
-    view_name = f"{self.view_prefix}{source_model.name}"
-    return f"${{{view_name}.{measure_name}}}"
-```
-
-##### Ratio Metrics (`_generate_ratio_sql`)
-
-**Purpose**: Generate SQL for ratio metrics (numerator / denominator).
-
-**Logic**:
-```python
-def _generate_ratio_sql(
-    self,
-    metric: Metric,
-    models: dict[str, SemanticModel]
-) -> str:
-    """
-    Generate SQL for ratio metric.
-
-    Algorithm:
-    1. Extract numerator and denominator measure names
-    2. Resolve each to ${view.measure} syntax
-    3. Apply ratio formula: 1.0 * num / NULLIF(denom, 0)
-    """
-    params = metric.type_params  # RatioMetricParams
-    numerator = params.numerator
-    denominator = params.denominator
-
-    # Resolve numerator reference
-    num_ref = self._resolve_measure_reference(
-        numerator, metric.primary_entity, models
-    )
-
-    # Resolve denominator reference
-    denom_ref = self._resolve_measure_reference(
-        denominator, metric.primary_entity, models
-    )
-
-    # Build ratio SQL with null safety
-    return f"1.0 * {num_ref} / NULLIF({denom_ref}, 0)"
-```
-
-##### Derived Metrics (`_generate_derived_sql`)
-
-**Purpose**: Generate SQL for derived metrics (expression with metric references).
-
-**Logic**:
-```python
-def _generate_derived_sql(
-    self,
-    metric: Metric,
-    models: dict[str, SemanticModel]
-) -> str:
-    """
-    Generate SQL for derived metric.
-
-    Algorithm:
-    1. Parse expr from type_params
-    2. Identify all metric references in expr
-    3. Replace each metric reference with ${view.measure} syntax
-    4. Return transformed expression
-
-    Note: This is complex - may need expression parser.
-    For MVP, can support simple cases like "metric_a + metric_b"
-    """
-    params = metric.type_params  # DerivedMetricParams
-    expr = params.expr
-    metric_refs = params.metrics
-
-    # Build replacement map: metric_name → ${view.measure}
-    replacements = {}
-    for ref in metric_refs:
-        # Find the metric definition
-        source_metric = self._find_metric_by_name(ref.name, all_metrics)
-        if not source_metric:
-            raise ValueError(f"Metric '{ref.name}' not found")
-
-        # Convert metric to measure reference
-        # (Metrics map to measures via same name convention)
-        measure_ref = self._resolve_measure_reference(
-            ref.name, metric.primary_entity, models
+class TestHelperMethods:
+    def test_resolve_measure_reference_same_view(self, generator, models_dict):
+        result = generator._resolve_measure_reference(
+            "order_count", "order", models_dict
         )
-        replacements[ref.name] = measure_ref
-
-    # Replace all metric references in expression
-    result_expr = expr
-    for metric_name, measure_ref in replacements.items():
-        result_expr = result_expr.replace(metric_name, measure_ref)
-
-    return result_expr
+        assert result == "${order_count}"  # ← WILL CHANGE
 ```
 
-**Note**: Derived metrics are complex. For MVP (DTL-025), we can:
-- Implement simple string replacement
-- Document limitations (no complex expressions)
-- Plan enhancement in future iteration
-
-#### 3. Required Fields Extraction (`_extract_required_fields`)
-
-**Purpose**: Identify which fields from other views this metric requires.
-
-**Logic**:
-```python
-def _extract_required_fields(
-    self,
-    metric: Metric,
-    primary_model: SemanticModel,
-    all_models: list[SemanticModel]
-) -> list[str]:
-    """
-    Extract required_fields list for metric.
-
-    Algorithm:
-    1. Extract all measure references from metric (type-specific)
-    2. Resolve each measure to source model
-    3. If source model != primary model: add to required_fields
-    4. Format as "{view_prefix}{model_name}.{measure_name}"
-    5. Return sorted list
-    """
-    required = set()
-
-    # Extract measure references based on type
-    if isinstance(metric.type_params, SimpleMetricParams):
-        measures = [metric.type_params.measure]
-    elif isinstance(metric.type_params, RatioMetricParams):
-        measures = [
-            metric.type_params.numerator,
-            metric.type_params.denominator
-        ]
-    elif isinstance(metric.type_params, DerivedMetricParams):
-        # Extract from metric references
-        measures = [ref.name for ref in metric.type_params.metrics]
-    else:
-        measures = []
-
-    # Build models lookup
-    models_dict = {model.name: model for model in all_models}
-
-    # Filter to cross-view references only
-    for measure_name in measures:
-        source_model = self._find_model_with_measure(measure_name, models_dict)
-        if source_model and source_model.name != primary_model.name:
-            view_name = f"{self.view_prefix}{source_model.name}"
-            required.add(f"{view_name}.{measure_name}")
-
-    return sorted(list(required))
+#### Golden File Pattern (from expected_users.view.lkml)
+```lookml
+measure: user_count {  # ← WILL CHANGE to user_count_measure
+  type: count
+  sql: ${TABLE}.user_count ;;
+  description: "Total number of users"
+  view_label: " Metrics"
+  group_label: "Users Performance"
+  # ← MISSING hidden: yes
+}
 ```
 
-#### 4. Helper Methods
+## Implementation Strategy
 
-##### Find Model with Measure (`_find_model_with_measure`)
+### Phase 1: Unit Tests - Measure Schema Tests
 
-```python
-def _find_model_with_measure(
-    self,
-    measure_name: str,
-    models: dict[str, SemanticModel]
-) -> SemanticModel | None:
-    """Find which semantic model contains the given measure."""
-    for model in models.values():
-        for measure in model.measures:
-            if measure.name == measure_name:
-                return model
-    return None
+**File**: `src/tests/unit/test_schemas.py`
+
+**Test Classes to Update**:
+- `TestMeasure` - Direct Measure model tests
+
+**Changes Required**:
+
+1. **test_measure_to_lookml_dict()** - Basic measure generation
+   ```python
+   # BEFORE
+   assert result["name"] == "revenue"
+   assert "hidden" not in result
+
+   # AFTER
+   assert result["name"] == "revenue_measure"
+   assert result["hidden"] == "yes"
+   ```
+
+2. **test_measure_with_all_fields()** - Comprehensive measure test
+   ```python
+   # Update name assertion
+   assert result["name"] == "total_revenue_measure"
+   # Add hidden assertion
+   assert result["hidden"] == "yes"
+   ```
+
+3. **test_measure_labels()** - Label handling tests
+   ```python
+   # Name should have suffix
+   assert result["name"] == "user_count_measure"
+   # Labels should remain unchanged
+   assert result["view_label"] == " Metrics"
+   # Hidden should be present
+   assert result["hidden"] == "yes"
+   ```
+
+4. **Add new test**: `test_measure_suffix_and_hidden_always_applied()`
+   ```python
+   def test_measure_suffix_and_hidden_always_applied(self) -> None:
+       """Test that _measure suffix and hidden: yes are always applied."""
+       # Test with minimal measure
+       minimal = Measure(name="count", agg=AggregationType.COUNT)
+       result = minimal.to_lookml_dict()
+       assert result["name"] == "count_measure"
+       assert result["hidden"] == "yes"
+
+       # Test with complex measure with labels
+       complex_measure = Measure(
+           name="revenue",
+           agg=AggregationType.SUM,
+           config=Config(meta=ConfigMeta(category="sales"))
+       )
+       result = complex_measure.to_lookml_dict()
+       assert result["name"] == "revenue_measure"
+       assert result["hidden"] == "yes"
+       assert result["view_label"] == " Metrics"  # Labels preserved
+   ```
+
+**Estimated Changes**: ~8-10 test methods updated, 1-2 new tests added
+
+### Phase 2: Unit Tests - Generator Measure Reference Tests
+
+**File**: `src/tests/unit/test_lookml_generator_metrics.py`
+
+**Test Classes to Update**:
+- `TestHelperMethods` - _resolve_measure_reference() tests
+- `TestSQLGenerationSimple` - Simple metric SQL generation
+- `TestSQLGenerationRatio` - Ratio metric SQL generation
+- `TestSQLGenerationDerived` - Derived metric SQL generation
+
+**Changes Required**:
+
+1. **TestHelperMethods** - All reference resolution tests (7 tests)
+   ```python
+   # test_resolve_measure_reference_same_view
+   # BEFORE: assert result == "${order_count}"
+   # AFTER:
+   assert result == "${order_count_measure}"
+
+   # test_resolve_measure_reference_cross_view
+   # BEFORE: assert result == "${searches.search_count}"
+   # AFTER:
+   assert result == "${searches.search_count_measure}"
+
+   # test_resolve_measure_reference_with_prefix
+   # BEFORE: assert result == "${v_searches.search_count}"
+   # AFTER:
+   assert result == "${v_searches.search_count_measure}"
+   ```
+
+2. **TestSQLGenerationSimple** - Simple metric tests (4 tests)
+   ```python
+   # test_generate_simple_sql_same_view
+   # BEFORE: assert sql == "${order_count}"
+   # AFTER:
+   assert sql == "${order_count_measure}"
+
+   # test_generate_simple_sql_cross_view
+   # BEFORE: assert sql == "${searches.search_count}"
+   # AFTER:
+   assert sql == "${searches.search_count_measure}"
+   ```
+
+3. **TestSQLGenerationRatio** - Ratio metric tests (5 tests)
+   ```python
+   # test_generate_ratio_sql_same_view
+   # BEFORE: assert sql == "1.0 * ${numerator} / NULLIF(${denominator}, 0)"
+   # AFTER:
+   assert sql == "1.0 * ${numerator_measure} / NULLIF(${denominator_measure}, 0)"
+
+   # test_generate_ratio_sql_cross_view
+   # BEFORE: expected = "1.0 * ${orders.revenue} / NULLIF(${searches.search_count}, 0)"
+   # AFTER:
+   expected = "1.0 * ${orders.revenue_measure} / NULLIF(${searches.search_count_measure}, 0)"
+   ```
+
+4. **TestSQLGenerationDerived** - Derived metric tests (3 tests)
+   ```python
+   # Derived metrics reference other metrics which reference measures
+   # The final SQL should have _measure suffix on all measure references
+   # BEFORE: "${revenue} - ${cost}"
+   # AFTER: "${revenue_measure} - ${cost_measure}"
+   ```
+
+**Estimated Changes**: ~19 test methods updated
+
+### Phase 3: Unit Tests - View Generation Tests
+
+**File**: `src/tests/unit/test_lookml_generator.py`
+
+**Test Methods to Update**:
+- `test_generate_view_lookml()` - View with measures
+- `test_lookml_files_generation()` - Complete file generation
+- Any test that validates measure presence in views
+
+**Changes Required**:
+
+1. **test_generate_view_lookml()**
+   ```python
+   # View generation test
+   view = LookMLView(
+       name="users",
+       measures=[
+           LookMLMeasure(
+               name="count_measure",  # ← Add suffix
+               type="count",
+               sql="1",
+               hidden="yes"  # ← Add hidden
+           )
+       ]
+   )
+
+   content = generator._generate_view_lookml(view)
+   assert "measure: count_measure" in content
+   assert "hidden: yes" in content
+   ```
+
+2. **test_lookml_files_generation()**
+   ```python
+   # Check generated content for suffix and hidden
+   users_content = users_view.read_text()
+   assert "measure: user_count_measure" in users_content
+   assert "hidden: yes" in users_content
+   ```
+
+**Estimated Changes**: ~3-5 test methods updated
+
+### Phase 4: Integration Tests - End-to-End Tests
+
+**File**: `src/tests/integration/test_end_to_end.py`
+
+**Test Methods to Update**:
+- `test_parse_and_generate_sample_model()` - Sample model generation
+- `test_real_semantic_models_end_to_end()` - Real models test
+- Any test that validates measure content
+
+**Changes Required**:
+
+1. **Update measure content validation**
+   ```python
+   # When checking for measures in generated content
+   if model.measures:
+       assert "measure:" in content
+       # Add validation for hidden property
+       assert "hidden: yes" in content
+       # Measure names will have suffix but exact names vary
+       # Don't validate specific measure names unless necessary
+   ```
+
+2. **Metric reference validation** (if present)
+   ```python
+   # If tests validate metric SQL, update to expect _measure suffix
+   if "metric" in content:
+       # Metric references should use suffixed measure names
+       pass  # Specific validation depends on test content
+   ```
+
+**Estimated Changes**: ~2-3 test methods updated
+
+### Phase 5: Integration Tests - Cross-Entity Metrics
+
+**File**: `src/tests/integration/test_cross_entity_metrics.py`
+
+**Purpose**: Tests metric generation across different entity relationships
+
+**Changes Required**:
+
+1. **Update all metric SQL validation**
+   ```python
+   # Any assertion on metric SQL needs suffix update
+   # Example:
+   # BEFORE: assert "${orders.revenue}" in metric_sql
+   # AFTER: assert "${orders.revenue_measure}" in metric_sql
+   ```
+
+2. **Update measure reference expectations**
+   ```python
+   # Cross-view measure references
+   # BEFORE: "${other_view.measure_name}"
+   # AFTER: "${other_view.measure_name_measure}"
+   ```
+
+**Estimated Changes**: ~5-8 test methods updated (depends on file content)
+
+### Phase 6: Golden Files - Update Expected Output
+
+**Files**:
+- `src/tests/golden/expected_users.view.lkml`
+- `src/tests/golden/expected_searches.view.lkml`
+- `src/tests/golden/expected_rental_orders.view.lkml`
+- `src/tests/golden/expected_explores.lkml` (if contains metrics)
+
+**Changes Required**:
+
+#### expected_users.view.lkml (3 measures)
+
+**Current Content**:
+```lookml
+measure: user_count {
+  type: count
+  sql: ${TABLE}.user_count ;;
+  description: "Total number of users"
+  view_label: " Metrics"
+  group_label: "Users Performance"
+}
+
+measure: active_users {
+  type: count_distinct
+  sql: CASE WHEN status = 'active' THEN user_id END ;;
+  description: "Count of active users"
+  view_label: " Metrics"
+  group_label: "Users Performance"
+}
+
+measure: avg_lifetime_rentals {
+  type: average
+  sql: total_rentals ;;
+  description: "Average number of rentals per user"
+  view_label: " Metrics"
+  group_label: "Users Performance"
+}
 ```
 
-##### Resolve Measure Reference (`_resolve_measure_reference`)
+**Updated Content**:
+```lookml
+measure: user_count_measure {
+  hidden: yes
+  type: count
+  sql: ${TABLE}.user_count ;;
+  description: "Total number of users"
+  view_label: " Metrics"
+  group_label: "Users Performance"
+}
 
-```python
-def _resolve_measure_reference(
-    self,
-    measure_name: str,
-    primary_entity: str,
-    models: dict[str, SemanticModel]
-) -> str:
-    """
-    Resolve measure name to LookML reference syntax.
+measure: active_users_measure {
+  hidden: yes
+  type: count_distinct
+  sql: CASE WHEN status = 'active' THEN user_id END ;;
+  description: "Count of active users"
+  view_label: " Metrics"
+  group_label: "Users Performance"
+}
 
-    Returns:
-    - Same view: "${measure_name}"
-    - Cross view: "${view_prefix}{model_name}.{measure_name}"
-    """
-    source_model = self._find_model_with_measure(measure_name, models)
-    if not source_model:
-        raise ValueError(f"Measure '{measure_name}' not found")
-
-    primary_model = self._find_model_by_primary_entity(
-        primary_entity, list(models.values())
-    )
-
-    if source_model.name == primary_model.name:
-        return f"${{{measure_name}}}"
-
-    view_name = f"{self.view_prefix}{source_model.name}"
-    return f"${{{view_name}.{measure_name}}}"
+measure: avg_lifetime_rentals_measure {
+  hidden: yes
+  type: average
+  sql: total_rentals ;;
+  description: "Average number of rentals per user"
+  view_label: " Metrics"
+  group_label: "Users Performance"
+}
 ```
 
-##### Infer Value Format (`_infer_value_format`)
+**Pattern**:
+1. Add `_measure` suffix to measure name
+2. Add `hidden: yes` as first property after name
+3. Keep all other properties unchanged
 
-```python
-def _infer_value_format(self, metric: Metric) -> str | None:
-    """
-    Infer LookML value_format_name from metric type and name.
+#### expected_searches.view.lkml
 
-    Heuristics:
-    - Ratio metrics → "percent_2"
-    - Names with "revenue" or "price" → "usd"
-    - Names with "count" → "decimal_0"
-    - Default → None (Looker default)
-    """
-    if isinstance(metric.type_params, RatioMetricParams):
-        return "percent_2"
+Apply same pattern to all measures in this file.
 
-    name_lower = metric.name.lower()
-    if "revenue" in name_lower or "price" in name_lower:
-        return "usd"
-    if "count" in name_lower:
-        return "decimal_0"
+#### expected_rental_orders.view.lkml
 
-    return None
+Apply same pattern to all measures in this file.
+
+#### expected_explores.lkml
+
+**If contains metric definitions with measure references**:
+```lookml
+# BEFORE
+measure: conversion_rate {
+  sql: ${conversions} / ${searches} ;;
+}
+
+# AFTER
+measure: conversion_rate {
+  sql: ${conversions_measure} / ${searches_measure} ;;
+}
 ```
 
-##### Infer Group Label (`_infer_group_label`)
-
-```python
-def _infer_group_label(
-    self,
-    metric: Metric,
-    primary_model: SemanticModel
-) -> str | None:
-    """
-    Infer group_label for metric.
-
-    Priority:
-    1. metric.meta.category (if present)
-    2. "{Model Name} Performance" (from primary model)
-    """
-    if metric.meta and "category" in metric.meta:
-        return metric.meta["category"].replace("_", " ").title()
-
-    # Default: "{Model} Performance"
-    model_name = primary_model.name.replace("_", " ").title()
-    return f"{model_name} Performance"
-```
-
-### 5. Integration with View Generation
-
-Update the `generate()` method to accept optional metrics:
-
-```python
-def generate(
-    self,
-    models: list[SemanticModel],
-    metrics: list[Metric] | None = None
-) -> dict[str, str]:
-    """
-    Generate LookML files from semantic models and metrics.
-
-    Args:
-        models: List of semantic models to generate from.
-        metrics: Optional list of metrics to generate measures for.
-
-    Returns:
-        Dictionary mapping filename to file content.
-    """
-    files = {}
-
-    console.print(f"[bold blue]Processing {len(models)} semantic models...[/bold blue]")
-    if metrics:
-        console.print(f"[bold blue]Processing {len(metrics)} metrics...[/bold blue]")
-
-    # Build metric ownership mapping: model_name → [metrics]
-    metric_map: dict[str, list[Metric]] = {}
-    if metrics:
-        for metric in metrics:
-            primary_entity = metric.primary_entity
-            if not primary_entity:
-                console.print(f"[yellow]Warning: Metric '{metric.name}' has no primary_entity, skipping[/yellow]")
-                continue
-
-            # Find model with this primary entity
-            owner_model = self._find_model_by_primary_entity(primary_entity, models)
-            if not owner_model:
-                console.print(f"[yellow]Warning: No model found for primary_entity '{primary_entity}', skipping metric '{metric.name}'[/yellow]")
-                continue
-
-            if owner_model.name not in metric_map:
-                metric_map[owner_model.name] = []
-            metric_map[owner_model.name].append(metric)
-
-    # Generate individual view files
-    for i, model in enumerate(models, 1):
-        console.print(f"  [{i}/{len(models)}] Processing [cyan]{model.name}[/cyan]...")
-
-        # Generate base view content
-        view_dict = self._generate_view_dict(model)
-
-        # Add metrics owned by this model
-        owned_metrics = metric_map.get(model.name, [])
-        if owned_metrics:
-            console.print(f"    Adding {len(owned_metrics)} metric(s) to {model.name}")
-            metric_measures = []
-            for metric in owned_metrics:
-                try:
-                    measure_dict = self._generate_metric_measure(metric, model, models)
-                    metric_measures.append(measure_dict)
-                except Exception as e:
-                    console.print(f"[red]Error generating metric '{metric.name}': {e}[/red]")
-
-            # Append to existing measures in view_dict
-            if "measures" not in view_dict["views"][0]:
-                view_dict["views"][0]["measures"] = []
-            view_dict["views"][0]["measures"].extend(metric_measures)
-
-        # Convert to LookML string
-        view_content = lkml.dump(view_dict)
-        if self.format_output:
-            view_content = self._format_lookml_content(view_content)
-
-        # Add to files dict
-        view_name = f"{self.view_prefix}{model.name}"
-        filename = f"{self._sanitize_filename(view_name)}.view.lkml"
-        files[filename] = view_content
-        console.print(f"    [green]✓[/green] Generated {filename}")
-
-    # Generate explores and model files (unchanged)
-    # ...
-
-    return files
-```
-
-**Note**: Need to extract view dict generation into `_generate_view_dict()` helper to avoid duplication.
-
-## Testing Strategy
-
-### Unit Tests (src/tests/unit/test_lookml_generator.py)
-
-#### Test Class: `TestMetricMeasureGeneration`
-
-```python
-class TestMetricMeasureGeneration:
-    """Test metric-to-measure conversion."""
-
-    def test_generate_simple_metric_same_view(self):
-        """Test simple metric where measure is in same view."""
-        # Setup: metric with primary_entity matching measure's model
-        # Assert: SQL is "${measure}" (no view prefix)
-        # Assert: required_fields is empty
-
-    def test_generate_simple_metric_cross_view(self):
-        """Test simple metric where measure is in different view."""
-        # Setup: metric referencing measure from other model
-        # Assert: SQL is "${other_view.measure}"
-        # Assert: required_fields contains "other_view.measure"
-
-    def test_generate_ratio_metric_both_cross_view(self):
-        """Test ratio metric with num and denom from other views."""
-        # Setup: ratio metric with both measures from different models
-        # Assert: SQL is "1.0 * ${view1.num} / NULLIF(${view2.denom}, 0)"
-        # Assert: required_fields contains both references
-
-    def test_generate_ratio_metric_mixed(self):
-        """Test ratio metric with num from same view, denom from other."""
-        # Assert: Num uses "${measure}" syntax
-        # Assert: Denom uses "${view.measure}" syntax
-        # Assert: required_fields only contains cross-view reference
-
-    def test_generate_derived_metric_simple(self):
-        """Test derived metric with simple expression."""
-        # Setup: expr = "metric_a + metric_b"
-        # Assert: Expression correctly substitutes metric refs
-
-    def test_metric_value_format_inference(self):
-        """Test value_format_name inference."""
-        # Test ratio → "percent_2"
-        # Test revenue → "usd"
-        # Test count → "decimal_0"
-        # Test other → None
-
-    def test_metric_group_label_inference(self):
-        """Test group_label inference."""
-        # Test with meta.category → uses meta value
-        # Test without meta → uses "{Model} Performance"
-
-    def test_view_prefix_in_cross_references(self):
-        """Test view prefix applied to cross-view references."""
-        # Setup: generator with view_prefix="v_"
-        # Assert: SQL contains "${v_other_view.measure}"
-        # Assert: required_fields contains "v_other_view.measure"
-```
-
-#### Test Class: `TestMetricIntegration`
-
-```python
-class TestMetricIntegration:
-    """Test integration of metrics with view generation."""
-
-    def test_generate_with_metrics(self):
-        """Test generate() method with metrics parameter."""
-        # Setup: models + metrics
-        # Call: generate(models, metrics)
-        # Assert: Metric measures appear in correct view file
-
-    def test_metric_ownership_filtering(self):
-        """Test metrics only appear in primary entity's view."""
-        # Setup: 2 models, 2 metrics (one for each)
-        # Assert: Each view only contains its owned metric
-
-    def test_metrics_appended_to_measures(self):
-        """Test metrics appended to existing measures."""
-        # Assert: Model's original measures present
-        # Assert: Metric measures added at end
-
-    def test_missing_primary_entity_warning(self):
-        """Test warning when metric has no primary_entity."""
-        # Setup: metric with primary_entity = None
-        # Assert: Warning logged, metric skipped
-
-    def test_unknown_primary_entity_warning(self):
-        """Test warning when primary_entity doesn't match any model."""
-        # Assert: Warning logged, metric skipped
-```
-
-### Coverage Target
-
-- **New methods**: 95%+ branch coverage
-- **Modified methods**: Maintain existing coverage
-- **Overall generator module**: 95%+
-
-## Error Handling
-
-### Validation Errors
-
-1. **Measure not found**: "Measure '{name}' not found in any semantic model"
-   - Raised in: `_find_model_with_measure()`
-   - Impact: Metric generation fails, error logged, continues to next metric
-
-2. **Primary entity not found**: "No model found for primary_entity '{entity}'"
-   - Raised in: `generate()` during metric ownership mapping
-   - Impact: Metric skipped with warning
-
-3. **Unsupported metric type**: "Unsupported metric type: {type}"
-   - Raised in: `_generate_metric_measure()`
-   - Impact: Metric generation fails, error logged
-
-### Warning Scenarios
-
-1. **Missing primary_entity**: Log warning, skip metric
-2. **Circular metric dependencies** (derived metrics): Not handled in MVP, document limitation
-
-## Backward Compatibility
-
-### API Changes
-
-- `generate()` method signature: **BACKWARD COMPATIBLE**
-  - Old: `generate(models: list[SemanticModel])`
-  - New: `generate(models: list[SemanticModel], metrics: list[Metric] | None = None)`
-  - Default `metrics=None` maintains existing behavior
-
-### File Output Changes
-
-- **Without metrics**: Output identical to current
-- **With metrics**: Additional measures in view files
-
-## Dependencies
-
-### DTL-023: Metric Schema Models
-
-**Required classes/types**:
-- `Metric` - Base metric model
-- `SimpleMetricParams`, `RatioMetricParams`, `DerivedMetricParams` - Type params
-- `MetricReference` - For derived metrics
-- `metric.primary_entity` property
-
-**Usage in DTL-025**:
-```python
-from dbt_to_lookml.schemas import (
-    Metric,
-    SimpleMetricParams,
-    RatioMetricParams,
-    DerivedMetricParams
-)
-
-# Type checking
-if isinstance(metric.type_params, SimpleMetricParams):
-    measure_name = metric.type_params.measure
-
-# Primary entity access
-primary_entity = metric.primary_entity
-```
-
-### DTL-024: Metric Parser
-
-**Required output**:
-- `list[Metric]` - Parsed metrics from YAML files
-
-**Integration point**:
-```python
-# In CLI (__main__.py)
-from dbt_to_lookml.parsers.dbt_metrics import DbtMetricParser
-
-metric_parser = DbtMetricParser()
-metrics = metric_parser.parse_directory(metrics_dir)
-
-generator = LookMLGenerator(...)
-files = generator.generate(models, metrics)
-```
-
-## Implementation Order
-
-### Phase 1: Core Infrastructure (Week 1)
-
-1. **Add method signatures** (TDD approach)
-   - `_generate_metric_measure()`
-   - `_generate_simple_sql()`
-   - `_generate_ratio_sql()`
-   - `_extract_required_fields()`
-   - Helper methods
-
-2. **Implement simple metrics**
-   - `_generate_simple_sql()` - same view case
-   - `_generate_simple_sql()` - cross view case
-   - Tests for simple metrics
-
-3. **Implement ratio metrics**
-   - `_generate_ratio_sql()` - all cases
-   - Tests for ratio metrics
-
-4. **Implement required_fields extraction**
-   - `_extract_required_fields()`
-   - Tests for dependency detection
-
-### Phase 2: Integration (Week 2)
-
-5. **Update generate() method**
-   - Add `metrics` parameter
-   - Implement ownership mapping
-   - Integrate metric measure generation
-   - Tests for integration
-
-6. **Implement derived metrics** (if time permits)
-   - `_generate_derived_sql()` - simple cases
-   - Tests for derived metrics
-   - Document limitations
-
-7. **Add helper methods**
-   - `_infer_value_format()`
-   - `_infer_group_label()`
-   - Tests for helpers
-
-### Phase 3: Polish (Week 2-3)
-
-8. **Error handling**
-   - Validation errors
-   - Warning messages
-   - Tests for error cases
-
-9. **Documentation**
-   - Update CLAUDE.md
-   - Add docstrings
-   - Update examples
-
-10. **Code review and refinement**
-    - Address feedback
-    - Refactor for clarity
-    - Ensure 95%+ coverage
-
-## Risk Mitigation
-
-### Risk 1: Complex Derived Metric Expressions
-
-**Mitigation**: Start with simple string replacement, document limitations, plan future enhancement.
-
-### Risk 2: Circular Dependencies
-
-**Mitigation**: Not handling in MVP. Document as limitation. Add validation in DTL-027.
-
-### Risk 3: Type Checking Complexity
-
-**Mitigation**: Use `isinstance()` checks with type narrowing. Mypy should handle correctly with proper Union types.
-
-### Risk 4: Test Coverage
-
-**Mitigation**: Write tests first (TDD). Target 95%+ branch coverage. Use parameterized tests for multiple scenarios.
+**Update Strategy**:
+- Can regenerate golden files using the update helper method in test_golden.py
+- Or manually update each measure following the pattern above
+
+### Phase 7: Golden Tests - Update Comparison Tests
+
+**File**: `src/tests/test_golden.py`
+
+**Changes Required**:
+
+1. **Update measure content assertions** in various test methods:
+   ```python
+   # test_complex_semantic_model_features_preserved
+   # Add assertion for hidden measures
+   assert "hidden: yes" in content
+   # Update measure name expectations if checking specific names
+   assert "measure:" in content  # Generic check still works
+   ```
+
+2. **test_golden_files_comprehensive_coverage()**
+   ```python
+   # When checking for measures
+   if model.measures:
+       assert "measure:" in content
+       # Add check for hidden property
+       assert "hidden: yes" in content
+       # Check for suffix in measure names
+       # Note: Specific measure names vary, so validate pattern not names
+   ```
+
+3. **Add new test**: `test_measures_always_hidden_with_suffix()`
+   ```python
+   def test_measures_always_hidden_with_suffix(
+       self, semantic_models_dir: Path
+   ) -> None:
+       """Test that all generated measures have _measure suffix and hidden: yes."""
+       parser = DbtParser()
+       generator = LookMLGenerator()
+
+       all_models = parser.parse_directory(semantic_models_dir)
+
+       with TemporaryDirectory() as temp_dir:
+           output_dir = Path(temp_dir)
+           generated_files, _ = generator.generate_lookml_files(
+               all_models, output_dir
+           )
+
+           for view_file in [f for f in generated_files if f.name.endswith(".view.lkml")]:
+               content = view_file.read_text()
+
+               # Find all measure blocks
+               import re
+               measures = re.findall(r'measure:\s+(\w+)\s+\{', content)
+
+               for measure_name in measures:
+                   # All measure names should end with _measure
+                   assert measure_name.endswith("_measure"), (
+                       f"Measure {measure_name} missing _measure suffix in {view_file.name}"
+                   )
+
+                   # Extract the measure block
+                   measure_pattern = f'measure: {measure_name} {{[^}}]+}}'
+                   measure_block = re.search(measure_pattern, content, re.DOTALL)
+
+                   if measure_block:
+                       block_content = measure_block.group(0)
+                       assert "hidden: yes" in block_content, (
+                           f"Measure {measure_name} missing hidden: yes in {view_file.name}"
+                       )
+   ```
+
+**Estimated Changes**: ~3-5 test methods updated, 1 new test added
+
+## Testing Approach
+
+### Test Execution Strategy
+
+1. **Incremental Testing**:
+   ```bash
+   # Test each phase independently
+   pytest src/tests/unit/test_schemas.py::TestMeasure -xvs
+   pytest src/tests/unit/test_lookml_generator_metrics.py -xvs
+   pytest src/tests/unit/test_lookml_generator.py -xvs
+   pytest src/tests/integration/test_end_to_end.py -xvs
+   pytest src/tests/integration/test_cross_entity_metrics.py -xvs
+   pytest src/tests/test_golden.py -xvs
+   ```
+
+2. **Coverage Validation**:
+   ```bash
+   # After all updates, verify coverage maintained
+   make test-coverage
+   # Target: 95%+ branch coverage
+   ```
+
+3. **Full Test Suite**:
+   ```bash
+   # Final validation
+   make test-full
+   ```
+
+### Validation Checklist
+
+For each updated test file:
+- [ ] All measure name assertions updated with `_measure` suffix
+- [ ] All measure reference assertions updated with `_measure` suffix
+- [ ] Hidden property assertions added where appropriate
+- [ ] Labels and descriptions remain unchanged
+- [ ] Cross-view references include suffix: `${view.measure_measure}`
+- [ ] Same-view references include suffix: `${measure_measure}`
+- [ ] Tests pass individually
+- [ ] Coverage maintained at 95%+
+
+## Risk Assessment
+
+### Low Risk Changes
+- Golden file updates (mechanical, easily validated)
+- Simple assertion updates (name suffix checks)
+- Hidden property checks (additive, no logic change)
+
+### Medium Risk Changes
+- Measure reference resolution tests (logic depends on suffix handling)
+- Cross-entity metric tests (multiple reference points)
+
+### Mitigation Strategies
+1. **Incremental Validation**: Test each phase independently
+2. **Golden File Regeneration**: Use update helper if manual updates error-prone
+3. **Comprehensive Regex**: Use regex to find all measure references in tests
+4. **Diff Review**: Carefully review diffs to ensure no unintended changes
+
+## Edge Cases to Validate
+
+1. **Measures with existing underscores**: `user_count` → `user_count_measure` (not `user_count__measure`)
+2. **Metric reference chains**: Derived metrics → simple metrics → measures (all should have suffix)
+3. **Cross-view with prefix**: `${v_orders.revenue_measure}` (prefix + suffix)
+4. **Empty measure lists**: Tests with no measures should be unaffected
+5. **Metric SQL expressions**: Complex SQL with multiple measure references
 
 ## Success Criteria
 
-- [ ] All methods implemented with full type hints
-- [ ] mypy --strict passes
-- [ ] 95%+ branch coverage on new code
-- [ ] All acceptance criteria from DTL-025 met
-- [ ] Integration tests pass
-- [ ] Backward compatibility maintained
-- [ ] Documentation complete
+### Quantitative
+- [ ] All unit tests pass (100%)
+- [ ] All integration tests pass (100%)
+- [ ] All golden tests pass (100%)
+- [ ] Coverage maintained at 95%+ branch coverage
+- [ ] No new linting or type errors introduced
 
-## Open Questions
+### Qualitative
+- [ ] All measure names have `_measure` suffix in generated LookML
+- [ ] All measures have `hidden: yes` property
+- [ ] All metric measure references include suffix
+- [ ] Golden files accurately reflect new output format
+- [ ] Test assertions clearly validate suffix and hidden behavior
 
-### Q1: Should we validate measure existence during generation?
+## Implementation Order
 
-**Answer**: Yes, raise clear error if measure not found. This prevents generating invalid LookML.
+1. **Phase 1**: Unit Tests - Measure Schema Tests (test_schemas.py)
+   - Establishes base validation for Measure.to_lookml_dict()
+   - Required first as foundation
 
-### Q2: How to handle metrics with same name as existing measures?
+2. **Phase 2**: Unit Tests - Generator Measure Reference Tests (test_lookml_generator_metrics.py)
+   - Validates _resolve_measure_reference() behavior
+   - Depends on Phase 1 understanding
 
-**Answer**: Allow it. Metrics generate as separate measures. Up to user to avoid name conflicts.
+3. **Phase 3**: Unit Tests - View Generation Tests (test_lookml_generator.py)
+   - Validates view-level measure generation
+   - Can run parallel to Phase 2
 
-### Q3: Should we sort measures (original vs. metric-generated)?
+4. **Phase 6**: Golden Files - Update Expected Output
+   - Update expected LookML files
+   - Should be done before Phase 7
+   - Can regenerate using helper method
 
-**Answer**: Keep original measures first, then append metric measures. Maintain stable order.
+5. **Phase 7**: Golden Tests - Update Comparison Tests (test_golden.py)
+   - Updates golden file comparison logic
+   - Depends on Phase 6 (golden files updated)
 
-### Q4: How to handle metric metadata (description, label)?
+6. **Phase 4**: Integration Tests - End-to-End Tests (test_end_to_end.py)
+   - Validates full pipeline
+   - Depends on all unit tests passing
 
-**Answer**: Use metric.label and metric.description directly. If label missing, use titlecase(metric.name).
+7. **Phase 5**: Integration Tests - Cross-Entity Metrics (test_cross_entity_metrics.py)
+   - Validates complex metric scenarios
+   - Should be last as it depends on all other changes
 
-## Conclusion
+## Estimated Effort
 
-This strategy provides a comprehensive roadmap for implementing cross-entity measure generation in `LookMLGenerator`. The approach is:
+- **Phase 1**: 1-2 hours (8-10 test updates, 1-2 new tests)
+- **Phase 2**: 2-3 hours (19 test updates across multiple classes)
+- **Phase 3**: 1 hour (3-5 test updates)
+- **Phase 4**: 1 hour (2-3 test updates)
+- **Phase 5**: 1-2 hours (5-8 test updates, file review)
+- **Phase 6**: 1-2 hours (golden file updates, can use regeneration)
+- **Phase 7**: 1-2 hours (3-5 test updates, 1 new test)
 
-- **Incremental**: Build in phases (simple → ratio → derived)
-- **Testable**: TDD approach with high coverage target
-- **Backward Compatible**: Optional metrics parameter
-- **Type-Safe**: Full mypy compliance
-- **Maintainable**: Clear separation of concerns, helper methods
+**Total Estimated**: 8-13 hours
 
-The implementation should take 2-3 weeks with thorough testing and documentation.
+## Code Review Focus Areas
+
+1. **Consistency**: All measure references have suffix (no missed instances)
+2. **Completeness**: Hidden property checked in all measure validation tests
+3. **Correctness**: Golden files match generated output exactly
+4. **Coverage**: New tests added for suffix/hidden behavior
+5. **Clarity**: Test names and assertions clearly indicate what's being tested
+
+## Rollback Strategy
+
+If issues discovered post-merge:
+1. **Revert DTL-025**: Revert test updates
+2. **Revert DTL-024**: Revert _resolve_measure_reference() changes
+3. **Revert DTL-023**: Revert Measure.to_lookml_dict() changes
+
+All three must be reverted together as they form a cohesive change.
+
+## Documentation Updates
+
+No user-facing documentation changes required (test-only changes).
+
+Internal documentation:
+- Update test file docstrings if measure validation patterns change
+- Update test_golden.py helper method documentation for golden file regeneration
+
+## Dependencies
+
+- **Blocks**: None (this is final task in epic)
+- **Blocked By**:
+  - DTL-023 (Measure.to_lookml_dict() implementation)
+  - DTL-024 (_resolve_measure_reference() implementation)
+
+## Notes
+
+- Consider using regex search to find all measure references in tests before starting
+- Golden files can be regenerated using `test_golden.py::update_golden_files_if_requested()` helper
+- Keep git commits atomic: one phase per commit for easier review and rollback
+- Test changes should be straightforward assertion updates (no logic changes in tests)

@@ -1,822 +1,432 @@
 ---
-id: DTL-023
-title: "Implementation Strategy: Add Metric Schema Models to schemas.py"
+id: DTL-023-strategy
 issue: DTL-023
-created: 2025-11-18
+title: "Implementation Strategy: Modify Measure.to_lookml_dict() to add suffix and hidden property"
+created: 2025-11-21
 status: approved
 ---
 
-# Implementation Strategy: Add Metric Schema Models to schemas.py
+# Implementation Strategy: DTL-023
 
 ## Overview
 
-This strategy outlines the implementation approach for adding Pydantic schema models to support dbt metrics in `src/dbt_to_lookml/schemas.py`. This is the foundation layer for the cross-entity metrics epic (DTL-022), enabling the codebase to represent and validate dbt metric definitions.
-
-## Goals
-
-1. **Extend schema models** to support all dbt metric types (simple, ratio, derived, conversion)
-2. **Maintain strict typing** with full mypy --strict compliance
-3. **Follow existing patterns** established by SemanticModel, Measure, Dimension
-4. **Enable validation** of metric structure and metadata
-5. **Support primary entity extraction** from meta blocks
-6. **Achieve 100% test coverage** for new models
+This strategy outlines the implementation approach for modifying the `Measure.to_lookml_dict()` method in `src/dbt_to_lookml/schemas/semantic_layer.py` to add a universal `_measure` suffix to all measure names and mark them as `hidden: yes`. This is the foundational change for the Universal Measure Suffix and Hiding Strategy (Epic DTL-022).
 
 ## Context Analysis
 
-### Existing Schema Patterns
+### Current Implementation
 
-The codebase follows consistent Pydantic patterns in `schemas.py`:
+The `Measure.to_lookml_dict()` method (lines 548-576) currently generates LookML measure dictionaries with the following structure:
 
-**Key Patterns Identified**:
-1. **BaseModel inheritance**: All schema classes extend `pydantic.BaseModel`
-2. **Optional fields**: Use `| None = None` for optional fields (PEP 604 union syntax)
-3. **Type safety**: Full type hints on all fields and methods
-4. **Helper methods**: Properties and methods for label extraction, conversion logic
-5. **Field defaults**: Use `Field(default_factory=list)` for mutable defaults
-6. **Nested models**: ConfigMeta, Config, Hierarchy for structured metadata
-7. **No validators**: Codebase does not currently use `@model_validator` or `@field_validator`
-
-**Relevant Examples**:
 ```python
-class Measure(BaseModel):
-    name: str
-    agg: AggregationType
-    expr: str | None = None
-    description: str | None = None
-    label: str | None = None
-    create_metric: bool | None = None
-    config: Config | None = None
+def to_lookml_dict(self, model_name: str | None = None) -> dict[str, Any]:
+    """Convert measure to LookML format."""
+    result: dict[str, Any] = {
+        "name": self.name,  # Line 555: Uses original name
+        "type": LOOKML_TYPE_MAP.get(self.agg, "number"),
+        "sql": self.expr or f"${TABLE}.{self.name}",
+    }
 
-    def get_measure_labels(self, model_name: str | None = None) -> tuple[str, str | None]:
-        """Extract labels with business logic."""
+    # ... adds description, label, view_label, group_label
+
+    # Add hidden parameter if specified (line 573)
+    if self.config and self.config.meta and self.config.meta.hidden is True:
+        result["hidden"] = "yes"
+
+    return result
 ```
 
-### Type System
+### Current Behavior
 
-The codebase uses `types.py` for enums and type mappings:
-- `AggregationType(str, Enum)`: Measure aggregation types
-- `DimensionType(str, Enum)`: Dimension types (categorical, time)
-- `TimeGranularity(str, Enum)`: Time granularities
-- `LOOKML_TYPE_MAP`: Dict mapping types to LookML equivalents
+1. **Name generation**: Uses `self.name` directly (line 555)
+2. **Hidden parameter**: Only added when explicitly configured via `config.meta.hidden=True` (lines 573-574)
+3. **Impact**: Measures appear in LookML with original names and are visible by default
 
-**Decision**: Create new `MetricType(str, Enum)` for metric type validation.
+### Desired Behavior
 
-### Testing Patterns
-
-From `test_schemas.py`:
-- **Class-based organization**: `class TestEntity`, `class TestDimension`, etc.
-- **Comprehensive validation**: Test required fields, optional fields, edge cases
-- **Method testing**: Test helper methods and properties
-- **Pydantic validation**: Use `pytest.raises(ValidationError)` for invalid cases
-- **Parametrization**: Use `@pytest.mark.parametrize` for multiple scenarios
-- **Clear naming**: `test_<feature>_<scenario>` pattern
-
-## Architecture Decisions
-
-### 1. Discriminated Union for Type-Specific Parameters
-
-**Decision**: Use Pydantic discriminated union with a single `Metric` class and a `type_params` field that varies by metric type.
-
-**Rationale**:
-- Matches dbt metric structure (single `type` field with type-specific `type_params`)
-- Enables Pydantic automatic validation of params based on `type` discriminator
-- Simplifies parsing (one model vs. multiple subclasses)
-- Aligns with existing pattern (Dimension has type_params dict)
-
-**Implementation**:
-```python
-from typing import Annotated, Any, Literal
-from pydantic import BaseModel, Field, Discriminator
-
-class SimpleMetricParams(BaseModel):
-    """Type params for simple metrics (reference single measure)."""
-    measure: str
-
-class RatioMetricParams(BaseModel):
-    """Type params for ratio metrics (numerator / denominator)."""
-    numerator: str
-    denominator: str
-
-class DerivedMetricParams(BaseModel):
-    """Type params for derived metrics (expression with metric refs)."""
-    expr: str
-    metrics: list["MetricReference"]
-
-class ConversionMetricParams(BaseModel):
-    """Type params for conversion metrics (funnel analysis)."""
-    conversion_type_params: dict[str, Any]
-
-# Discriminated union based on parent's 'type' field
-MetricTypeParams = Annotated[
-    SimpleMetricParams | RatioMetricParams | DerivedMetricParams | ConversionMetricParams,
-    Field(discriminator="type")
-]
-
-class Metric(BaseModel):
-    """Represents a dbt metric definition."""
-    name: str
-    type: Literal["simple", "ratio", "derived", "conversion"]
-    type_params: MetricTypeParams
-    label: str | None = None
-    description: str | None = None
-    meta: dict[str, Any] | None = None
-
-    @property
-    def primary_entity(self) -> str | None:
-        """Extract primary_entity from meta block."""
-        if self.meta:
-            return self.meta.get("primary_entity")
-        return None
-```
-
-**Alternative Considered**: Subclass-based approach with `SimpleMetric(Metric)`, `RatioMetric(Metric)`, etc.
-- **Rejected**: More complex parsing logic, harder to serialize/deserialize, doesn't match dbt structure
-
-### 2. Helper Models for Nested Structures
-
-**Decision**: Create `MetricReference` model for referencing other metrics in derived metrics.
-
-**Rationale**:
-- Derived metrics can reference other metrics with optional aliases and offset windows
-- Structured model enables validation of references
-- Provides clear API for extracting dependencies
-
-**Implementation**:
-```python
-class MetricReference(BaseModel):
-    """Reference to another metric in derived metric expressions."""
-    name: str
-    alias: str | None = None
-    offset_window: str | None = None
-```
-
-### 3. Validation Strategy
-
-**Decision**: Use Pydantic's built-in validation without custom validators for initial implementation.
-
-**Rationale**:
-- Codebase does not currently use `@model_validator` or `@field_validator`
-- Required field validation is automatic with Pydantic
-- Type validation (Literal for metric type) is automatic
-- Cross-model validation (measure references, entity existence) should be handled by parser, not schema layer
-
-**Deferred to DTL-024 (Parser)**:
-- Validating that referenced measures exist in semantic models
-- Validating that primary_entity references a valid entity
-- Validating that metric names are globally unique
-
-**Rationale for deferral**:
-- Schema models are data structures, not business logic validators
-- Parser has access to full context (all semantic models, all metrics)
-- Separation of concerns: schemas validate structure, parser validates semantics
-
-### 4. Meta Block Structure
-
-**Decision**: Use `dict[str, Any]` for meta block, matching existing ConfigMeta pattern.
-
-**Rationale**:
-- Flexible structure for custom metadata
-- Matches existing pattern in Measure, Dimension (config.meta)
-- Allows future extension without schema changes
-- Primary entity extraction via property method
-
-**Alternative Considered**: Structured `MetricMeta(BaseModel)` with typed fields
-- **Rejected**: Over-engineering for single field (primary_entity), reduces flexibility
-
-### 5. Placement in schemas.py
-
-**Decision**: Add metric models in a new section between SemanticModel and LookML schemas.
-
-**Structure**:
-```python
-# ============================================================================
-# Semantic Model Schemas (Input)
-# ============================================================================
-# ... existing Entity, Dimension, Measure, SemanticModel ...
-
-# ============================================================================
-# Metric Schemas (Input)
-# ============================================================================
-class MetricReference(BaseModel):
-    """..."""
-
-class SimpleMetricParams(BaseModel):
-    """..."""
-
-class RatioMetricParams(BaseModel):
-    """..."""
-
-class DerivedMetricParams(BaseModel):
-    """..."""
-
-class ConversionMetricParams(BaseModel):
-    """..."""
-
-MetricTypeParams = Annotated[...]
-
-class Metric(BaseModel):
-    """..."""
-
-# ============================================================================
-# LookML Schemas (Output)
-# ============================================================================
-# ... existing LookML* classes ...
-```
-
-**Rationale**:
-- Clear separation of input schemas (semantic models, metrics) from output schemas (LookML)
-- Logical ordering: metrics reference measures from semantic models
-- Follows existing comment-based section organization
+1. **Name generation**: Use `f"{self.name}_measure"` to add universal suffix
+2. **Hidden parameter**: Always add `"hidden": "yes"` immediately after name field
+3. **Impact**: All semantic model measures are suffixed and hidden, creating clear separation from user-facing metrics
 
 ## Implementation Plan
 
-### Phase 1: Add Type Enum and Helper Models (15 min)
+### Step 1: Modify Name Generation (Line 555)
 
-**File**: `src/dbt_to_lookml/types.py`
-
-Add `MetricType` enum:
+**Current:**
 ```python
-class MetricType(str, Enum):
-    """Supported metric types."""
-
-    SIMPLE = "simple"
-    RATIO = "ratio"
-    DERIVED = "derived"
-    CONVERSION = "conversion"
+result: dict[str, Any] = {
+    "name": self.name,
+    "type": LOOKML_TYPE_MAP.get(self.agg, "number"),
+    "sql": self.expr or f"${TABLE}.{self.name}",
+}
 ```
 
-**File**: `src/dbt_to_lookml/schemas.py`
-
-Add imports:
+**Updated:**
 ```python
-from typing import Annotated, Any, Literal
-from pydantic import Field
+result: dict[str, Any] = {
+    "name": f"{self.name}_measure",
+    "type": LOOKML_TYPE_MAP.get(self.agg, "number"),
+    "sql": self.expr or f"${TABLE}.{self.name}",
+}
 ```
 
-Add `MetricReference` model:
+**Rationale:**
+- Simple string interpolation adds `_measure` suffix to all measure names
+- SQL expression remains unchanged (uses original column/expression name)
+- No conditional logic needed - applies universally
+
+### Step 2: Add Universal Hidden Property
+
+**Current:**
 ```python
-class MetricReference(BaseModel):
-    """Reference to another metric in derived metric expressions.
+# Add hidden parameter if specified
+if self.config and self.config.meta and self.config.meta.hidden is True:
+    result["hidden"] = "yes"
+```
 
-    Used in derived metrics to reference other metrics with optional
-    aliases and offset windows for time-based calculations.
+**Updated:**
+```python
+# All measures are hidden (internal building blocks for metrics)
+result["hidden"] = "yes"
 
-    Attributes:
-        name: Name of the referenced metric.
-        alias: Optional alias for the metric in the expression.
-        offset_window: Optional time window offset (e.g., "1 month", "7 days").
+# Remove the conditional hidden logic (lines 572-574)
+```
+
+**Placement:**
+Insert immediately after the initial `result` dictionary definition, before description/label logic:
+
+```python
+result: dict[str, Any] = {
+    "name": f"{self.name}_measure",
+    "type": LOOKML_TYPE_MAP.get(self.agg, "number"),
+    "sql": self.expr or f"${TABLE}.{self.name}",
+}
+
+# All measures are hidden (internal building blocks for metrics)
+result["hidden"] = "yes"
+
+if self.description:
+    result["description"] = self.description
+# ... rest of method
+```
+
+**Rationale:**
+- Universal hiding aligns with dbt semantic layer philosophy (measures → metrics)
+- Eliminates need for conditional logic and per-measure configuration
+- Creates consistent behavior across all measures
+- Removes the conditional block at lines 572-574 as it becomes redundant
+
+### Step 3: Update Method Docstring
+
+**No changes to signature** - method accepts `model_name: str | None = None` and returns `dict[str, Any]`
+
+**Update docstring** to reflect new behavior:
+
+```python
+def to_lookml_dict(self, model_name: str | None = None) -> dict[str, Any]:
+    """Convert measure to LookML format with universal suffix and hiding.
+
+    All measures are generated with:
+    - Name suffix: '_measure' appended to distinguish from metrics
+    - Hidden property: 'yes' to hide from end users (building blocks for metrics)
+
+    Args:
+        model_name: Optional semantic model name for inferring group_label.
+
+    Returns:
+        Dictionary with LookML measure configuration including:
+        - name: Measure name with '_measure' suffix
+        - type: LookML aggregation type
+        - sql: SQL expression for the measure
+        - hidden: Always 'yes'
+        - Optional: description, label, view_label, group_label
 
     Example:
-        ```yaml
-        metrics:
-          - name: revenue_growth
-            type: derived
-            type_params:
-              expr: "revenue - revenue_last_month"
-              metrics:
-                - name: revenue
-                - name: revenue
-                  alias: revenue_last_month
-                  offset_window: "1 month"
+        ```python
+        measure = Measure(name="revenue", agg=AggregationType.SUM)
+        result = measure.to_lookml_dict()
+        # Returns: {"name": "revenue_measure", "type": "sum",
+        #           "sql": "${TABLE}.revenue", "hidden": "yes", ...}
         ```
     """
-
-    name: str
-    alias: str | None = None
-    offset_window: str | None = None
 ```
 
-### Phase 2: Add Type-Specific Params Models (20 min)
+## Impact Analysis
 
-Add param models with comprehensive docstrings:
+### Files Directly Modified
 
-```python
-class SimpleMetricParams(BaseModel):
-    """Type parameters for simple metrics.
+1. **src/dbt_to_lookml/schemas/semantic_layer.py**
+   - Lines 548-576: `Measure.to_lookml_dict()` method
+   - Estimated LOC change: +3 lines, -3 lines (net: 0)
 
-    Simple metrics reference a single measure from a semantic model.
+### Downstream Impact
 
-    Attributes:
-        measure: Name of the measure to use (e.g., "revenue", "order_count").
+1. **src/dbt_to_lookml/generators/lookml.py**
+   - Method `_resolve_measure_reference()` (lines 242-277) must be updated to append suffix
+   - This is handled in DTL-024 (separate issue)
+   - Metrics generation will initially break until DTL-024 is implemented
 
-    Example:
-        ```yaml
-        metrics:
-          - name: total_revenue
-            type: simple
-            type_params:
-              measure: revenue
-        ```
-    """
+2. **Test Files Requiring Updates**
+   - Unit tests: `test_schemas.py`, `test_hidden_parameter.py`, `test_hierarchy.py`, `test_flat_meta.py`
+   - Integration tests: `test_join_field_exposure.py`, `test_metric_validation.py`
+   - Golden tests: All `.view.lkml` files in `src/tests/golden/`
+   - This is handled in DTL-025 (separate issue)
 
-    measure: str
+### Breaking Changes
 
+**Severity: High (within development, not user-facing)**
 
-class RatioMetricParams(BaseModel):
-    """Type parameters for ratio metrics.
+1. **Measure names in generated LookML**: All measures will have `_measure` suffix
+   - Before: `measure: revenue { ... }`
+   - After: `measure: revenue_measure { ... }`
 
-    Ratio metrics calculate numerator / denominator, typically for rates,
-    percentages, or per-unit calculations.
+2. **Hidden by default**: All measures marked as hidden
+   - Before: Visible unless explicitly hidden via config
+   - After: Always hidden (no conditional logic)
 
-    Attributes:
-        numerator: Name of the measure to use as numerator.
-        denominator: Name of the measure to use as denominator.
+3. **Metric references**: Metrics must reference suffixed measure names
+   - Before: `${revenue}`
+   - After: `${revenue_measure}`
+   - Handled automatically by DTL-024
 
-    Example:
-        ```yaml
-        metrics:
-          - name: conversion_rate
-            type: ratio
-            type_params:
-              numerator: completed_orders
-              denominator: total_searches
-        ```
-    """
+### Backward Compatibility
 
-    numerator: str
-    denominator: str
+**NOT backward compatible** - This is a breaking change by design:
 
-
-class DerivedMetricParams(BaseModel):
-    """Type parameters for derived metrics.
-
-    Derived metrics combine other metrics using a SQL expression.
-
-    Attributes:
-        expr: SQL expression combining referenced metrics.
-        metrics: List of metric references used in the expression.
-
-    Example:
-        ```yaml
-        metrics:
-          - name: revenue_growth
-            type: derived
-            type_params:
-              expr: "(current_revenue - prior_revenue) / prior_revenue"
-              metrics:
-                - name: monthly_revenue
-                  alias: current_revenue
-                - name: monthly_revenue
-                  alias: prior_revenue
-                  offset_window: "1 month"
-        ```
-    """
-
-    expr: str
-    metrics: list[MetricReference]
-
-
-class ConversionMetricParams(BaseModel):
-    """Type parameters for conversion metrics.
-
-    Conversion metrics track funnel conversions between entity states.
-    The structure is flexible to support various conversion patterns.
-
-    Attributes:
-        conversion_type_params: Dictionary containing conversion-specific
-            configuration. Structure depends on conversion type.
-
-    Example:
-        ```yaml
-        metrics:
-          - name: checkout_conversion
-            type: conversion
-            type_params:
-              conversion_type_params:
-                entity: order
-                calculation: conversion_rate
-                base_event: page_view
-                conversion_event: purchase
-        ```
-    """
-
-    conversion_type_params: dict[str, Any]
-```
-
-### Phase 3: Add Discriminated Union Type (10 min)
-
-Add type alias with discriminator:
-
-```python
-# Discriminated union for metric type params
-# Pydantic will automatically validate params based on parent Metric.type field
-MetricTypeParams = Annotated[
-    SimpleMetricParams | RatioMetricParams | DerivedMetricParams | ConversionMetricParams,
-    Field(discriminator="type")
-]
-```
-
-**Note**: This requires the parent `Metric` class to have a `type` field that Pydantic uses as the discriminator.
-
-### Phase 4: Add Main Metric Model (25 min)
-
-Add comprehensive `Metric` model:
-
-```python
-class Metric(BaseModel):
-    """Represents a dbt metric definition.
-
-    Metrics define calculations that can be simple aggregations, ratios,
-    derived calculations, or conversion funnels. They can reference measures
-    from one or more semantic models and are owned by a primary entity.
-
-    Attributes:
-        name: Unique metric identifier (snake_case).
-        type: Type of metric calculation.
-        type_params: Type-specific parameters (validated based on type).
-        label: Optional human-readable label for the metric.
-        description: Optional detailed description of what the metric represents.
-        meta: Optional metadata dictionary for custom configuration.
-            Common fields:
-            - primary_entity: Entity that owns this metric (determines which
-              view file contains the generated measure).
-            - category: Category for grouping related metrics.
-
-    Examples:
-        Simple metric:
-        ```yaml
-        metrics:
-          - name: total_revenue
-            type: simple
-            type_params:
-              measure: revenue
-            label: Total Revenue
-            description: Sum of all revenue
-            meta:
-              primary_entity: order
-              category: financial_performance
-        ```
-
-        Ratio metric (cross-entity):
-        ```yaml
-        metrics:
-          - name: search_conversion_rate
-            type: ratio
-            type_params:
-              numerator: rental_count    # From rental_orders
-              denominator: search_count  # From searches
-            label: Search Conversion Rate
-            description: Percentage of searches that result in rentals
-            meta:
-              primary_entity: search  # Searches is the spine/denominator
-              category: conversion_metrics
-        ```
-
-        Derived metric:
-        ```yaml
-        metrics:
-          - name: revenue_growth
-            type: derived
-            type_params:
-              expr: "(current - prior) / prior"
-              metrics:
-                - name: monthly_revenue
-                  alias: current
-                - name: monthly_revenue
-                  alias: prior
-                  offset_window: "1 month"
-            meta:
-              primary_entity: order
-        ```
-
-    See Also:
-        - Epic DTL-022 for primary entity ownership pattern
-        - MetricReference for derived metric dependencies
-    """
-
-    name: str
-    type: Literal["simple", "ratio", "derived", "conversion"]
-    type_params: MetricTypeParams
-    label: str | None = None
-    description: str | None = None
-    meta: dict[str, Any] | None = None
-
-    @property
-    def primary_entity(self) -> str | None:
-        """Extract primary_entity from meta block.
-
-        The primary entity determines which semantic model/view owns this
-        metric and serves as the base for the calculation.
-
-        Returns:
-            Primary entity name if specified in meta, None otherwise.
-
-        Example:
-            ```python
-            metric = Metric(
-                name="conversion_rate",
-                type="ratio",
-                type_params=RatioMetricParams(
-                    numerator="orders",
-                    denominator="searches"
-                ),
-                meta={"primary_entity": "search"}
-            )
-            assert metric.primary_entity == "search"
-            ```
-        """
-        if self.meta:
-            return self.meta.get("primary_entity")
-        return None
-```
-
-### Phase 5: Update Type Imports (5 min)
-
-**File**: `src/dbt_to_lookml/schemas.py`
-
-Update imports to include MetricType if needed:
-```python
-from dbt_to_lookml.types import (
-    LOOKML_TYPE_MAP,
-    AggregationType,
-    DimensionType,
-    MetricType,  # Add this
-)
-```
-
-**Note**: MetricType may not be needed if we use Literal directly in the Metric class.
-
-### Phase 6: Update __all__ Export (5 min)
-
-If `schemas.py` has an `__all__` list, add new classes:
-```python
-__all__ = [
-    # ... existing exports ...
-    "Metric",
-    "MetricReference",
-    "SimpleMetricParams",
-    "RatioMetricParams",
-    "DerivedMetricParams",
-    "ConversionMetricParams",
-]
-```
-
-**Check**: Verify if `schemas.py` uses `__all__` for explicit exports.
+1. **Intentional break**: Part of architectural improvement for measure/metric separation
+2. **Coordinated changes**: Requires DTL-024 and DTL-025 to complete the transition
+3. **Test-first approach**: All tests updated to expect new behavior (DTL-025)
 
 ## Testing Strategy
 
-### Test File: `src/tests/unit/test_schemas.py`
+### Unit Tests to Update (DTL-025)
 
-Add new test class at the end of the file (before LookML model tests).
+1. **test_schemas.py::TestMeasure**
+   - `test_measure_creation`: Verify name includes `_measure` suffix
+   - `test_count_measure`: Verify suffix and hidden property
+   - `test_measure_with_all_fields`: Verify suffix + hidden + all optional fields
+   - `test_lookml_measure_creation`: Update expectations for name format
 
-### Test Class Structure
+2. **test_hidden_parameter.py::TestHiddenParameterMeasure**
+   - All tests expect `hidden: yes` by default
+   - Remove tests for conditional hiding (no longer applicable)
+   - Add test verifying universal hiding regardless of config
 
-```python
-class TestMetricReference:
-    """Test cases for MetricReference model."""
+3. **test_hierarchy.py**
+   - `test_measure_hierarchy_labels`: Verify suffix + hidden + labels
+   - `test_measure_lookml_with_hierarchy`: Update expected output
 
-    def test_metric_reference_creation(self) -> None:
-        """Test basic metric reference creation."""
+4. **test_flat_meta.py**
+   - `test_measure_with_category`: Verify suffix + hidden + labels
+   - `test_measure_without_meta_uses_model_name`: Update expectations
+   - `test_measure_lookml_with_flat_meta`: Update expected output
 
-    def test_metric_reference_with_alias(self) -> None:
-        """Test metric reference with alias."""
+### Integration Tests to Update (DTL-025)
 
-    def test_metric_reference_with_offset_window(self) -> None:
-        """Test metric reference with offset window."""
+1. **test_join_field_exposure.py**
+   - `test_join_fields_exclude_measures`: Update to expect suffixed names
 
-    def test_metric_reference_with_all_fields(self) -> None:
-        """Test metric reference with all optional fields."""
+2. **test_metric_validation.py**
+   - Tests may fail until DTL-024 completes (measure reference resolution)
+   - Update expected measure names in validation logic
 
-    def test_metric_reference_validation(self) -> None:
-        """Test metric reference field validation."""
+### Golden Tests to Update (DTL-025)
 
+**All expected view files** in `src/tests/golden/` require updates:
 
-class TestSimpleMetricParams:
-    """Test cases for SimpleMetricParams model."""
+Example transformation for `expected_searches.view.lkml`:
 
-    def test_simple_metric_params_creation(self) -> None:
-        """Test basic simple metric params creation."""
-
-    def test_simple_metric_params_validation(self) -> None:
-        """Test that measure is required."""
-
-
-class TestRatioMetricParams:
-    """Test cases for RatioMetricParams model."""
-
-    def test_ratio_metric_params_creation(self) -> None:
-        """Test basic ratio metric params creation."""
-
-    def test_ratio_metric_params_validation(self) -> None:
-        """Test that numerator and denominator are required."""
-
-
-class TestDerivedMetricParams:
-    """Test cases for DerivedMetricParams model."""
-
-    def test_derived_metric_params_creation(self) -> None:
-        """Test basic derived metric params creation."""
-
-    def test_derived_metric_params_with_multiple_metrics(self) -> None:
-        """Test derived params with multiple metric references."""
-
-    def test_derived_metric_params_validation(self) -> None:
-        """Test that expr and metrics are required."""
-
-
-class TestConversionMetricParams:
-    """Test cases for ConversionMetricParams model."""
-
-    def test_conversion_metric_params_creation(self) -> None:
-        """Test basic conversion metric params creation."""
-
-    def test_conversion_metric_params_flexible_structure(self) -> None:
-        """Test that conversion_type_params accepts various structures."""
-
-
-class TestMetric:
-    """Test cases for Metric model."""
-
-    def test_metric_simple_creation(self) -> None:
-        """Test simple metric creation."""
-
-    def test_metric_ratio_creation(self) -> None:
-        """Test ratio metric creation."""
-
-    def test_metric_derived_creation(self) -> None:
-        """Test derived metric creation."""
-
-    def test_metric_conversion_creation(self) -> None:
-        """Test conversion metric creation."""
-
-    def test_metric_with_all_optional_fields(self) -> None:
-        """Test metric with label, description, meta."""
-
-    def test_metric_validation_missing_name(self) -> None:
-        """Test that name is required."""
-
-    def test_metric_validation_missing_type(self) -> None:
-        """Test that type is required."""
-
-    def test_metric_validation_missing_type_params(self) -> None:
-        """Test that type_params is required."""
-
-    def test_metric_validation_invalid_type(self) -> None:
-        """Test that type must be one of the allowed values."""
-
-    def test_metric_type_params_mismatch(self) -> None:
-        """Test that type_params must match metric type."""
-        # This tests the discriminated union validation
-
-    def test_metric_primary_entity_present(self) -> None:
-        """Test primary_entity property when meta.primary_entity exists."""
-
-    def test_metric_primary_entity_missing(self) -> None:
-        """Test primary_entity property when meta is None."""
-
-    def test_metric_primary_entity_meta_without_field(self) -> None:
-        """Test primary_entity property when meta exists but no primary_entity."""
-
-    def test_metric_primary_entity_nested_meta(self) -> None:
-        """Test primary_entity extraction from complex meta block."""
-
-    @pytest.mark.parametrize(
-        "metric_type,params_class,params_dict",
-        [
-            ("simple", SimpleMetricParams, {"measure": "revenue"}),
-            ("ratio", RatioMetricParams, {"numerator": "orders", "denominator": "searches"}),
-            ("derived", DerivedMetricParams, {"expr": "a + b", "metrics": []}),
-            ("conversion", ConversionMetricParams, {"conversion_type_params": {}}),
-        ],
-    )
-    def test_metric_all_types_valid(
-        self, metric_type: str, params_class: type, params_dict: dict
-    ) -> None:
-        """Test that all metric types can be created with valid params."""
+**Before:**
+```lookml
+measure: search_count {
+  type: count
+  sql: ${TABLE}.search_count ;;
+  description: "Total number of searches"
+  view_label: " Metrics"
+  group_label: "Searches Performance"
+}
 ```
 
-### Test Coverage Targets
-
-- **MetricReference**: 100% (simple model, 4-5 tests)
-- **SimpleMetricParams**: 100% (simple model, 2-3 tests)
-- **RatioMetricParams**: 100% (simple model, 2-3 tests)
-- **DerivedMetricParams**: 100% (simple model, 3-4 tests)
-- **ConversionMetricParams**: 100% (simple model, 2-3 tests)
-- **Metric**: 100% (main model, 15-20 tests)
-
-**Total new tests**: ~30-35 test methods
-
-### Test Execution
-
-```bash
-# Run new metric tests only
-pytest src/tests/unit/test_schemas.py::TestMetric -xvs
-pytest src/tests/unit/test_schemas.py::TestMetricReference -xvs
-pytest src/tests/unit/test_schemas.py::TestSimpleMetricParams -xvs
-pytest src/tests/unit/test_schemas.py::TestRatioMetricParams -xvs
-pytest src/tests/unit/test_schemas.py::TestDerivedMetricParams -xvs
-pytest src/tests/unit/test_schemas.py::TestConversionMetricParams -xvs
-
-# Run all schema tests
-pytest src/tests/unit/test_schemas.py -v
-
-# Check coverage for schemas.py
-pytest src/tests/unit/test_schemas.py --cov=src/dbt_to_lookml/schemas --cov-report=term-missing
+**After:**
+```lookml
+measure: search_count_measure {
+  hidden: yes
+  type: count
+  sql: ${TABLE}.search_count ;;
+  description: "Total number of searches"
+  view_label: " Metrics"
+  group_label: "Searches Performance"
+}
 ```
 
-## Acceptance Criteria Validation
+### New Test Cases to Add (DTL-025)
 
-| Criterion | Validation Method |
-|-----------|-------------------|
-| Metric base model with all required fields | Unit tests + mypy type checking |
-| Type-specific params for simple, ratio, derived, conversion | Unit tests for each params class |
-| primary_entity property extracts from meta block | Property tests with various meta structures |
-| Validation ensures type_params match metric type | Pydantic discriminated union validation tests |
-| All models pass mypy --strict type checking | `make type-check` passes |
-| Unit tests for model validation (each metric type) | TestMetric class with parametrized tests |
-| Unit tests for primary_entity extraction | TestMetric property tests |
-| Unit tests for validation edge cases | TestMetric validation tests |
+1. **Test universal suffix behavior**
+   ```python
+   def test_measure_universal_suffix():
+       """Verify all measures get _measure suffix."""
+       measure = Measure(name="revenue", agg=AggregationType.SUM)
+       result = measure.to_lookml_dict()
+       assert result["name"] == "revenue_measure"
+       assert result["name"].endswith("_measure")
+   ```
 
-## Risk Assessment
+2. **Test universal hiding behavior**
+   ```python
+   def test_measure_universal_hidden():
+       """Verify all measures are hidden regardless of config."""
+       # Without config
+       measure1 = Measure(name="count", agg=AggregationType.COUNT)
+       result1 = measure1.to_lookml_dict()
+       assert result1["hidden"] == "yes"
 
-### Low Risks
-- **Pydantic API changes**: Using stable Pydantic v2 features (BaseModel, Field, Literal)
-- **Type checking**: Following existing patterns that already pass mypy --strict
-- **Test coverage**: Simple models, straightforward to test
+       # With config but no hidden field
+       measure2 = Measure(
+           name="sum",
+           agg=AggregationType.SUM,
+           config=Config(meta=ConfigMeta(category="metrics"))
+       )
+       result2 = measure2.to_lookml_dict()
+       assert result2["hidden"] == "yes"
 
-### Medium Risks
-- **Discriminated union complexity**: First use of discriminated unions in codebase
-  - **Mitigation**: Add comprehensive validation tests, clear docstrings
-  - **Fallback**: Use Union without discriminator if issues arise
-- **Forward compatibility**: Meta block structure may evolve
-  - **Mitigation**: Use flexible dict[str, Any], property method for extraction
+       # With explicit hidden=False in config (still hidden)
+       measure3 = Measure(
+           name="avg",
+           agg=AggregationType.AVERAGE,
+           config=Config(meta=ConfigMeta(hidden=False))
+       )
+       result3 = measure3.to_lookml_dict()
+       assert result3["hidden"] == "yes"
+   ```
 
-### High Risks
-- **None identified**: This is a foundational layer with no external dependencies
+3. **Test suffix doesn't affect SQL expression**
+   ```python
+   def test_measure_suffix_sql_unaffected():
+       """Verify SQL expression uses original name, not suffixed name."""
+       measure = Measure(
+           name="revenue",
+           agg=AggregationType.SUM,
+           expr="amount * quantity"
+       )
+       result = measure.to_lookml_dict()
+       assert result["name"] == "revenue_measure"
+       assert result["sql"] == "amount * quantity"
+       # SQL should not contain '_measure' suffix
+       assert "_measure" not in result["sql"]
+   ```
 
-## Rollback Plan
+## Implementation Steps
 
-If issues arise during implementation:
+### Phase 1: Code Changes (This Issue - DTL-023)
 
-1. **Phase 1-2 issues**: Revert type enum and helper models, minimal impact
-2. **Phase 3-4 issues (discriminated union)**: Fall back to simple Union without discriminator
-3. **Phase 5-6 issues**: Remove from exports, fix imports
+1. **Modify line 555**: Change `"name": self.name` to `"name": f"{self.name}_measure"`
+2. **Add line 560**: Insert `result["hidden"] = "yes"` after result dict definition
+3. **Remove lines 572-574**: Delete conditional hidden logic
+4. **Update docstring**: Add documentation for universal suffix and hiding
 
-**Recovery**: All changes are in a single file (schemas.py) with isolated test suite. Easy to revert via git.
+### Phase 2: Generator Updates (DTL-024)
 
-## Dependencies
+1. Update `_resolve_measure_reference()` to append suffix to references
+2. Ensure metrics correctly reference suffixed measures
+3. Update generator tests
 
-### Blocked By
-- None (foundation layer)
+### Phase 3: Test Updates (DTL-025)
 
-### Blocks
-- DTL-024: Metric parser needs these models to parse YAML
-- DTL-025: Generator needs these models to create LookML measures
-- DTL-026: Explore generation needs Metric model for dependency analysis
-- DTL-027: Validation needs Metric model for connectivity checks
+1. Update all unit tests for `Measure.to_lookml_dict()`
+2. Update integration tests
+3. Regenerate golden test expected outputs
+4. Add new test cases for universal behavior
+5. Verify 95%+ branch coverage maintained
 
-## Success Metrics
+## Risk Mitigation
 
-- ✅ All unit tests pass (30-35 new tests)
-- ✅ 100% coverage on new Metric models
-- ✅ `make type-check` passes (mypy --strict)
-- ✅ `make lint` passes (ruff)
-- ✅ No regression in existing tests
-- ✅ Documentation clear and comprehensive
+### Risk 1: Broken Metrics Generation
 
-## Timeline Estimate
+**Risk**: Metrics will fail to resolve measures until DTL-024 completes
 
-- **Implementation**: 1.5 hours
-  - Phase 1: 15 min
-  - Phase 2: 20 min
-  - Phase 3: 10 min
-  - Phase 4: 25 min
-  - Phase 5: 5 min
-  - Phase 6: 5 min
-  - Buffer: 10 min
+**Mitigation**:
+- Coordinate DTL-023 and DTL-024 implementation closely
+- Consider implementing both in same PR to maintain working state
+- Use feature branch for all three issues (DTL-023, DTL-024, DTL-025)
 
-- **Testing**: 2 hours
-  - Write test cases: 1 hour
-  - Debug and fix: 30 min
-  - Coverage verification: 30 min
+### Risk 2: Test Failures
 
-- **Total**: 3.5 hours
+**Risk**: Many tests will fail after this change
+
+**Mitigation**:
+- Expected behavior - tests document the change
+- DTL-025 provides comprehensive test update plan
+- Use TDD approach: Update tests alongside implementation
+
+### Risk 3: Unintended Side Effects
+
+**Risk**: SQL expressions or other fields might unexpectedly use suffixed name
+
+**Mitigation**:
+- Only modify the `"name"` field in result dictionary
+- SQL expression uses `self.name` (original, unsuffixed)
+- Add explicit test case to verify SQL unaffected (see Testing Strategy)
+
+## Success Criteria
+
+### Implementation Success
+
+- [ ] Line 555 uses `f"{self.name}_measure"` for name generation
+- [ ] Universal `hidden: yes` added immediately after name field
+- [ ] Conditional hidden logic removed (lines 572-574)
+- [ ] Docstring updated with examples
+- [ ] Code follows existing style (type hints, formatting)
+
+### Testing Success
+
+- [ ] Unit tests updated for `Measure` class (DTL-025)
+- [ ] All measure-related tests expect `_measure` suffix
+- [ ] All measure-related tests expect `hidden: yes`
+- [ ] Golden tests updated with new expected output
+- [ ] Branch coverage maintained at 95%+
+
+### Integration Success
+
+- [ ] Coordinates with DTL-024 (measure reference resolution)
+- [ ] Coordinates with DTL-025 (test updates)
+- [ ] No unintended side effects on SQL expressions
+- [ ] LookML syntax validation passes
+
+## Implementation Timeline
+
+**Estimated effort**: 1-2 hours for code changes (DTL-023 only)
+
+1. **Code modification**: 30 minutes
+   - Update 3 lines in `Measure.to_lookml_dict()`
+   - Update docstring
+
+2. **Initial testing**: 30 minutes
+   - Run unit tests to identify failures
+   - Verify expected behavior locally
+
+3. **Coordination**: 30 minutes
+   - Ensure DTL-024 is ready for implementation
+   - Review test update plan in DTL-025
+
+**Note**: Full epic completion requires DTL-024 and DTL-025, estimated 6-8 hours total.
+
+## Code Review Checklist
+
+- [ ] Name suffix uses f-string: `f"{self.name}_measure"`
+- [ ] Hidden property added as `result["hidden"] = "yes"`
+- [ ] Conditional hidden logic removed
+- [ ] Docstring updated with behavior description
+- [ ] SQL expression still uses `self.name` (not suffixed)
+- [ ] Type hints preserved
+- [ ] Formatting follows ruff/black standards
+- [ ] No hardcoded strings outside of `_measure` suffix
 
 ## References
 
-- **Issue**: `.tasks/issues/DTL-023.md`
-- **Epic**: `.tasks/epics/DTL-022.md`
-- **Plan**: `.tasks/plans/cross-entity-metrics-plan.yaml`
-- **Existing schemas**: `src/dbt_to_lookml/schemas.py` (lines 1-705)
-- **Existing types**: `src/dbt_to_lookml/types.py` (lines 1-51)
-- **Test patterns**: `src/tests/unit/test_schemas.py` (lines 1-1466)
-
-## Architectural Principles
-
-This implementation follows these key principles from CLAUDE.md:
-
-1. **Strict typing**: All functions have type hints (mypy --strict)
-2. **Pydantic validation**: Use BaseModel for automatic validation
-3. **Separation of concerns**: Schema models validate structure, parser validates semantics
-4. **Test-driven**: 95%+ coverage target, comprehensive unit tests
-5. **Documentation**: Google-style docstrings for all public classes
-6. **Consistency**: Follow existing patterns (BaseModel, Optional fields, helper methods)
-
-## Approval
-
-This strategy is ready for implementation once approved by the project maintainer.
-
-**Estimated effort**: 3.5 hours
-**Risk level**: Low
-**Test coverage**: 100% (new code)
-**Breaking changes**: None
+- **Parent Epic**: [DTL-022](./../epics/DTL-022.md) - Universal Measure Suffix and Hiding Strategy
+- **Related Issues**:
+  - [DTL-024](./../issues/DTL-024.md) - Update measure reference resolution
+  - [DTL-025](./../issues/DTL-025.md) - Update test expectations
+- **File**: `src/dbt_to_lookml/schemas/semantic_layer.py` (lines 548-576)
+- **Method**: `Measure.to_lookml_dict()`
+- **Layer**: Atoms (core data structure)

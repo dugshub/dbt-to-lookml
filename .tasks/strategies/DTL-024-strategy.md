@@ -1,884 +1,382 @@
-# DTL-024 Implementation Strategy: Implement dbt metrics YAML parser
-
-**Issue ID:** DTL-024
-**Type:** Feature
-**Priority:** High
-**Created:** 2025-11-18
-**Dependencies:** DTL-023 (Metric schema models)
-
+---
+id: DTL-024
+title: "Strategy: Update LookMLGenerator._resolve_measure_reference() to append suffix"
+type: feature
+stack: backend
+status: Has Strategy
+created: 2025-11-21
+updated: 2025-11-21
 ---
 
-## Executive Summary
+# Strategy: Update LookMLGenerator._resolve_measure_reference() to append suffix
 
-Implement a robust parser for dbt metric YAML files that converts metric definitions into Metric schema objects. The parser will follow established patterns from `DbtParser`, supporting multiple metric types, primary entity resolution, dependency extraction, and comprehensive error handling.
+## Overview
 
-### Key Architectural Decisions
+This issue implements the second part of the Universal Measure Suffix and Hiding Strategy (DTL-022). After DTL-023 modifies `Measure.to_lookml_dict()` to add a `_measure` suffix to all measure names, this issue ensures that all references to measures in metric SQL expressions use the suffixed names.
 
-1. **Extend base Parser interface**: `DbtMetricParser` inherits from `Parser` to maintain consistency with `DbtParser`
-2. **Separate concern from semantic models**: Metrics and semantic models are parsed independently and linked during validation
-3. **Smart primary entity inference**: For ratio metrics, infer primary entity from denominator measure's parent semantic model
-4. **Fail-fast validation**: Validate metric structure and dependencies immediately during parsing
-5. **Reuse YAML utilities**: Leverage `Parser.read_yaml()` and `Parser.handle_error()` for consistent behavior
+The `_resolve_measure_reference()` method is responsible for converting a measure name into a LookML reference syntax (`${measure_name}` for same-view or `${view.measure_name}` for cross-view). This method is called by:
+1. `_generate_simple_sql()` - for simple metrics
+2. `_generate_ratio_sql()` - for ratio metrics (numerator and denominator)
+3. `_generate_derived_sql()` - for derived metrics (multiple measure references)
 
----
+## Current Behavior
 
-## 1. Technical Architecture
-
-### 1.1 Module Structure
-
-**New file:** `src/dbt_to_lookml/parsers/dbt_metrics.py`
-
-```
-src/dbt_to_lookml/parsers/
-├── __init__.py           # Add DbtMetricParser export
-├── dbt.py               # Existing DbtParser (reference implementation)
-└── dbt_metrics.py       # NEW: DbtMetricParser
-```
-
-### 1.2 Class Design
-
+### Method Signature and Purpose
 ```python
-class DbtMetricParser(Parser):
-    """Parser for dbt metric YAML files.
-
-    Parses metric definitions from YAML files and converts them to Metric
-    schema objects. Supports all metric types: simple, ratio, derived, conversion.
-    Validates metric structure and resolves primary entities.
-    """
-
-    def parse_file(self, file_path: Path) -> list[Metric]:
-        """Parse a single metric YAML file.
-
-        Args:
-            file_path: Path to YAML file containing metrics
-
-        Returns:
-            List of parsed Metric objects
-
-        Raises:
-            FileNotFoundError: If file doesn't exist
-            yaml.YAMLError: If YAML is malformed
-            ValidationError: If metric structure is invalid
-        """
-
-    def parse_directory(self, directory: Path) -> list[Metric]:
-        """Recursively parse all metric files in directory.
-
-        Scans for *.yml and *.yaml files, handling nested directories.
-        Uses handle_error() for lenient vs strict error handling.
-
-        Args:
-            directory: Directory containing metric YAML files
-
-        Returns:
-            List of all parsed Metric objects
-        """
-
-    def validate(self, content: dict[str, Any]) -> bool:
-        """Validate that content contains valid metric structure.
-
-        Checks for:
-        - 'metrics' key or direct metric structure
-        - Required fields: name, type, type_params
-        - Valid metric type value
-
-        Args:
-            content: Parsed YAML content
-
-        Returns:
-            True if valid metric structure, False otherwise
-        """
-
-    def _parse_metric(self, metric_data: dict[str, Any]) -> Metric:
-        """Parse single metric from dictionary data.
-
-        Internal method that handles type-specific params construction
-        and delegates to Pydantic validation.
-
-        Args:
-            metric_data: Dictionary with metric fields
-
-        Returns:
-            Validated Metric object
-
-        Raises:
-            ValidationError: If metric structure invalid
-            ValueError: If metric type unsupported
-        """
-
-    def _parse_type_params(
-        self,
-        metric_type: str,
-        params_data: dict[str, Any]
-    ) -> MetricTypeParams:
-        """Parse type-specific parameters based on metric type.
-
-        Constructs appropriate TypeParams subclass:
-        - simple -> SimpleMetricParams
-        - ratio -> RatioMetricParams
-        - derived -> DerivedMetricParams
-        - conversion -> ConversionMetricParams
-
-        Args:
-            metric_type: One of 'simple', 'ratio', 'derived', 'conversion'
-            params_data: Dictionary with type-specific params
-
-        Returns:
-            Appropriate MetricTypeParams subclass instance
-
-        Raises:
-            ValueError: If metric_type is unknown
-            ValidationError: If params don't match expected structure
-        """
-
-    def _validate_metric_structure(self, metric: dict[str, Any]) -> bool:
-        """Validate single metric dictionary has required fields.
-
-        Args:
-            metric: Metric dictionary to validate
-
-        Returns:
-            True if has required fields, False otherwise
-        """
-```
-
-### 1.3 Utility Functions
-
-**Module-level functions in `dbt_metrics.py`:**
-
-```python
-def resolve_primary_entity(
-    metric: Metric,
-    semantic_models: list[SemanticModel]
+def _resolve_measure_reference(
+    self, measure_name: str, primary_entity: str, models: dict[str, SemanticModel]
 ) -> str:
-    """Determine primary entity for metric.
-
-    Resolution priority:
-    1. Explicit meta.primary_entity (highest priority)
-    2. Infer from denominator for ratio metrics
-    3. Raise error requiring explicit specification
-
-    Inference algorithm for ratio metrics:
-    - Extract denominator measure name
-    - Find semantic model containing that measure
-    - Return that model's primary entity name
-
-    Args:
-        metric: Metric object to resolve
-        semantic_models: All semantic models for lookup
-
-    Returns:
-        Primary entity name (e.g., 'search', 'user', 'rental')
-
-    Raises:
-        ValueError: If can't resolve (missing meta, can't infer)
-    """
-
-def extract_measure_dependencies(metric: Metric) -> set[str]:
-    """Extract all measure names referenced by metric.
-
-    Handles each metric type:
-    - simple: {type_params.measure}
-    - ratio: {numerator, denominator}
-    - derived: Extract from metrics list
-    - conversion: Extract from conversion_type_params
-
-    Args:
-        metric: Metric to extract dependencies from
-
-    Returns:
-        Set of measure names (strings)
-    """
-
-def find_measure_model(
-    measure_name: str,
-    semantic_models: list[SemanticModel]
-) -> SemanticModel | None:
-    """Find which semantic model contains a measure.
-
-    Args:
-        measure_name: Name of measure to find
-        semantic_models: List of semantic models to search
-
-    Returns:
-        SemanticModel containing the measure, or None if not found
-    """
 ```
 
----
+**Purpose**: Convert a measure name to a LookML reference syntax
 
-## 2. Implementation Details
+**Inputs**:
+- `measure_name`: The measure name from the metric definition (e.g., "order_count")
+- `primary_entity`: The primary entity of the metric (determines "same view" vs "cross view")
+- `models`: Dictionary mapping model names to SemanticModel objects
 
-### 2.1 File Discovery Pattern
+**Current Output Examples**:
+- Same-view reference: `"${order_count}"` (line 273)
+- Cross-view reference: `"${searches.search_count}"` (line 277)
 
-**Following `DbtParser.parse_directory()` pattern:**
+### Current Implementation Logic (lines 242-277)
 
 ```python
-def parse_directory(self, directory: Path) -> list[Metric]:
-    if not directory.is_dir():
-        raise ValueError(f"Not a directory: {directory}")
-
-    metrics = []
-
-    # Handle both .yml and .yaml extensions
-    for yaml_file in directory.glob("*.yml"):
-        try:
-            metrics.extend(self.parse_file(yaml_file))
-        except Exception as e:
-            self.handle_error(e, f"Failed to parse {yaml_file}")
-
-    for yaml_file in directory.glob("*.yaml"):
-        try:
-            metrics.extend(self.parse_file(yaml_file))
-        except Exception as e:
-            self.handle_error(e, f"Failed to parse {yaml_file}")
-
-    # Handle nested directories (recursive)
-    for subdir in directory.iterdir():
-        if subdir.is_dir() and not subdir.name.startswith('.'):
-            try:
-                metrics.extend(self.parse_directory(subdir))
-            except Exception as e:
-                self.handle_error(e, f"Failed to parse directory {subdir}")
-
-    return metrics
-```
-
-### 2.2 YAML Structure Support
-
-**Support multiple YAML formats:**
-
-```yaml
-# Format 1: Direct metrics list
-metrics:
-  - name: total_revenue
-    type: simple
-    type_params:
-      measure: revenue
-    meta:
-      primary_entity: rental
-
-# Format 2: Single metric (auto-wrapped in list)
-name: total_revenue
-type: simple
-type_params:
-  measure: revenue
-
-# Format 3: Top-level list
-- name: metric_one
-  type: simple
-  type_params:
-    measure: count_one
-- name: metric_two
-  type: ratio
-  type_params:
-    numerator: num
-    denominator: denom
-```
-
-### 2.3 Type Parameter Parsing Logic
-
-```python
-def _parse_type_params(
-    self,
-    metric_type: str,
-    params_data: dict[str, Any]
-) -> MetricTypeParams:
-    """Parse type-specific parameters."""
-
-    if metric_type == "simple":
-        return SimpleMetricParams(
-            measure=params_data["measure"]
-        )
-
-    elif metric_type == "ratio":
-        return RatioMetricParams(
-            numerator=params_data["numerator"],
-            denominator=params_data["denominator"]
-        )
-
-    elif metric_type == "derived":
-        # Parse metric references
-        metrics_list = []
-        for metric_ref_data in params_data.get("metrics", []):
-            metrics_list.append(MetricReference(
-                name=metric_ref_data["name"],
-                alias=metric_ref_data.get("alias"),
-                offset_window=metric_ref_data.get("offset_window")
-            ))
-
-        return DerivedMetricParams(
-            expr=params_data["expr"],
-            metrics=metrics_list
-        )
-
-    elif metric_type == "conversion":
-        return ConversionMetricParams(
-            conversion_type_params=params_data.get("conversion_type_params", {})
-        )
-
-    else:
-        raise ValueError(
-            f"Unknown metric type: {metric_type}. "
-            f"Supported types: simple, ratio, derived, conversion"
-        )
-```
-
-### 2.4 Primary Entity Resolution Algorithm
-
-```python
-def resolve_primary_entity(
-    metric: Metric,
-    semantic_models: list[SemanticModel]
-) -> str:
-    """Resolve primary entity with fallback logic."""
-
-    # Priority 1: Explicit meta.primary_entity
-    if metric.meta and "primary_entity" in metric.meta:
-        return metric.meta["primary_entity"]
-
-    # Priority 2: Infer from denominator (ratio metrics only)
-    if metric.type == "ratio":
-        assert isinstance(metric.type_params, RatioMetricParams)
-        denominator_measure = metric.type_params.denominator
-
-        # Find semantic model containing denominator measure
-        model = find_measure_model(denominator_measure, semantic_models)
-
-        if model:
-            # Extract primary entity from model
-            primary_entity = None
-            for entity in model.entities:
-                if entity.type == "primary":
-                    primary_entity = entity.name
-                    break
-
-            if primary_entity:
-                return primary_entity
-
-    # Priority 3: Error - require explicit specification
-    raise ValueError(
-        f"Metric '{metric.name}' requires explicit primary_entity. "
-        f"Add to meta block:\n"
-        f"meta:\n"
-        f"  primary_entity: <entity_name>"
-    )
-```
-
-### 2.5 Dependency Extraction
-
-```python
-def extract_measure_dependencies(metric: Metric) -> set[str]:
-    """Extract measure dependencies by type."""
-
-    if metric.type == "simple":
-        assert isinstance(metric.type_params, SimpleMetricParams)
-        return {metric.type_params.measure}
-
-    elif metric.type == "ratio":
-        assert isinstance(metric.type_params, RatioMetricParams)
-        return {
-            metric.type_params.numerator,
-            metric.type_params.denominator
-        }
-
-    elif metric.type == "derived":
-        assert isinstance(metric.type_params, DerivedMetricParams)
-        # For derived metrics, dependencies are other metrics (not measures)
-        # Return empty set for measure dependencies
-        return set()
-
-    elif metric.type == "conversion":
-        # Conversion metrics have complex params
-        # Extract measures from conversion_type_params if present
-        assert isinstance(metric.type_params, ConversionMetricParams)
-        params = metric.type_params.conversion_type_params
-        dependencies = set()
-
-        if "base_measure" in params:
-            dependencies.add(params["base_measure"])
-        if "conversion_measure" in params:
-            dependencies.add(params["conversion_measure"])
-
-        return dependencies
-
-    return set()
-```
-
----
-
-## 3. Error Handling Strategy
-
-### 3.1 Error Categories
-
-| Error Category | Example | Handling | User Message |
-|---------------|---------|----------|--------------|
-| Missing file | `metrics/foo.yml` doesn't exist | FileNotFoundError | "File not found: {path}" |
-| Invalid YAML | Malformed YAML syntax | yaml.YAMLError | "Invalid YAML in {file}: {error}" |
-| Missing required field | No `name` field | ValidationError | "Missing required field 'name' in metric" |
-| Unknown metric type | `type: custom` | ValueError | "Unknown metric type 'custom'. Supported: simple, ratio, derived, conversion" |
-| Invalid type params | Missing `measure` in simple metric | ValidationError | "SimpleMetricParams missing required field 'measure'" |
-| Missing primary entity | Can't infer for simple metric | ValueError | "Metric requires explicit primary_entity in meta block" |
-
-### 3.2 Error Context Propagation
-
-**Follow DbtParser pattern for contextual errors:**
-
-```python
-def _parse_metric(self, metric_data: dict[str, Any]) -> Metric:
-    """Parse with error context."""
-    try:
-        # Validate required fields
-        if "name" not in metric_data:
-            raise ValueError("Missing required field 'name' in metric")
-        if "type" not in metric_data:
-            raise ValueError("Missing required field 'type' in metric")
-        if "type_params" not in metric_data:
-            raise ValueError("Missing required field 'type_params' in metric")
-
-        # Parse type params
-        type_params = self._parse_type_params(
-            metric_data["type"],
-            metric_data["type_params"]
-        )
-
-        # Construct Metric object (Pydantic validation)
-        return Metric(
-            name=metric_data["name"],
-            type=metric_data["type"],
-            type_params=type_params,
-            label=metric_data.get("label"),
-            description=metric_data.get("description"),
-            meta=metric_data.get("meta")
-        )
-
-    except Exception as e:
-        metric_name = metric_data.get("name", "unknown")
-        raise ValueError(
-            f"Error parsing metric '{metric_name}': {e}"
-        ) from e
-```
-
-### 3.3 Strict vs Lenient Mode
-
-**Inherited from `Parser` base class:**
-
-- **Strict mode** (`strict_mode=True`): Raise exceptions immediately
-- **Lenient mode** (`strict_mode=False`): Log warnings and continue parsing
-- Use `self.handle_error()` for consistent behavior
-
----
-
-## 4. Testing Strategy
-
-### 4.1 Unit Tests
-
-**File:** `src/tests/unit/test_dbt_metric_parser.py`
-
-**Test Coverage:**
-
-```python
-class TestDbtMetricParser:
-    """Unit tests for DbtMetricParser."""
-
-    # File parsing tests
-    def test_parse_empty_file() -> None
-    def test_parse_file_not_found() -> None
-    def test_parse_invalid_yaml() -> None
-
-    # Single metric type tests
-    def test_parse_simple_metric() -> None
-    def test_parse_ratio_metric() -> None
-    def test_parse_derived_metric() -> None
-    def test_parse_conversion_metric() -> None
-
-    # Multiple metrics
-    def test_parse_multiple_metrics_in_list() -> None
-    def test_parse_metrics_key_structure() -> None
-
-    # Directory parsing
-    def test_parse_directory_single_file() -> None
-    def test_parse_directory_multiple_files() -> None
-    def test_parse_directory_nested() -> None
-    def test_parse_directory_mixed_extensions() -> None
-
-    # Validation
-    def test_validate_valid_metric_structure() -> None
-    def test_validate_missing_name() -> None
-    def test_validate_missing_type() -> None
-    def test_validate_unknown_type() -> None
-
-    # Error handling
-    def test_strict_mode_raises_on_invalid() -> None
-    def test_lenient_mode_continues_on_invalid() -> None
-
-    # Edge cases
-    def test_parse_metric_with_all_fields() -> None
-    def test_parse_metric_minimal_fields() -> None
-
-
-class TestPrimaryEntityResolution:
-    """Tests for resolve_primary_entity function."""
-
-    def test_explicit_primary_entity() -> None
-    def test_infer_from_denominator_ratio_metric() -> None
-    def test_error_when_cannot_infer() -> None
-    def test_error_simple_metric_no_primary() -> None
-    def test_error_derived_metric_no_primary() -> None
-    def test_denominator_measure_not_found() -> None
-    def test_denominator_model_no_primary_entity() -> None
-
-
-class TestDependencyExtraction:
-    """Tests for extract_measure_dependencies function."""
-
-    def test_simple_metric_dependencies() -> None
-    def test_ratio_metric_dependencies() -> None
-    def test_derived_metric_dependencies() -> None
-    def test_conversion_metric_dependencies() -> None
-    def test_empty_dependencies() -> None
-
-
-class TestFindMeasureModel:
-    """Tests for find_measure_model function."""
-
-    def test_find_measure_in_first_model() -> None
-    def test_find_measure_in_second_model() -> None
-    def test_measure_not_found() -> None
-    def test_empty_semantic_models() -> None
-```
-
-### 4.2 Integration Tests
-
-**File:** `src/tests/integration/test_metric_parsing_integration.py`
-
-**Test Scenarios:**
-
-```python
-class TestMetricParsingIntegration:
-    """End-to-end metric parsing tests."""
-
-    def test_parse_real_metric_files() -> None:
-        """Parse actual metric YAML fixtures."""
-
-    def test_parse_with_semantic_models() -> None:
-        """Parse metrics and validate against semantic models."""
-
-    def test_primary_entity_resolution_end_to_end() -> None:
-        """Test full resolution flow with real data."""
-
-    def test_nested_directory_structure() -> None:
-        """Test parsing metrics from nested subdirectories."""
-```
-
-### 4.3 Test Fixtures
-
-**Create fixture files in `src/tests/fixtures/metrics/`:**
-
-```
-src/tests/fixtures/
-├── sample_semantic_model.yml  # Existing
-└── metrics/                    # NEW
-    ├── simple_metric.yml
-    ├── ratio_metric.yml
-    ├── derived_metric.yml
-    ├── conversion_metric.yml
-    └── nested/
-        └── additional_metrics.yml
-```
-
-**Example fixture content:**
-
-```yaml
-# simple_metric.yml
-metrics:
-  - name: total_revenue
-    type: simple
-    type_params:
-      measure: revenue
-    label: Total Revenue
-    description: Sum of all revenue
-    meta:
-      primary_entity: rental
-
-# ratio_metric.yml
-metrics:
-  - name: search_conversion_rate
-    type: ratio
-    type_params:
-      numerator: rental_count
-      denominator: search_count
-    label: Search Conversion Rate
-    description: Percentage of searches that convert to rentals
-    # No primary_entity - will be inferred from denominator
-
-  - name: revenue_per_user
-    type: ratio
-    type_params:
-      numerator: total_revenue
-      denominator: user_count
-    meta:
-      primary_entity: user  # Explicit
-```
-
-### 4.4 Coverage Target
-
-- **Overall module coverage:** 95%+
-- **Branch coverage:** 95%+
-- **All error paths tested:** 100%
-
----
-
-## 5. Integration Points
-
-### 5.1 With DTL-023 (Metric Schema)
-
-**Dependencies:**
-
-- `Metric` base model
-- `SimpleMetricParams`, `RatioMetricParams`, `DerivedMetricParams`, `ConversionMetricParams`
-- `MetricReference` helper model
-
-**Import pattern:**
-
-```python
-from dbt_to_lookml.schemas import (
-    Metric,
-    SimpleMetricParams,
-    RatioMetricParams,
-    DerivedMetricParams,
-    ConversionMetricParams,
-    MetricReference,
+# 1. Find which model contains the measure
+source_model = self._find_model_with_measure(measure_name, models)
+if not source_model:
+    raise ValueError(f"Measure '{measure_name}' not found in any semantic model")
+
+# 2. Find model with the metric's primary entity
+primary_model = self._find_model_by_primary_entity(
+    primary_entity, list(models.values())
 )
+if not primary_model:
+    raise ValueError(f"No model found with primary entity '{primary_entity}'")
+
+# 3. Determine reference type
+if source_model.name == primary_model.name:
+    # Same view reference (no prefix needed)
+    return f"${{{measure_name}}}"  # Line 273 - NEEDS SUFFIX
+else:
+    # Cross-view reference (apply view prefix)
+    view_name = f"{self.view_prefix}{source_model.name}"
+    return f"${{{view_name}.{measure_name}}}"  # Line 277 - NEEDS SUFFIX
 ```
 
-### 5.2 With Existing Parser Infrastructure
+### Call Sites and Impact
 
-**Inherit from base Parser:**
+1. **Simple Metrics** (`_generate_simple_sql`, line 308):
+   ```python
+   return self._resolve_measure_reference(measure_name, primary_entity, models)
+   ```
+   Example: `${order_count}` → `${order_count_measure}`
 
+2. **Ratio Metrics** (`_generate_ratio_sql`, lines 341-344):
+   ```python
+   num_ref = self._resolve_measure_reference(numerator, primary_entity, models)
+   denom_ref = self._resolve_measure_reference(denominator, primary_entity, models)
+   return f"1.0 * {num_ref} / NULLIF({denom_ref}, 0)"
+   ```
+   Example: `1.0 * ${order_count} / NULLIF(${search_count}, 0)`
+   → `1.0 * ${order_count_measure} / NULLIF(${search_count_measure}, 0)`
+
+3. **Derived Metrics** (`_generate_derived_sql`, lines 393-396):
+   ```python
+   for ref in metric_refs:
+       measure_name = ref.name
+       measure_ref = self._resolve_measure_reference(
+           measure_name, primary_entity, models
+       )
+       replacements[ref.name] = measure_ref
+   ```
+   Example: `${order_count} + ${search_count}`
+   → `${order_count_measure} + ${search_count_measure}`
+
+### Related Methods and Data Flow
+
+**Upstream**: Metric parsing and validation
+- Metrics reference measures by their original names (e.g., "order_count")
+- `EntityConnectivityValidator` validates measure existence and reachability
+- Measure names in metric definitions remain unchanged
+
+**Downstream**: LookML generation
+- `Measure.to_lookml_dict()` (DTL-023) generates measures with `_measure` suffix
+- Metrics must reference these suffixed names in their SQL expressions
+- Generated LookML: `measure: order_count_measure { hidden: yes ... }`
+
+**Parallel Impact**: Join field lists (`_build_join_graph`, line 952)
 ```python
-from dbt_to_lookml.interfaces.parser import Parser
-
-class DbtMetricParser(Parser):
-    """Extends Parser base class."""
+for measure_name in required_measures:
+    fields_list.append(f"{target_view_name}.{measure_name}")
 ```
+This also needs the suffix to reference the correct measure names, but this is handled separately in DTL-025 (test updates).
 
-**Reuse utilities:**
+## Proposed Changes
 
-- `self.read_yaml(path)` - YAML file reading
-- `self.handle_error(error, context)` - Error handling
-- `self.strict_mode` - Validation mode flag
+### Change 1: Same-View Reference (Line 273)
 
-### 5.3 With Future Components
-
-**Blocks:**
-
-- **DTL-025** (Cross-entity measure generation): Needs parsed Metric objects
-- **DTL-027** (Entity connectivity validation): Needs parsed metrics and dependency extraction
-
-**Export pattern:**
-
+**Current**:
 ```python
-# src/dbt_to_lookml/parsers/__init__.py
-from dbt_to_lookml.parsers.dbt import DbtParser
-from dbt_to_lookml.parsers.dbt_metrics import DbtMetricParser
-
-__all__ = ["DbtParser", "DbtMetricParser"]
+return f"${{{measure_name}}}"
 ```
 
----
-
-## 6. Implementation Checklist
-
-### Phase 1: Core Parser (Must Have)
-
-- [ ] Create `src/dbt_to_lookml/parsers/dbt_metrics.py`
-- [ ] Implement `DbtMetricParser` class extending `Parser`
-- [ ] Implement `parse_file()` method
-- [ ] Implement `parse_directory()` with recursion
-- [ ] Implement `validate()` method
-- [ ] Implement `_parse_metric()` internal method
-- [ ] Implement `_parse_type_params()` for all metric types
-- [ ] Implement `_validate_metric_structure()` helper
-- [ ] Export `DbtMetricParser` from `parsers/__init__.py`
-
-### Phase 2: Utility Functions (Must Have)
-
-- [ ] Implement `resolve_primary_entity()` function
-- [ ] Implement `extract_measure_dependencies()` function
-- [ ] Implement `find_measure_model()` helper
-- [ ] Add comprehensive docstrings with examples
-
-### Phase 3: Error Handling (Must Have)
-
-- [ ] Add error handling for file not found
-- [ ] Add error handling for invalid YAML
-- [ ] Add error handling for missing required fields
-- [ ] Add error handling for unknown metric type
-- [ ] Add error handling for invalid type params
-- [ ] Add clear error messages with context
-
-### Phase 4: Testing (Must Have)
-
-- [ ] Create `src/tests/unit/test_dbt_metric_parser.py`
-- [ ] Write unit tests for all public methods
-- [ ] Write unit tests for primary entity resolution
-- [ ] Write unit tests for dependency extraction
-- [ ] Write unit tests for error cases
-- [ ] Create metric YAML fixtures
-- [ ] Write integration tests
-- [ ] Achieve 95%+ branch coverage
-
-### Phase 5: Documentation (Should Have)
-
-- [ ] Add module-level docstring
-- [ ] Add class docstring with examples
-- [ ] Add method docstrings with Args/Returns/Raises
-- [ ] Add inline comments for complex logic
-- [ ] Update CLAUDE.md if needed
-
----
-
-## 7. Acceptance Criteria Validation
-
-| Criterion | Implementation Approach | Validation Method |
-|-----------|------------------------|-------------------|
-| `DbtMetricParser` extends `Parser` | Class definition with `(Parser)` inheritance | Mypy type checking |
-| `parse_file()` successfully parses single metric YAML | Implementation with YAML reading and Pydantic validation | Unit tests with fixtures |
-| `parse_directory()` recursively scans and parses all metric files | Glob pattern matching with recursion | Integration tests with nested dirs |
-| `resolve_primary_entity()` handles explicit and inferred cases | Three-tier priority logic | Unit tests covering all branches |
-| `extract_measure_dependencies()` finds all measure references | Type-specific extraction logic | Unit tests for each metric type |
-| Error handling provides clear, actionable messages | Custom error messages with context | Error handling unit tests |
-| Validation integrates with semantic models | `resolve_primary_entity()` and `find_measure_model()` | Integration tests with both parsers |
-| Parser handles all metric types | `_parse_type_params()` switch statement | Unit test per type |
-
----
-
-## 8. Risk Analysis
-
-### High Risk Items
-
-| Risk | Impact | Mitigation |
-|------|--------|-----------|
-| **DTL-023 schema changes** | Parser code breaks if Metric schema changes | Use strict type hints, comprehensive tests |
-| **Complex nested YAML structures** | Parser fails on edge cases | Test multiple YAML formats, validate early |
-| **Primary entity inference errors** | Incorrect entity assignment | Extensive unit tests, clear error messages |
-
-### Medium Risk Items
-
-| Risk | Impact | Mitigation |
-|------|--------|-----------|
-| **Performance on large directories** | Slow parsing for 100+ files | Profile if needed, consider lazy loading |
-| **Circular metric dependencies** | Derived metrics referencing each other | Document as future enhancement, validate in DTL-027 |
-
-### Low Risk Items
-
-| Risk | Impact | Mitigation |
-|------|--------|-----------|
-| **Unknown metric types in future** | Parser rejects new types | Clear error message, easy to extend |
-| **Missing semantic model during validation** | Can't resolve primary entity | Validation is optional, can defer to generation phase |
-
----
-
-## 9. Success Metrics
-
-### Functional Metrics
-
-- [ ] Parser successfully reads all 4 metric types (simple, ratio, derived, conversion)
-- [ ] Primary entity resolution works for explicit, inferred, and error cases
-- [ ] Dependency extraction returns correct measures for all types
-- [ ] Directory scanning handles nested directories and both `.yml` and `.yaml`
-- [ ] Error messages are clear and actionable for all error categories
-
-### Quality Metrics
-
-- [ ] 95%+ branch coverage on all new code
-- [ ] 100% mypy strict type checking compliance
-- [ ] All tests pass in CI/CD pipeline
-- [ ] No performance regression (parsing should be fast)
-
-### Integration Metrics
-
-- [ ] Parsed metrics integrate cleanly with DTL-025 (generator)
-- [ ] Utility functions work with semantic models from DbtParser
-- [ ] API follows same patterns as DbtParser
-
----
-
-## 10. Follow-up Tasks
-
-### Immediate (This Issue)
-
-1. Implement `DbtMetricParser` class
-2. Implement utility functions
-3. Write comprehensive tests
-4. Achieve 95%+ coverage
-
-### Future (Other Issues)
-
-1. **DTL-025**: Use parsed Metric objects in LookML generator
-2. **DTL-027**: Validate metric connectivity using dependency extraction
-3. **CLI Integration**: Add `--metrics-dir` flag to CLI
-4. **Documentation**: Add examples to CLAUDE.md
-
----
-
-## 11. Implementation Notes
-
-### Code Style
-
-- Follow existing patterns from `DbtParser`
-- Use Google-style docstrings
-- Type hints on all functions (mypy --strict)
-- 88 character line length (Black-compatible)
-
-### Testing Best Practices
-
-- Use `TemporaryDirectory` for file I/O tests
-- Mock external dependencies where appropriate
-- Follow arrange-act-assert pattern
-- Clear test names describing what is tested
-
-### Performance Considerations
-
-- YAML parsing is fast enough for typical metric counts (< 100 files)
-- No caching needed at this stage
-- Profile if performance issues arise
-
----
-
-## Appendix A: Example Usage
-
+**Proposed**:
 ```python
-from pathlib import Path
-from dbt_to_lookml.parsers.dbt_metrics import DbtMetricParser, resolve_primary_entity
-from dbt_to_lookml.parsers.dbt import DbtParser
-
-# Parse semantic models
-sem_parser = DbtParser()
-semantic_models = sem_parser.parse_directory(Path("semantic_models/"))
-
-# Parse metrics
-metric_parser = DbtMetricParser(strict_mode=True)
-metrics = metric_parser.parse_directory(Path("metrics/"))
-
-# Resolve primary entities
-for metric in metrics:
-    try:
-        primary_entity = resolve_primary_entity(metric, semantic_models)
-        print(f"Metric {metric.name} → Primary Entity: {primary_entity}")
-    except ValueError as e:
-        print(f"Error: {e}")
+return f"${{{measure_name}_measure}}"
 ```
 
----
+**Rationale**: Append `_measure` suffix to match the measure name generated by `Measure.to_lookml_dict()`
 
-## Appendix B: YAML Format Examples
+### Change 2: Cross-View Reference (Line 277)
 
-**See DTL-024 issue notes for detailed examples.**
+**Current**:
+```python
+view_name = f"{self.view_prefix}{source_model.name}"
+return f"${{{view_name}.{measure_name}}}"
+```
 
----
+**Proposed**:
+```python
+view_name = f"{self.view_prefix}{source_model.name}"
+return f"${{{view_name}.{measure_name}_measure}}"
+```
 
-**Strategy Status:** Ready for Implementation
-**Next Step:** Begin Phase 1 - Core Parser Implementation
-**Estimated Effort:** 3-5 days for implementation + testing
+**Rationale**: Append `_measure` suffix to the measure component of the cross-view reference
+
+### Summary of Changes
+
+| Line | Old | New |
+|------|-----|-----|
+| 273 | `f"${{{measure_name}}}"` | `f"${{{measure_name}_measure}}"` |
+| 277 | `f"${{{view_name}.{measure_name}}}"` | `f"${{{view_name}.{measure_name}_measure}}"` |
+
+## Implementation Plan
+
+### Phase 1: Core Changes
+1. Update line 273 to append `_measure` suffix for same-view references
+2. Update line 277 to append `_measure` suffix for cross-view references
+3. Verify method signature and docstring remain accurate (no changes needed)
+
+### Phase 2: Testing Strategy
+
+#### Unit Tests to Update (test_lookml_generator_metrics.py)
+
+**Test: `test_resolve_measure_reference_same_view` (line 71-78)**
+- Current expectation: `assert result == "${order_count}"`
+- New expectation: `assert result == "${order_count_measure}"`
+
+**Test: `test_resolve_measure_reference_cross_view` (line 80-87)**
+- Current expectation: `assert result == "${searches.search_count}"`
+- New expectation: `assert result == "${searches.search_count_measure}"`
+
+**Test: `test_resolve_measure_reference_with_prefix` (line 89-97)**
+- Current expectation: `assert result == "${v_searches.search_count}"`
+- New expectation: `assert result == "${v_searches.search_count_measure}"`
+
+#### SQL Generation Tests to Update
+
+**Simple Metrics** (`TestSQLGenerationSimple`, lines 116-195):
+- `test_generate_simple_sql`: Update from `"${searches.search_count}"` to `"${searches.search_count_measure}"`
+- `test_generate_simple_sql_with_prefix`: Update from `"${v_searches.search_count}"` to `"${v_searches.search_count_measure}"`
+
+**Ratio Metrics** (`TestSQLGenerationRatio`, lines 197-349):
+- Update numerator/denominator references to include `_measure` suffix
+- Example: `"1.0 * ${orders.order_count} / NULLIF(${searches.search_count}, 0)"`
+  → `"1.0 * ${orders.order_count_measure} / NULLIF(${searches.search_count_measure}, 0)"`
+
+**Derived Metrics** (`TestSQLGenerationDerived`, lines 351-518):
+- Update all measure references in expressions to include `_measure` suffix
+- Example: `"${order_count} + ${searches.search_count}"`
+  → `"${order_count_measure} + ${searches.search_count_measure}"`
+
+**Metric Measure Generation** (`TestMetricMeasureGeneration`, lines 815-973):
+- Update `sql` field expectations in measure dictionaries
+- Example: `assert "${searches.search_count}" in measure_dict["sql"]`
+  → `assert "${searches.search_count_measure}" in measure_dict["sql"]`
+
+### Phase 3: Integration Validation
+
+#### Coverage Requirements
+- Target: 95%+ branch coverage (maintained)
+- Existing coverage: Method has 100% branch coverage (2 branches: same-view vs cross-view)
+- Changes maintain coverage: Both branches modified consistently
+
+#### Regression Prevention
+1. Run full test suite: `make test-full`
+2. Run unit tests: `pytest src/tests/unit/test_lookml_generator_metrics.py -xvs`
+3. Run integration tests: `pytest src/tests/integration/ -xvs`
+4. Verify golden tests: `pytest src/tests/test_golden.py -xvs`
+
+## Edge Cases and Considerations
+
+### Edge Case 1: Measure Names Already Containing "_measure"
+**Scenario**: A semantic model defines a measure named "total_revenue_measure"
+**Behavior**: Will become "total_revenue_measure_measure"
+**Mitigation**: None needed - this is unlikely in practice, and consistent suffixing is preferred
+
+### Edge Case 2: Prefix Interactions
+**Scenario**: View prefix "v_" combined with cross-view reference
+**Expected Output**: `"${v_searches.order_count_measure}"`
+**Status**: Already handled correctly by existing prefix logic
+
+### Edge Case 3: Multi-Hop Measure References
+**Scenario**: Derived metric referencing measures from multiple models
+**Impact**: Each measure reference gets suffix independently
+**Status**: Handled correctly by iterating over all measure references
+
+## Dependencies and Sequencing
+
+### Prerequisite: DTL-023
+**Status**: Must be completed first
+**Reason**: `Measure.to_lookml_dict()` must generate suffixed names before references can use them
+
+**Verification**:
+```python
+# After DTL-023, measures will be generated as:
+measure_dict = {
+    "name": "order_count_measure",  # Suffixed
+    "hidden": "yes",                # Hidden
+    "type": "count",
+    "sql": "${TABLE}.order_count"
+}
+```
+
+### Dependent: DTL-025
+**Status**: Will follow this issue
+**Reason**: Test expectations need updating across all test files
+**Scope**: Unit tests, integration tests, golden tests
+
+## Validation Criteria
+
+### Functional Validation
+- [ ] Same-view measure references include `_measure` suffix
+- [ ] Cross-view measure references include `_measure` suffix
+- [ ] Simple metrics generate correct SQL with suffixed references
+- [ ] Ratio metrics generate correct SQL with suffixed references
+- [ ] Derived metrics generate correct SQL with suffixed references
+- [ ] View prefixes work correctly with suffixed references
+
+### Quality Validation
+- [ ] All unit tests pass with updated expectations
+- [ ] Branch coverage maintained at 95%+
+- [ ] No new linting or type checking errors
+- [ ] Integration tests pass with updated expectations
+- [ ] Golden tests pass with updated expectations
+
+### Regression Validation
+- [ ] Existing functionality preserved (only naming changed)
+- [ ] Error handling unchanged (measure not found, entity not found)
+- [ ] Performance unchanged (no algorithmic changes)
+
+## Testing Checklist
+
+### Unit Tests (test_lookml_generator_metrics.py)
+- [ ] `test_find_model_with_measure_found` - No changes needed
+- [ ] `test_find_model_with_measure_not_found` - No changes needed
+- [ ] `test_find_model_with_measure_empty_dict` - No changes needed
+- [ ] `test_resolve_measure_reference_same_view` - Update expectation
+- [ ] `test_resolve_measure_reference_cross_view` - Update expectation
+- [ ] `test_resolve_measure_reference_with_prefix` - Update expectation
+- [ ] `test_resolve_measure_reference_missing_measure` - No changes needed
+- [ ] `test_resolve_measure_reference_missing_primary_entity` - No changes needed
+- [ ] `test_generate_simple_sql` - Update expectation
+- [ ] `test_generate_simple_sql_same_view` - Update expectation
+- [ ] `test_generate_simple_sql_with_prefix` - Update expectation
+- [ ] `test_generate_ratio_sql` - Update expectation
+- [ ] `test_generate_ratio_sql_same_model` - Update expectation
+- [ ] `test_generate_ratio_sql_mixed_models` - Update expectation
+- [ ] `test_generate_ratio_sql_with_prefix` - Update expectation
+- [ ] `test_generate_derived_sql_addition` - Update expectation
+- [ ] `test_generate_derived_sql_subtraction` - Update expectation
+- [ ] `test_generate_derived_sql_complex` - Update expectation
+- [ ] `test_generate_derived_sql_mixed_same_cross` - Update expectation
+- [ ] All `TestMetricMeasureGeneration` tests - Update SQL expectations
+
+### Integration Tests
+- [ ] Verify end-to-end metric generation with suffixed references
+- [ ] Verify LookML syntax validation passes
+- [ ] Verify cross-entity metrics work correctly
+
+### Golden Tests
+- [ ] Update golden output files with suffixed measure references
+- [ ] Verify generated LookML matches expected format
+
+## Risk Assessment
+
+### Low Risk
+- **Scope**: Isolated to single method with clear inputs/outputs
+- **Changes**: Simple string concatenation (append "_measure")
+- **Reversibility**: Easy to revert if issues found
+- **Testing**: Comprehensive test coverage exists
+
+### Mitigation Strategies
+1. **Sequential Implementation**: Complete DTL-023 first to ensure measures exist with correct names
+2. **Incremental Testing**: Update and run tests incrementally (unit → integration → golden)
+3. **Validation Gates**: Run `make quality-gate` before considering complete
+4. **Backward Compatibility**: No external API changes (internal method only)
+
+## Acceptance Criteria
+
+### Implementation Complete
+- [ ] Line 273 updated to append `_measure` suffix
+- [ ] Line 277 updated to append `_measure` suffix
+- [ ] Code passes mypy type checking
+- [ ] Code passes ruff linting
+
+### Tests Updated
+- [ ] All unit test expectations updated
+- [ ] All integration test expectations updated
+- [ ] All golden test expectations updated
+- [ ] Coverage maintained at 95%+
+
+### Quality Gates
+- [ ] `make lint` passes
+- [ ] `make type-check` passes
+- [ ] `make test` passes
+- [ ] `make quality-gate` passes
+
+### Documentation
+- [ ] Docstring accurate (no changes needed)
+- [ ] CLAUDE.md updated if needed (likely not required for internal change)
+- [ ] Strategy document completed (this document)
+
+## Notes
+
+### Why Suffix Instead of Collision Detection?
+The universal suffix approach is simpler and more maintainable than collision detection:
+- **Collision detection**: Requires scanning all metrics, maintaining collision state, conditional naming
+- **Universal suffix**: Single, consistent rule applied everywhere
+
+### Alignment with dbt Semantic Layer Philosophy
+dbt semantic layer distinguishes between:
+- **Measures**: Internal aggregations (building blocks)
+- **Metrics**: User-facing calculations (composition of measures)
+
+LookML structure mirrors this:
+- **Measures with suffix**: Hidden internal measures (`order_count_measure { hidden: yes }`)
+- **Metrics**: Visible measures that reference hidden measures via SQL
+
+### Future Extensibility
+This approach supports future enhancements:
+- Additional measure metadata (tags, access control)
+- Metric versioning and lineage tracking
+- Alternative naming conventions (configurable suffix)
+
+## Related Issues
+
+- **Parent**: [DTL-022: Epic: Universal Measure Suffix and Hiding Strategy](./../epics/DTL-022.md)
+- **Prerequisite**: [DTL-023: Modify Measure.to_lookml_dict() to add suffix and hidden property](./../issues/DTL-023.md)
+- **Dependent**: [DTL-025: Update test expectations for measure generation](./../issues/DTL-025.md)
+
+## Implementation Timeline
+
+1. **Pre-Implementation**: Verify DTL-023 completed (5 min)
+2. **Core Changes**: Update lines 273 and 277 (5 min)
+3. **Unit Test Updates**: Update test_lookml_generator_metrics.py expectations (30 min)
+4. **Integration Test Updates**: Update integration test expectations (15 min)
+5. **Golden Test Updates**: Update golden output files (15 min)
+6. **Quality Gate**: Run full test suite and quality checks (10 min)
+7. **Review**: Self-review changes and verify completeness (10 min)
+
+**Total Estimated Time**: 90 minutes

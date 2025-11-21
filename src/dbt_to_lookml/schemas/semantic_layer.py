@@ -41,8 +41,23 @@ def _smart_title(text: str) -> str:
         "User Name"
     """
     # List of acronyms to preserve in uppercase
-    acronyms = {'UTC', 'API', 'ID', 'URL', 'HTTP', 'HTTPS', 'SQL', 'JSON',
-                'XML', 'CSV', 'HTML', 'PDF', 'UUID', 'URI', 'ISO'}
+    acronyms = {
+        "UTC",
+        "API",
+        "ID",
+        "URL",
+        "HTTP",
+        "HTTPS",
+        "SQL",
+        "JSON",
+        "XML",
+        "CSV",
+        "HTML",
+        "PDF",
+        "UUID",
+        "URI",
+        "ISO",
+    }
 
     # Replace underscores and title case
     words = text.replace("_", " ").title().split()
@@ -546,16 +561,39 @@ class Measure(BaseModel):
         return view_label, group_label
 
     def to_lookml_dict(self, model_name: str | None = None) -> dict[str, Any]:
-        """Convert measure to LookML format.
+        """Convert measure to LookML format with universal suffix and hiding.
+
+        All measures are generated with:
+        - Name suffix: '_measure' appended to distinguish from metrics
+        - Hidden property: 'yes' to hide from end users (building blocks for metrics)
 
         Args:
             model_name: Optional semantic model name for inferring group_label.
+
+        Returns:
+            Dictionary with LookML measure configuration including:
+            - name: Measure name with '_measure' suffix
+            - type: LookML aggregation type
+            - sql: SQL expression for the measure
+            - hidden: Always 'yes'
+            - Optional: description, label, view_label, group_label
+
+        Example:
+            ```python
+            measure = Measure(name="revenue", agg=AggregationType.SUM)
+            result = measure.to_lookml_dict()
+            # Returns: {"name": "revenue_measure", "type": "sum",
+            #           "sql": "${TABLE}.revenue", "hidden": "yes", ...}
+            ```
         """
         result: dict[str, Any] = {
-            "name": self.name,
+            "name": f"{self.name}_measure",
             "type": LOOKML_TYPE_MAP.get(self.agg, "number"),
             "sql": self.expr or f"${{TABLE}}.{self.name}",
         }
+
+        # All measures are hidden (internal building blocks for metrics)
+        result["hidden"] = "yes"
 
         if self.description:
             result["description"] = self.description
@@ -568,10 +606,6 @@ class Measure(BaseModel):
             result["view_label"] = view_label
         if group_label:
             result["group_label"] = group_label
-
-        # Add hidden parameter if specified
-        if self.config and self.config.meta and self.config.meta.hidden is True:
-            result["hidden"] = "yes"
 
         return result
 

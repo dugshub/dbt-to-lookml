@@ -1,6 +1,6 @@
 # Task Index
 
-Last updated: 2025-11-19 18:18:47
+Last updated: 2025-11-21 09:24:34
 
 ## Statistics
 
@@ -16,7 +16,6 @@ Last updated: 2025-11-19 18:18:47
 
 ### Refinement
 - 📦 [DTL-007: Epic: Add configurable timezone conversion for LookML dimension_groups](epics/DTL-007.md) `epic`
-- 📦 [DTL-022: Epic: Implement Cross-Entity Metrics Support](epics/DTL-022.md) `epic`
 - 📦 [DTL-001: Epic: Implement field exposure control for explore joins](epics/DTL-001.md) `epic`
 - 📦 [DTL-014: Epic: Enhanced CLI with Rich wizard and improved UX](epics/DTL-014.md) `epic`
 
@@ -35,7 +34,6 @@ Last updated: 2025-11-19 18:18:47
 - 🔹 [DTL-027: Add entity connectivity validation](issues/DTL-027.md) `feature`
 - 🔹 [DTL-013: Update documentation for timezone conversion feature](issues/DTL-013.md) `chore`
 - 🔹 [DTL-017: Implement contextual project detection and smart defaults](issues/DTL-017.md) `feature`
-- 🔹 [DTL-023: Add Metric schema models to schemas.py](issues/DTL-023.md) `feature`
 - 🔹 [DTL-006: Update integration and golden tests](issues/DTL-006.md) `feature`
 - 🔹 [DTL-016: Enhance help text with rich examples and formatting](issues/DTL-016.md) `feature`
 - 🔹 [DTL-002: Add LookML set support to schemas](issues/DTL-002.md) `feature`
@@ -44,9 +42,7 @@ Last updated: 2025-11-19 18:18:47
 - 🔹 [DTL-005: Update unit tests for field sets and joins](issues/DTL-005.md) `feature`
 - 🔹 [DTL-015: Add wizard dependencies and base infrastructure](issues/DTL-015.md) `feature`
 - 🔹 [DTL-021: Integration, testing, and documentation](issues/DTL-021.md) `chore`
-- 🔹 [DTL-025: Add cross-entity measure generation to LookMLGenerator](issues/DTL-025.md) `feature`
 - 🔹 [DTL-011: Add comprehensive unit tests for timezone conversion](issues/DTL-011.md) `feature`
-- 🔹 [DTL-024: Implement dbt metrics YAML parser](issues/DTL-024.md) `feature`
 - 🔹 [DTL-010: Add CLI flags for timezone conversion control](issues/DTL-010.md) `feature`
 - 🔹 [DTL-004: Update join generation with fields parameter](issues/DTL-004.md) `feature`
 - 🔹 [DTL-020: Implement optional TUI wizard mode with Textual](issues/DTL-020.md) `feature`
