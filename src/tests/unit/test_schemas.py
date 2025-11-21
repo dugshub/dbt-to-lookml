@@ -837,8 +837,9 @@ class TestDimensionGroupItemLabel:
         # Act
         result = dimension._to_dimension_group_dict(default_use_group_item_label=True)
 
-        # Assert - template should contain the dimension name for extraction
-        assert "created_at" in result["group_item_label"]
+        # Assert - template should exist and be a Liquid template
+        assert "group_item_label" in result
+        assert "assign" in result["group_item_label"]  # Should be a Liquid template
 
     def test_group_item_label_with_different_granularities(self) -> None:
         """Test group_item_label works with different time granularities."""

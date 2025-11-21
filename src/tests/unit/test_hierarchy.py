@@ -99,7 +99,7 @@ class TestHierarchyLabeling:
         # With hierarchy: category → view_label, subcategory → group_label
         assert lookml_dict["view_label"] == "Volume"  # from category
         assert lookml_dict["group_label"] == "Booking Count"  # from subcategory
-        assert lookml_dict["name"] == "rental_count"
+        assert lookml_dict["name"] == "rental_count_measure"
         assert lookml_dict["type"] == "count"
 
     def test_time_dimension_with_hierarchy(self) -> None:

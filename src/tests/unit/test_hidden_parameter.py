@@ -112,26 +112,26 @@ class TestHiddenParameterMeasure:
         )
         result = measure.to_lookml_dict()
         assert result["hidden"] == "yes"
-        assert result["name"] == "total_revenue"
+        assert result["name"] == "total_revenue_measure"
 
     def test_measure_with_hidden_false(self):
-        """Test measure with hidden=false doesn't add hidden parameter."""
+        """Test measure with hidden=false still gets hidden: yes (always hidden)."""
         measure = Measure(
             name="order_count",
             agg=AggregationType.COUNT,
             config=Config(meta=ConfigMeta(hidden=False)),
         )
         result = measure.to_lookml_dict()
-        assert "hidden" not in result
+        assert result["hidden"] == "yes"
 
     def test_measure_without_hidden(self):
-        """Test measure without hidden doesn't add parameter."""
+        """Test measure without hidden still gets hidden: yes (always hidden)."""
         measure = Measure(
             name="average_price",
             agg=AggregationType.AVERAGE,
         )
         result = measure.to_lookml_dict()
-        assert "hidden" not in result
+        assert result["hidden"] == "yes"
 
     def test_measure_with_hidden_and_label(self):
         """Test hidden parameter works with measure label."""
@@ -164,16 +164,16 @@ class TestHiddenParameterBackwardCompatibility:
         assert "hidden" not in result
 
     def test_existing_measures_unaffected(self):
-        """Test that existing measures without hidden are unaffected."""
+        """Test that existing measures always have _measure suffix and hidden: yes."""
         measure = Measure(
             name="revenue",
             agg=AggregationType.SUM,
             label="Total Revenue",
         )
         result = measure.to_lookml_dict()
-        assert result["name"] == "revenue"
+        assert result["name"] == "revenue_measure"
         assert result["label"] == "Total Revenue"
-        assert "hidden" not in result
+        assert result["hidden"] == "yes"
 
     def test_configmeta_none_hidden(self):
         """Test ConfigMeta with no hidden field."""

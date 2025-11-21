@@ -60,7 +60,7 @@ class TestFlatMetaLabeling:
         )
 
         view_label, group_label = measure.get_measure_labels()
-        assert view_label == " Metrics"
+        assert view_label == "  Metrics"
         assert group_label == "Revenue Metrics"
 
     def test_measure_without_meta_uses_model_name(self) -> None:
@@ -72,7 +72,7 @@ class TestFlatMetaLabeling:
         )
 
         view_label, group_label = measure.get_measure_labels(model_name="rentals")
-        assert view_label == " Metrics"
+        assert view_label == "  Metrics"
         assert group_label == "Rentals Performance"
 
     def test_measure_lookml_with_flat_meta(self) -> None:
@@ -88,9 +88,9 @@ class TestFlatMetaLabeling:
         )
 
         lookml_dict = measure.to_lookml_dict(model_name="rentals")
-        assert lookml_dict["view_label"] == " Metrics"
+        assert lookml_dict["view_label"] == "  Metrics"
         assert lookml_dict["group_label"] == "Activity Metrics"
-        assert lookml_dict["name"] == "rental_count"
+        assert lookml_dict["name"] == "rental_count_measure"
 
     def test_entity_in_fact_table_with_labels(self) -> None:
         """Test that primary entities in fact tables get labels and are hidden."""
@@ -180,8 +180,8 @@ class TestFlatMetaLabeling:
 
         # Check measure labels
         revenue_measure = view["measures"][0]
-        assert revenue_measure["name"] == "total_revenue"
-        assert revenue_measure["view_label"] == " Metrics"
+        assert revenue_measure["name"] == "total_revenue_measure"
+        assert revenue_measure["view_label"] == "  Metrics"
         assert revenue_measure["group_label"] == "Rentals Performance"
 
     def test_flat_meta_precedence_over_hierarchy(self) -> None:
