@@ -745,6 +745,7 @@ class SemanticModel(BaseModel):
         measures = []
         required_measure_names = required_measures or set()
         for measure in self.measures:
+            force_hidden = False
             if use_bi_field_filter:
                 has_bi_field = (
                     measure.config
@@ -754,7 +755,13 @@ class SemanticModel(BaseModel):
                 is_required = measure.name in required_measure_names
                 if not has_bi_field and not is_required:
                     continue  # Skip unless bi_field or required by metrics
-            measures.append(measure.to_lookml_dict(model_name=self.name))
+                # Force hidden if only included as metric dependency
+                if is_required and not has_bi_field:
+                    force_hidden = True
+            measure_dict = measure.to_lookml_dict(model_name=self.name)
+            if force_hidden:
+                measure_dict["hidden"] = "yes"
+            measures.append(measure_dict)
 
         # Collect all dimension field names for the dimensions_only set
         # Only include entities and dimensions that passed filtering
