@@ -412,7 +412,8 @@ class LookMLGenerator(Generator):
         if not primary_entity:
             raise ValueError(f"Metric '{metric.name}' has no primary_entity")
 
-        # Build replacement map: metric_name → ${view.measure}
+        # Build replacement map: alias/metric_name → ${view.measure}
+        # Use alias if provided (what appears in expr), otherwise metric name
         replacements = {}
         for ref in metric_refs:
             # Find the metric definition (metrics map to measures via same name)
@@ -421,12 +422,14 @@ class LookMLGenerator(Generator):
             measure_ref = self._resolve_measure_reference(
                 measure_name, primary_entity, models
             )
-            replacements[ref.name] = measure_ref
+            # Use alias as replacement key if provided, otherwise use metric name
+            replacement_key = ref.alias if ref.alias else ref.name
+            replacements[replacement_key] = measure_ref
 
-        # Replace all metric references in expression
+        # Replace all aliases/metric names in expression with LookML measure references
         result_expr = expr
-        for metric_name, measure_ref in replacements.items():
-            result_expr = result_expr.replace(metric_name, measure_ref)
+        for alias_or_name, measure_ref in replacements.items():
+            result_expr = result_expr.replace(alias_or_name, measure_ref)
 
         return result_expr
 

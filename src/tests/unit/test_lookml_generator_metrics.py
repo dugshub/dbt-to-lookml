@@ -503,6 +503,37 @@ class TestSQLGenerationDerived:
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
         assert sql == "${revenue_measure} + ${searches.search_count_measure}"
 
+    def test_generate_derived_sql_with_aliases(
+        self,
+        generator: LookMLGenerator,
+        models_dict: dict[str, SemanticModel],
+        all_metrics: list[Metric],
+    ) -> None:
+        """Test derived metric with aliases (the actual bug fix).
+
+        This tests the scenario where metric references use aliases in the expr,
+        which was the original bug: aliases weren't being replaced with LookML
+        measure references.
+        """
+        metric = Metric(
+            name="average_order_value",
+            type="derived",
+            type_params=DerivedMetricParams(
+                expr="total_rev / total_orders",
+                metrics=[
+                    MetricReference(name="revenue", alias="total_rev"),
+                    MetricReference(name="order_count", alias="total_orders"),
+                ],
+            ),
+            meta={"primary_entity": "order"},
+        )
+        sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
+        # Should replace aliases (total_rev, total_orders) not metric names
+        assert sql == "${revenue_measure} / ${order_count_measure}"
+        # Verify aliases were replaced (not present in final SQL)
+        assert "total_rev" not in sql
+        assert "total_orders" not in sql
+
     def test_generate_derived_sql_missing_primary_entity(
         self,
         generator: LookMLGenerator,
