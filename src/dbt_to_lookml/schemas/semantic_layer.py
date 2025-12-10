@@ -595,8 +595,12 @@ class Measure(BaseModel):
         result: dict[str, Any] = {
             "name": f"{self.name}_measure",
             "type": LOOKML_TYPE_MAP.get(self.agg, "number"),
-            "sql": self.expr or f"${{TABLE}}.{self.name}",
         }
+
+        # Only add sql for non-count types
+        # type: count in LookML doesn't take a sql parameter - it counts all rows
+        if self.agg != AggregationType.COUNT:
+            result["sql"] = self.expr or f"${{TABLE}}.{self.name}"
 
         # All measures are hidden (internal building blocks for metrics)
         result["hidden"] = "yes"
