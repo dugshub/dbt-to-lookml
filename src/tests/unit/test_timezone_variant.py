@@ -502,11 +502,53 @@ class TestGenerateTimezoneParameter:
         assert param["label"] == "Timezone"
         assert param["default_value"] == "_utc"  # Primary variant
 
+        # Check group_label defaults to "Time Dimensions"
+        assert param["group_label"] == "Time Dimensions"
+
         # Check allowed values
         assert len(param["allowed_value"]) == 2
         values = {av["label"]: av["value"] for av in param["allowed_value"]}
         assert values["LOCAL"] == "_local"
         assert values["UTC"] == "_utc"
+
+    def test_generate_timezone_parameter_custom_group_label(self):
+        """Test generating parameter with custom group_label."""
+        dim1 = Dimension(
+            name="starts_at",
+            type=DimensionType.TIME,
+            config=Config(
+                meta=ConfigMeta(
+                    timezone_variant=TimezoneVariant(
+                    canonical_name="starts_at",
+                    variant="utc",
+                    is_primary=True,
+                )
+                )
+            ),
+        )
+        dim2 = Dimension(
+            name="starts_at_local",
+            type=DimensionType.TIME,
+            config=Config(
+                meta=ConfigMeta(
+                    timezone_variant=TimezoneVariant(
+                    canonical_name="starts_at",
+                    variant="local",
+                    is_primary=False,
+                )
+                )
+            ),
+        )
+
+        variant_groups = {"rentals_starts_at": [dim1, dim2]}
+
+        generator = LookMLGenerator()
+        param = generator._generate_timezone_parameter(
+            variant_groups, group_label="Custom Time Group"
+        )
+
+        assert param is not None
+        assert param["group_label"] == "Custom Time Group"
 
     def test_generate_timezone_parameter_no_primary(self):
         """Test parameter uses first alphabetical variant when no primary."""
@@ -1095,3 +1137,263 @@ class TestTimezoneVariantEdgeCases:
         dimensions = view.get("dimensions", [])
         dim_names = [d["name"] for d in dimensions]
         assert "category" in dim_names
+
+
+class TestHasTimezoneVariants:
+    """Test _has_timezone_variants helper method."""
+
+    def test_has_timezone_variants_true(self):
+        """Test returns True when model has valid timezone variant pairs."""
+        model = SemanticModel(
+            name="rentals",
+            model="schema.rentals",
+            entities=[],
+            dimensions=[
+                Dimension(
+                    name="starts_at",
+                    type=DimensionType.TIME,
+                    config=Config(
+                        meta=ConfigMeta(
+                            timezone_variant=TimezoneVariant(
+                                canonical_name="starts_at",
+                                variant="utc",
+                                is_primary=True,
+                            )
+                        )
+                    ),
+                ),
+                Dimension(
+                    name="starts_at_local",
+                    type=DimensionType.TIME,
+                    config=Config(
+                        meta=ConfigMeta(
+                            timezone_variant=TimezoneVariant(
+                                canonical_name="starts_at",
+                                variant="local",
+                                is_primary=False,
+                            )
+                        )
+                    ),
+                ),
+            ],
+        )
+
+        generator = LookMLGenerator()
+        assert generator._has_timezone_variants(model) is True
+
+    def test_has_timezone_variants_false_no_variants(self):
+        """Test returns False when model has no timezone variants."""
+        model = SemanticModel(
+            name="rentals",
+            model="schema.rentals",
+            entities=[],
+            dimensions=[
+                Dimension(
+                    name="created_at",
+                    type=DimensionType.TIME,
+                ),
+            ],
+        )
+
+        generator = LookMLGenerator()
+        assert generator._has_timezone_variants(model) is False
+
+    def test_has_timezone_variants_false_single_variant(self):
+        """Test returns False when only one variant exists (needs 2+ to toggle)."""
+        model = SemanticModel(
+            name="rentals",
+            model="schema.rentals",
+            entities=[],
+            dimensions=[
+                Dimension(
+                    name="starts_at",
+                    type=DimensionType.TIME,
+                    config=Config(
+                        meta=ConfigMeta(
+                            timezone_variant=TimezoneVariant(
+                                canonical_name="starts_at",
+                                variant="utc",
+                                is_primary=True,
+                            )
+                        )
+                    ),
+                ),
+            ],
+        )
+
+        generator = LookMLGenerator()
+        assert generator._has_timezone_variants(model) is False
+
+
+class TestTimezoneVariantGroupLabel:
+    """Test group_label integration with timezone_selector parameter."""
+
+    def test_view_generation_includes_group_label(self):
+        """Test that generated view includes group_label on timezone_selector."""
+        model = SemanticModel(
+            name="rentals",
+            model="schema.rentals",
+            entities=[],
+            dimensions=[
+                Dimension(
+                    name="starts_at",
+                    type=DimensionType.TIME,
+                    expr="rental_starts_at_utc",
+                    config=Config(
+                        meta=ConfigMeta(
+                            timezone_variant=TimezoneVariant(
+                                canonical_name="starts_at",
+                                variant="utc",
+                                is_primary=True,
+                            )
+                        )
+                    ),
+                ),
+                Dimension(
+                    name="starts_at_local",
+                    type=DimensionType.TIME,
+                    expr="rental_starts_at_local",
+                    config=Config(
+                        meta=ConfigMeta(
+                            timezone_variant=TimezoneVariant(
+                                canonical_name="starts_at",
+                                variant="local",
+                                is_primary=False,
+                            )
+                        )
+                    ),
+                ),
+            ],
+        )
+
+        generator = LookMLGenerator()
+        view_dict = generator.generate_view(model)
+
+        view = view_dict["views"][0]
+        assert "parameter" in view
+        param = view["parameter"][0]
+        assert param["group_label"] == "Time Dimensions"
+
+    def test_view_generation_custom_group_label(self):
+        """Test that custom time_dimension_group_label is applied."""
+        model = SemanticModel(
+            name="rentals",
+            model="schema.rentals",
+            entities=[],
+            dimensions=[
+                Dimension(
+                    name="starts_at",
+                    type=DimensionType.TIME,
+                    expr="rental_starts_at_utc",
+                    config=Config(
+                        meta=ConfigMeta(
+                            timezone_variant=TimezoneVariant(
+                                canonical_name="starts_at",
+                                variant="utc",
+                                is_primary=True,
+                            )
+                        )
+                    ),
+                ),
+                Dimension(
+                    name="starts_at_local",
+                    type=DimensionType.TIME,
+                    expr="rental_starts_at_local",
+                    config=Config(
+                        meta=ConfigMeta(
+                            timezone_variant=TimezoneVariant(
+                                canonical_name="starts_at",
+                                variant="local",
+                                is_primary=False,
+                            )
+                        )
+                    ),
+                ),
+            ],
+        )
+
+        generator = LookMLGenerator(time_dimension_group_label="Custom Time Fields")
+        view_dict = generator.generate_view(model)
+
+        view = view_dict["views"][0]
+        param = view["parameter"][0]
+        assert param["group_label"] == "Custom Time Fields"
+
+
+class TestTimezoneVariantAlwaysFilter:
+    """Test always_filter generation for explores with timezone variants."""
+
+    def test_explore_with_timezone_variants_has_always_filter(self):
+        """Test that explores with timezone variants include always_filter."""
+        from dbt_to_lookml.schemas.semantic_layer import Entity
+
+        model = SemanticModel(
+            name="rentals",
+            model="schema.rentals",
+            entities=[
+                Entity(name="rental_id", type="primary"),
+            ],
+            dimensions=[
+                Dimension(
+                    name="starts_at",
+                    type=DimensionType.TIME,
+                    expr="rental_starts_at_utc",
+                    config=Config(
+                        meta=ConfigMeta(
+                            timezone_variant=TimezoneVariant(
+                                canonical_name="starts_at",
+                                variant="utc",
+                                is_primary=True,
+                            )
+                        )
+                    ),
+                ),
+                Dimension(
+                    name="starts_at_local",
+                    type=DimensionType.TIME,
+                    expr="rental_starts_at_local",
+                    config=Config(
+                        meta=ConfigMeta(
+                            timezone_variant=TimezoneVariant(
+                                canonical_name="starts_at",
+                                variant="local",
+                                is_primary=False,
+                            )
+                        )
+                    ),
+                ),
+            ],
+            measures=[],
+        )
+
+        generator = LookMLGenerator(fact_models=["rentals"])
+        explores_content = generator._generate_explores_lookml([model])
+
+        # Verify always_filter is in the output
+        assert "always_filter" in explores_content
+        assert "timezone_selector" in explores_content
+
+    def test_explore_without_timezone_variants_no_always_filter(self):
+        """Test that explores without timezone variants don't have always_filter."""
+        from dbt_to_lookml.schemas.semantic_layer import Entity
+
+        model = SemanticModel(
+            name="rentals",
+            model="schema.rentals",
+            entities=[
+                Entity(name="rental_id", type="primary"),
+            ],
+            dimensions=[
+                Dimension(
+                    name="created_at",
+                    type=DimensionType.TIME,
+                ),
+            ],
+            measures=[],
+        )
+
+        generator = LookMLGenerator(fact_models=["rentals"])
+        explores_content = generator._generate_explores_lookml([model])
+
+        # Verify always_filter is NOT in the output
+        assert "always_filter" not in explores_content

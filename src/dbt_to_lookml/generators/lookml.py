@@ -289,9 +289,27 @@ class LookMLGenerator(Generator):
 
         return groups
 
+    def _has_timezone_variants(self, model: SemanticModel) -> bool:
+        """Check if a semantic model has any timezone variant dimensions.
+
+        Quick check to determine if a model contains timezone variants that
+        would result in a timezone_selector parameter being generated.
+
+        Args:
+            model: The semantic model to check.
+
+        Returns:
+            True if the model has 2+ dimensions with matching timezone_variant
+            canonical_names (indicating toggleable variants), False otherwise.
+        """
+        groups = self._group_timezone_variants(model)
+        # Need at least one group with 2+ variants
+        return any(len(variants) >= 2 for variants in groups.values())
+
     def _generate_timezone_parameter(
         self,
         variant_groups: dict[str, list["Dimension"]],
+        group_label: str | None = None,
     ) -> dict | None:
         """Generate timezone selector parameter using variant names from meta.
 
@@ -302,6 +320,9 @@ class LookMLGenerator(Generator):
             variant_groups: Dictionary of grouped timezone variants from
                 _group_timezone_variants(). Keys are scoped canonical names,
                 values are lists of paired dimensions.
+            group_label: Optional group label for the parameter. When provided,
+                groups the timezone_selector with time dimensions in Looker's
+                field picker. Defaults to "Time Dimensions" if not specified.
 
         Returns:
             Parameter dictionary for LookML output, or None if no variants exist.
@@ -314,6 +335,7 @@ class LookMLGenerator(Generator):
                 "parameter": "timezone_selector",
                 "type": "unquoted",
                 "label": "Timezone",
+                "group_label": "Time Dimensions",
                 "allowed_value": [
                     {"label": "LOCAL", "value": "_local"},
                     {"label": "UTC", "value": "_utc"}
@@ -326,6 +348,7 @@ class LookMLGenerator(Generator):
             - Parameter values are column suffixes, not variant names
             - Default is set to primary variant's suffix
             - Falls back to first alphabetical variant if no primary specified
+            - group_label defaults to "Time Dimensions" to match time dimension grouping
         """
         if not variant_groups:
             return None
@@ -353,10 +376,14 @@ class LookMLGenerator(Generator):
         # IMPORTANT: Don't hardcode "local" - user may not have that variant
         default_variant = default_variant or sorted(variants)[0]
 
+        # Use provided group_label or default to "Time Dimensions"
+        effective_group_label = group_label if group_label is not None else "Time Dimensions"
+
         return {
             "name": "timezone_selector",
             "type": "unquoted",
             "label": "Timezone",
+            "group_label": effective_group_label,
             "description": "Select timezone for time dimensions",
             "allowed_value": [
                 {
@@ -479,6 +506,7 @@ class LookMLGenerator(Generator):
         self,
         model: SemanticModel,
         tz_variant_groups: dict[str, list["Dimension"]],
+        group_label: str | None = None,
     ) -> tuple[dict | None, set[str], dict[str, list["Dimension"]]]:
         """Process timezone variant groups to determine toggleable dimensions.
 
@@ -490,6 +518,8 @@ class LookMLGenerator(Generator):
         Args:
             model: The semantic model being processed.
             tz_variant_groups: Groups from _group_timezone_variants().
+            group_label: Optional group label for the timezone_selector parameter.
+                Passed through to _generate_timezone_parameter().
 
         Returns:
             Tuple of (parameter_dict, skip_dimensions, toggleable_dimensions):
@@ -527,7 +557,9 @@ class LookMLGenerator(Generator):
         # Generate timezone parameter if any toggleable dimensions exist
         parameter_dict = None
         if toggleable_dimensions:
-            parameter_dict = self._generate_timezone_parameter(tz_variant_groups)
+            parameter_dict = self._generate_timezone_parameter(
+                tz_variant_groups, group_label=group_label
+            )
 
         return parameter_dict, skip_dimensions, toggleable_dimensions
 
@@ -697,7 +729,9 @@ class LookMLGenerator(Generator):
 
         # Process variant groups to get toggleable dimensions and skips
         parameter_dict, skip_dimensions, toggleable_dimensions = (
-            self._process_timezone_variants(model, tz_variant_groups)
+            self._process_timezone_variants(
+                model, tz_variant_groups, group_label=self.time_dimension_group_label
+            )
         )
 
         # Rebuild dimension_groups with toggle logic
@@ -1829,6 +1863,12 @@ class LookMLGenerator(Generator):
                         "fields": join["fields"],
                     }
                     explore_dict["joins"].append(join_dict)
+
+            # Add always_filter for timezone_selector if fact model has timezone variants
+            if self._has_timezone_variants(fact_model):
+                explore_dict["always_filter"] = {
+                    "filters": [f"{view_name}.timezone_selector: \"\""]
+                }
 
             explores.append(explore_dict)
 

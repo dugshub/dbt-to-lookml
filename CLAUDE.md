@@ -917,6 +917,7 @@ view: rentals {
   parameter: timezone_selector {
     type: unquoted
     label: "Timezone"
+    group_label: "Time Dimensions"  # Groups with time dimensions in field picker
     description: "Select timezone for time dimensions"
     allowed_value: {
       label: "LOCAL"
@@ -961,10 +962,12 @@ When a user selects "LOCAL":
 
 - **`_get_canonical_key()`**: Auto-prefixes canonical_name with model name for scoping
 - **`_group_timezone_variants()`**: Groups dimensions by canonical_name
-- **`_generate_timezone_parameter()`**: Creates timezone_selector parameter
+- **`_has_timezone_variants()`**: Quick check if a model has toggleable timezone variants
+- **`_generate_timezone_parameter()`**: Creates timezone_selector parameter with group_label
 - **`_extract_base_column()`**: Strips variant suffix from expression to get base column name
 - **`_generate_toggleable_dimension_group()`**: Generates dimension_group with Liquid parameter injection
 - **`generate_view()`**: Orchestrates timezone variant processing and view generation
+- **`_generate_explores_lookml()`**: Adds always_filter for explores with timezone variants
 
 **Behavior**:
 
@@ -1027,12 +1030,62 @@ dimensions:
 parameter: timezone_selector {
   type: unquoted
   label: "Timezone"
+  group_label: "Time Dimensions"
   allowed_value: { label: "EASTERN", value: "_eastern" }
   allowed_value: { label: "LOCAL", value: "_local" }
   allowed_value: { label: "UTC", value: "_utc" }
   default_value: "_utc"  # Primary variant
 }
 ```
+
+#### Parameter Group Label
+
+The `timezone_selector` parameter automatically receives a `group_label` that matches the time dimensions it controls. This groups the timezone selector with time dimensions in Looker's field picker for better discoverability.
+
+**Default Behavior**:
+- `group_label` defaults to "Time Dimensions" (matching the default `time_dimension_group_label`)
+- If a custom `time_dimension_group_label` is specified via generator or CLI, the timezone_selector uses the same value
+
+**Configuration Precedence**:
+1. Generator `time_dimension_group_label` parameter (if provided)
+2. Default: "Time Dimensions"
+
+**Example** (with custom group label):
+```python
+generator = LookMLGenerator(time_dimension_group_label="Date Fields")
+```
+Results in:
+```lookml
+parameter: timezone_selector {
+  group_label: "Date Fields"  # Matches time dimensions
+  ...
+}
+```
+
+#### Explore always_filter
+
+When a semantic model has timezone variants, the generated explore automatically includes an `always_filter` configuration. This ensures the timezone_selector parameter appears in the filter bar, making it easily accessible to users.
+
+**Generated Explore**:
+```lookml
+explore: rentals {
+  always_filter: {
+    filters: [rentals.timezone_selector: ""]
+  }
+  # ... joins, etc.
+}
+```
+
+**Behavior**:
+- `always_filter` is only added when the fact model has timezone variants (2+ dimensions with matching `canonical_name`)
+- The filter references the base view's timezone_selector parameter
+- Users can change the timezone selection but cannot remove the filter entirely
+- Models without timezone variants generate explores without `always_filter`
+
+**Why always_filter?**
+- Ensures timezone_selector is visible in the filter bar immediately
+- Reminds users to select their preferred timezone when working with time fields
+- Provides a consistent UX for timezone-aware explores
 
 ### Parser Error Handling
 

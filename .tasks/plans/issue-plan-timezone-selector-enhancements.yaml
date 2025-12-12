@@ -1,0 +1,137 @@
+epic:
+  title: "Epic: Enhance Timezone Selector Parameter Visibility"
+  description: |
+    ## Problem Statement
+    The timezone_selector parameter generated for timezone variant dimension groups is not
+    properly organized or discoverable in Looker's UI. Currently:
+    1. The parameter lacks a group_label, so it doesn't appear grouped with the time dimensions it controls
+    2. The parameter doesn't appear in the filter bar automatically, making it easy to miss
+
+    ## Solution Approach
+    Enhance the timezone_selector parameter generation to:
+    1. Add group_label matching the time dimensions (uses time_dimension_group_label, default "Time Dimensions")
+    2. Add always_filter at the explore level to ensure timezone_selector appears in the filter bar
+       for any explore that includes views with timezone variant dimensions
+
+    ## Success Criteria
+    - timezone_selector parameter has group_label matching time dimensions in LookML output
+    - Explores with timezone variants include always_filter for timezone_selector
+    - Existing timezone variant functionality remains backward compatible
+    - All new behavior covered by unit tests
+    - Documentation updated in CLAUDE.md
+
+    ## Sub-Issues
+    1. Add group_label to timezone_selector parameter
+    2. Add always_filter for timezone_selector in explores
+    3. Add unit tests for both features
+    4. Update documentation
+
+  labels: [stack:backend, type:epic, priority:medium]
+  status: Refinement
+
+  children:
+    - title: "Add group_label to timezone_selector parameter"
+      description: |
+        Modify `_generate_timezone_parameter()` in `generators/lookml.py` to add a group_label
+        that matches the time dimensions it controls.
+
+        ## Implementation Details
+        - Use the `time_dimension_group_label` value from generator (default: "Time Dimensions")
+        - Pass the label through from `generate_view()` to `_generate_timezone_parameter()`
+        - The parameter should appear in the same field picker group as the time dimension_groups
+
+        ## Expected LookML Output
+        ```lookml
+        parameter: timezone_selector {
+          type: unquoted
+          label: "Timezone"
+          group_label: "Time Dimensions"  # NEW
+          description: "Select timezone for time dimensions"
+          allowed_value: { label: "LOCAL", value: "_local" }
+          allowed_value: { label: "UTC", value: "_utc" }
+          default_value: "_utc"
+        }
+        ```
+
+        ## Files to Modify
+        - `src/dbt_to_lookml/generators/lookml.py`: `_generate_timezone_parameter()` method
+        - Pass `time_dimension_group_label` through the call chain
+
+        Parent: Epic: Enhance Timezone Selector Parameter Visibility
+      labels: [stack:backend, type:feature, layer:molecules]
+      status: Refinement
+
+    - title: "Add always_filter for timezone_selector in explores"
+      description: |
+        Modify explore generation to add `always_filter` configuration when the explore
+        includes views that have timezone variant dimensions.
+
+        ## Implementation Details
+        - In `_generate_explores_lookml()`, detect if any view in the explore has timezone variants
+        - If timezone variants exist, add always_filter with timezone_selector reference
+        - The filter should reference the base view's timezone_selector parameter
+
+        ## Expected LookML Output
+        ```lookml
+        explore: rentals {
+          always_filter: {
+            filters: [rentals.timezone_selector: ""]
+          }
+          # ... joins, etc.
+        }
+        ```
+
+        ## Technical Considerations
+        - Need to track which views have timezone variants during view generation
+        - May need to pass this information to explore generation
+        - Handle case where joined views (not base) have timezone variants
+        - Use empty string filter value since parameter is unquoted
+
+        ## Files to Modify
+        - `src/dbt_to_lookml/generators/lookml.py`: `_generate_explores_lookml()` method
+        - May need helper method to detect timezone variant presence in view
+
+        Parent: Epic: Enhance Timezone Selector Parameter Visibility
+      labels: [stack:backend, type:feature, layer:molecules]
+      status: Refinement
+
+    - title: "Add unit tests for timezone selector enhancements"
+      description: |
+        Add comprehensive unit tests for the new timezone_selector features:
+        1. group_label on the parameter
+        2. always_filter on explores
+
+        ## Test Cases for group_label
+        - Test parameter includes group_label matching time_dimension_group_label
+        - Test parameter uses default "Time Dimensions" when no custom label set
+        - Test parameter respects custom time_dimension_group_label from generator
+
+        ## Test Cases for always_filter
+        - Test explore with timezone variants includes always_filter
+        - Test explore without timezone variants has no always_filter
+        - Test always_filter references correct view.timezone_selector
+        - Test explore with joined view having timezone variants
+
+        ## Files to Modify
+        - `src/tests/unit/test_timezone_variant.py`: Add new test classes/methods
+
+        Parent: Epic: Enhance Timezone Selector Parameter Visibility
+      labels: [stack:backend, type:feature, layer:atoms]
+      status: Refinement
+
+    - title: "Update documentation for timezone selector enhancements"
+      description: |
+        Update CLAUDE.md to document the new timezone_selector behavior.
+
+        ## Documentation Updates
+        - Add "Group Label" section under Timezone Variant Toggle
+        - Document always_filter behavior in explores
+        - Add LookML output examples showing new attributes
+        - Update "Generated LookML" example to include group_label
+
+        ## Files to Modify
+        - `CLAUDE.md`: Timezone Variant Toggle section
+
+        Parent: Epic: Enhance Timezone Selector Parameter Visibility
+      labels: [stack:backend, type:chore, layer:atoms]
+      status: Refinement
