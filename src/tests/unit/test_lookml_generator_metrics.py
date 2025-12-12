@@ -816,6 +816,34 @@ class TestInferenceMethods:
         format_name = generator._infer_value_format(metric)
         assert format_name == "usd"
 
+    def test_infer_value_format_meta_override(
+        self, generator: LookMLGenerator
+    ) -> None:
+        """Test that meta.value_format_name overrides inference."""
+        metric = Metric(
+            name="avg_star_rating",
+            type="simple",
+            type_params=SimpleMetricParams(measure="star_rating"),
+            meta={"primary_entity": "review", "value_format_name": "decimal_2"},
+        )
+        format_name = generator._infer_value_format(metric)
+        assert format_name == "decimal_2"
+
+    def test_infer_value_format_meta_override_trumps_heuristics(
+        self, generator: LookMLGenerator
+    ) -> None:
+        """Test that explicit meta.value_format_name overrides heuristics like 'revenue' → 'usd'."""
+        # This metric has 'revenue' in the name, which would normally infer 'usd'
+        metric = Metric(
+            name="monthly_revenue",
+            type="simple",
+            type_params=SimpleMetricParams(measure="revenue"),
+            meta={"primary_entity": "order", "value_format_name": "decimal_0"},
+        )
+        format_name = generator._infer_value_format(metric)
+        # Explicit override should win over heuristic
+        assert format_name == "decimal_0"
+
     def test_infer_group_label_with_meta(
         self, generator: LookMLGenerator, primary_model: SemanticModel
     ) -> None:

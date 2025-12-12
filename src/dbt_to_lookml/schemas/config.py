@@ -7,6 +7,8 @@ for metadata and hierarchy management.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 __all__ = ["Hierarchy", "TimezoneVariant", "ConfigMeta", "Config"]
@@ -128,6 +130,15 @@ class ConfigMeta(BaseModel):
             This provides highest-priority override in configuration precedence chain.
             When set, overrides any group_label from hierarchy metadata for time
             dimensions.
+        join_cardinality: Override relationship inference for foreign key entities.
+            Used on Entity config to explicitly declare join cardinality when
+            the automatic inference would be incorrect.
+            - "one_to_one": Include ALL fields (dimensions + measures) from joined view
+            - "many_to_one": Include only dimensions from joined view (default behavior)
+            - None: Use automatic relationship inference
+            This is useful when a foreign key relationship is semantically one-to-one
+            (e.g., every rental has exactly one review) but the target model has a
+            different primary key (e.g., review_id instead of rental_id).
 
     Example:
         Dimension with timezone override and hierarchy labels:
@@ -171,6 +182,7 @@ class ConfigMeta(BaseModel):
     use_group_item_label: bool | None = None
     time_dimension_group_label: str | None = None
     timezone_variant: TimezoneVariant | None = None
+    join_cardinality: Literal["one_to_one", "many_to_one"] | None = None
 
 
 class Config(BaseModel):

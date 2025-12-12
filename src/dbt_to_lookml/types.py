@@ -57,3 +57,11 @@ LOOKML_TYPE_MAP = {
     AggregationType.SUM_BOOLEAN: "sum",
     AggregationType.PERCENTILE: "percentile",
 }
+
+# Aggregation types that need float casting to avoid integer truncation
+# These operations on integer columns return integers in most SQL dialects
+FLOAT_CAST_AGGREGATIONS = {
+    AggregationType.AVERAGE,
+    AggregationType.MEDIAN,
+    AggregationType.PERCENTILE,
+}

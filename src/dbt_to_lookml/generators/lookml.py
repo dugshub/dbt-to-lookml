@@ -1050,11 +1050,12 @@ class LookMLGenerator(Generator):
     def _infer_value_format(self, metric: Metric) -> str | None:
         """Infer LookML value_format_name from metric type and name.
 
-        Heuristics:
-        - Ratio metrics → "percent_2"
-        - Names with "revenue" or "price" → "usd"
-        - Names with "count" → "decimal_0"
-        - Default → None (Looker default)
+        Priority:
+        1. meta.value_format_name (explicit override)
+        2. Ratio metrics → "percent_2"
+        3. Names with "revenue" or "price" → "usd"
+        4. Names with "count" → "decimal_0"
+        5. Default → None (Looker default)
 
         Args:
             metric: The metric to infer format for.
@@ -1063,6 +1064,10 @@ class LookMLGenerator(Generator):
             Format name or None.
         """
         from dbt_to_lookml.schemas import RatioMetricParams
+
+        # Check explicit override first
+        if metric.meta and "value_format_name" in metric.meta:
+            return metric.meta["value_format_name"]
 
         if isinstance(metric.type_params, RatioMetricParams):
             return "percent_2"
@@ -1461,6 +1466,18 @@ class LookMLGenerator(Generator):
                     from_entity_type, to_entity_type, entity_name_match
                 )
 
+                # Check for explicit join_cardinality override on the foreign entity
+                # This allows users to declare one-to-one relationships when the
+                # automatic inference would be incorrect (e.g., when target has
+                # different primary key but relationship is still semantically 1:1)
+                # TODO: Future enhancement - support reverse join discovery where
+                # models that have FKs TO the fact model can be discovered and
+                # joined automatically. See: https://github.com/...
+                if entity.config and entity.config.meta:
+                    explicit_cardinality = entity.config.meta.join_cardinality
+                    if explicit_cardinality:
+                        relationship = explicit_cardinality
+
                 # Generate SQL ON clause
                 sql_on = self._generate_sql_on_clause(
                     current_view_name,
@@ -1472,7 +1489,17 @@ class LookMLGenerator(Generator):
                 # Create join block with fields list
                 fields_list: list[str] = [f"{target_view_name}.dimensions_only*"]
 
+                # For one-to-one relationships, include ALL measures from joined view
+                # This is safe because there's no aggregation fan-out risk
+                if relationship == "one_to_one":
+                    for measure in target_model.measures:
+                        lookml_name = self.get_measure_lookml_name(measure)
+                        measure_ref = f"{target_view_name}.{lookml_name}"
+                        if measure_ref not in fields_list:
+                            fields_list.append(measure_ref)
+
                 # Enhance fields list with required measures for cross-entity metrics
+                # (This handles many_to_one joins that need specific measures)
                 if target_model.name in metric_requirements:
                     required_measures = sorted(metric_requirements[target_model.name])
                     for measure_name in required_measures:
@@ -1481,7 +1508,9 @@ class LookMLGenerator(Generator):
                             m for m in target_model.measures if m.name == measure_name
                         )
                         lookml_name = self.get_measure_lookml_name(measure)
-                        fields_list.append(f"{target_view_name}.{lookml_name}")
+                        measure_ref = f"{target_view_name}.{lookml_name}"
+                        if measure_ref not in fields_list:
+                            fields_list.append(measure_ref)
 
                 # Apply bi_field filtering if enabled
                 fields_list = self._filter_fields_by_bi_field(target_model, fields_list)

@@ -1046,6 +1046,57 @@ class TestMeasure:
         assert "CASE WHEN status = 'active'" in measure.expr
         assert measure.description == "Count of active users only"
 
+    def test_average_measure_auto_casts_to_float(self) -> None:
+        """Test that average measures auto-cast to float to avoid integer truncation."""
+        measure = Measure(name="avg_rating", agg=AggregationType.AVERAGE)
+        result = measure.to_lookml_dict()
+        # Should auto-cast to float when no expr is provided
+        assert result["sql"] == "(${TABLE}.avg_rating)::FLOAT"
+        assert result["type"] == "average"
+
+    def test_median_measure_auto_casts_to_float(self) -> None:
+        """Test that median measures auto-cast to float to avoid integer truncation."""
+        measure = Measure(name="median_score", agg=AggregationType.MEDIAN)
+        result = measure.to_lookml_dict()
+        assert result["sql"] == "(${TABLE}.median_score)::FLOAT"
+        assert result["type"] == "median"
+
+    def test_percentile_measure_auto_casts_to_float(self) -> None:
+        """Test that percentile measures auto-cast to float to avoid integer truncation."""
+        measure = Measure(name="p90_latency", agg=AggregationType.PERCENTILE)
+        result = measure.to_lookml_dict()
+        assert result["sql"] == "(${TABLE}.p90_latency)::FLOAT"
+        assert result["type"] == "percentile"
+
+    def test_average_with_expr_also_casts(self) -> None:
+        """Test that average measures with explicit expr also get cast."""
+        measure = Measure(
+            name="avg_rating",
+            agg=AggregationType.AVERAGE,
+            expr="rating_value",
+        )
+        result = measure.to_lookml_dict()
+        # Always cast for average to avoid integer truncation
+        assert result["sql"] == "(rating_value)::FLOAT"
+
+    def test_sum_measure_does_not_auto_cast(self) -> None:
+        """Test that sum measures don't auto-cast (preserve integer behavior)."""
+        measure = Measure(name="total_count", agg=AggregationType.SUM)
+        result = measure.to_lookml_dict()
+        # SUM should not cast to float
+        assert result["sql"] == "${TABLE}.total_count"
+
+    def test_min_max_measures_do_not_auto_cast(self) -> None:
+        """Test that min/max measures don't auto-cast (preserve original type)."""
+        min_measure = Measure(name="min_value", agg=AggregationType.MIN)
+        max_measure = Measure(name="max_value", agg=AggregationType.MAX)
+
+        min_result = min_measure.to_lookml_dict()
+        max_result = max_measure.to_lookml_dict()
+
+        assert min_result["sql"] == "${TABLE}.min_value"
+        assert max_result["sql"] == "${TABLE}.max_value"
+
 
 class TestSemanticModel:
     """Test cases for SemanticModel."""

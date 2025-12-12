@@ -17,7 +17,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from dbt_to_lookml.schemas.config import Config
-from dbt_to_lookml.types import LOOKML_TYPE_MAP, AggregationType, DimensionType
+from dbt_to_lookml.types import (
+    FLOAT_CAST_AGGREGATIONS,
+    LOOKML_TYPE_MAP,
+    AggregationType,
+    DimensionType,
+)
 
 
 def _smart_title(text: str) -> str:
@@ -112,12 +117,21 @@ __all__ = [
 
 
 class Entity(BaseModel):
-    """Represents an entity in a semantic model."""
+    """Represents an entity in a semantic model.
+
+    Attributes:
+        name: Entity name (used as dimension name and for join relationships).
+        type: Entity type - "primary", "foreign", or "unique".
+        expr: Optional SQL expression (defaults to entity name).
+        description: Optional description for LookML output.
+        config: Optional configuration for metadata including join_cardinality.
+    """
 
     name: str
     type: str
     expr: str | None = None
     description: str | None = None
+    config: Config | None = None
 
     def _qualify_sql_expression(self, expr: str | None, field_name: str) -> str:
         """Ensure SQL expressions use ${TABLE} to avoid ambiguous column references.
@@ -613,7 +627,13 @@ class Measure(BaseModel):
         # Only add sql for non-count types
         # type: count in LookML doesn't take a sql parameter - it counts all rows
         if self.agg != AggregationType.COUNT:
-            result["sql"] = self.expr or f"${{TABLE}}.{self.name}"
+            base_sql = self.expr or f"${{TABLE}}.{self.name}"
+            # Auto-cast for aggregations that truncate integers (e.g., AVG on int)
+            # Always cast for average/median/percentile to avoid Redshift integer truncation
+            if self.agg in FLOAT_CAST_AGGREGATIONS:
+                result["sql"] = f"({base_sql})::FLOAT"
+            else:
+                result["sql"] = base_sql
 
         # All measures are hidden (internal building blocks for metrics)
         result["hidden"] = "yes"

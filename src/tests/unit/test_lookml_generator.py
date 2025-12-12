@@ -1327,6 +1327,121 @@ class TestBuildJoinGraph:
             expected_fields = f"{join['view_name']}.dimensions_only*"
             assert join["fields"] == [expected_fields]
 
+    def test_build_join_graph_explicit_one_to_one_cardinality(self) -> None:
+        """Test that explicit join_cardinality includes all measures from joined view."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(
+                        name="review_id",
+                        type="foreign",
+                        config=Config(
+                            meta=ConfigMeta(join_cardinality="one_to_one")
+                        ),
+                    ),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="reviews",
+                model="fact_reviews",
+                entities=[Entity(name="review_id", type="primary")],
+                measures=[
+                    Measure(name="review_count", agg=AggregationType.COUNT),
+                    Measure(name="avg_rating", agg=AggregationType.AVERAGE, expr="rating"),
+                ],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        assert len(joins) == 1
+        assert joins[0]["view_name"] == "reviews"
+        # Should use one_to_one relationship from explicit config
+        assert joins[0]["relationship"] == "one_to_one"
+        # Should include dimensions AND all measures
+        assert "reviews.dimensions_only*" in joins[0]["fields"]
+        assert "reviews.review_count_measure" in joins[0]["fields"]
+        assert "reviews.avg_rating_measure" in joins[0]["fields"]
+
+    def test_build_join_graph_explicit_many_to_one_excludes_measures(self) -> None:
+        """Test that explicit many_to_one cardinality excludes measures."""
+        generator = LookMLGenerator()
+
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(
+                        name="user_id",
+                        type="foreign",
+                        config=Config(
+                            meta=ConfigMeta(join_cardinality="many_to_one")
+                        ),
+                    ),
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
+                measures=[
+                    Measure(name="user_count", agg=AggregationType.COUNT),
+                ],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        assert len(joins) == 1
+        assert joins[0]["view_name"] == "users"
+        assert joins[0]["relationship"] == "many_to_one"
+        # Should only include dimensions, NOT measures
+        assert joins[0]["fields"] == ["users.dimensions_only*"]
+
+    def test_build_join_graph_inferred_one_to_one_includes_measures(self) -> None:
+        """Test that inferred one_to_one relationship also includes all measures."""
+        generator = LookMLGenerator()
+
+        # When both sides have same entity as primary, it's inferred as one_to_one
+        models = [
+            SemanticModel(
+                name="rentals",
+                model="fact_rentals",
+                entities=[
+                    Entity(name="rental_id", type="primary"),
+                    Entity(name="rental_id", type="foreign"),  # FK to itself (e.g., extension)
+                ],
+                measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
+            ),
+            SemanticModel(
+                name="rental_details",
+                model="fact_rental_details",
+                entities=[Entity(name="rental_id", type="primary")],
+                measures=[
+                    Measure(name="detail_count", agg=AggregationType.COUNT),
+                ],
+            ),
+        ]
+
+        joins = generator._build_join_graph(models[0], models)
+
+        assert len(joins) == 1
+        assert joins[0]["view_name"] == "rental_details"
+        # Should be inferred as one_to_one (both sides have rental_id as primary)
+        assert joins[0]["relationship"] == "one_to_one"
+        # Should include all measures
+        assert "rental_details.dimensions_only*" in joins[0]["fields"]
+        assert "rental_details.detail_count_measure" in joins[0]["fields"]
+
 
 class TestGenerateExploreslookml:
     """Tests for _generate_explores_lookml method."""
