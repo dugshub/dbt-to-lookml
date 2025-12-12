@@ -1087,6 +1087,83 @@ explore: rentals {
 - Reminds users to select their preferred timezone when working with time fields
 - Provides a consistent UX for timezone-aware explores
 
+### Explicit Join Cardinality for One-to-One Relationships
+
+By default, the generator infers join relationships based on entity types. However, when you have a semantically one-to-one relationship that can't be automatically inferred (e.g., the target model has a different primary key), you can explicitly declare the cardinality using the `join_cardinality` metadata on the foreign key entity.
+
+#### Use Case
+
+When a fact table has a one-to-one relationship with another table (e.g., every rental has exactly one review), you want to include ALL fields (dimensions AND measures) from the joined table in the explore. Without explicit cardinality, the generator would use `many_to_one` and only include dimensions.
+
+#### Configuration
+
+Add `join_cardinality` to the foreign key entity's config:
+
+```yaml
+# In rentals semantic model
+semantic_model:
+  name: rentals
+  entities:
+    - name: rental_id
+      type: primary
+    - name: review_id
+      type: foreign
+      config:
+        meta:
+          join_cardinality: one_to_one  # ← Explicit override
+```
+
+#### Configuration Options
+
+- **`one_to_one`**: Include ALL fields (dimensions + measures) from joined view
+  - Safe because there's no aggregation fan-out risk
+  - Use when every fact row has exactly one related row in the joined table
+- **`many_to_one`**: Include only dimensions from joined view (default behavior)
+  - Standard behavior for dimension tables
+- **`None` (omitted)**: Use automatic relationship inference
+
+#### Generated LookML
+
+With `join_cardinality: one_to_one`:
+```lookml
+explore: gold_rentals {
+  join: gold_reviews {
+    sql_on: ${gold_rentals.review_id} = ${gold_reviews.review_id} ;;
+    relationship: one_to_one
+    type: left_outer
+    fields: [
+      gold_reviews.dimensions_only*,
+      gold_reviews.review_count_measure,  # ← Measures included!
+      gold_reviews.avg_rating_measure
+    ]
+  }
+}
+```
+
+Without explicit cardinality (inferred as `many_to_one`):
+```lookml
+explore: gold_rentals {
+  join: gold_reviews {
+    sql_on: ${gold_rentals.review_id} = ${gold_reviews.review_id} ;;
+    relationship: many_to_one
+    type: left_outer
+    fields: [gold_reviews.dimensions_only*]  # ← Only dimensions
+  }
+}
+```
+
+#### Implementation Details
+
+- **Entity.config**: Added optional `config: Config` field to Entity schema
+- **ConfigMeta.join_cardinality**: Added `Literal["one_to_one", "many_to_one"] | None` field
+- **LookMLGenerator._build_join_graph()**: Checks `entity.config.meta.join_cardinality` and:
+  - If `one_to_one`: Adds all measures from target model to join fields list
+  - Otherwise: Uses inferred relationship and only includes `dimensions_only*`
+
+#### Future Enhancement
+
+TODO: Support reverse join discovery where models that have foreign keys TO the fact model can be discovered and joined automatically. Currently, joins are only discovered by following foreign keys FROM the fact model outward.
+
 ### Parser Error Handling
 
 - `DbtParser` supports `strict_mode` (fail fast) vs. lenient mode (log warnings, continue)

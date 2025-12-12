@@ -1407,27 +1407,26 @@ class TestBuildJoinGraph:
         # Should only include dimensions, NOT measures
         assert joins[0]["fields"] == ["users.dimensions_only*"]
 
-    def test_build_join_graph_inferred_one_to_one_includes_measures(self) -> None:
-        """Test that inferred one_to_one relationship also includes all measures."""
+    def test_build_join_graph_without_explicit_cardinality_uses_inference(self) -> None:
+        """Test that without explicit join_cardinality, inference is used."""
         generator = LookMLGenerator()
 
-        # When both sides have same entity as primary, it's inferred as one_to_one
         models = [
             SemanticModel(
                 name="rentals",
                 model="fact_rentals",
                 entities=[
                     Entity(name="rental_id", type="primary"),
-                    Entity(name="rental_id", type="foreign"),  # FK to itself (e.g., extension)
+                    Entity(name="user_id", type="foreign"),  # No config → use inference
                 ],
                 measures=[Measure(name="rental_count", agg=AggregationType.COUNT)],
             ),
             SemanticModel(
-                name="rental_details",
-                model="fact_rental_details",
-                entities=[Entity(name="rental_id", type="primary")],
+                name="users",
+                model="dim_users",
+                entities=[Entity(name="user_id", type="primary")],
                 measures=[
-                    Measure(name="detail_count", agg=AggregationType.COUNT),
+                    Measure(name="user_count", agg=AggregationType.COUNT),
                 ],
             ),
         ]
@@ -1435,12 +1434,11 @@ class TestBuildJoinGraph:
         joins = generator._build_join_graph(models[0], models)
 
         assert len(joins) == 1
-        assert joins[0]["view_name"] == "rental_details"
-        # Should be inferred as one_to_one (both sides have rental_id as primary)
-        assert joins[0]["relationship"] == "one_to_one"
-        # Should include all measures
-        assert "rental_details.dimensions_only*" in joins[0]["fields"]
-        assert "rental_details.detail_count_measure" in joins[0]["fields"]
+        assert joins[0]["view_name"] == "users"
+        # Foreign to primary → inferred as many_to_one
+        assert joins[0]["relationship"] == "many_to_one"
+        # many_to_one should NOT include measures
+        assert joins[0]["fields"] == ["users.dimensions_only*"]
 
 
 class TestGenerateExploreslookml:
