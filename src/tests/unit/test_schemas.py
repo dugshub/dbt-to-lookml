@@ -23,11 +23,45 @@ from dbt_to_lookml.schemas.semantic_layer import (
     RatioMetricParams,
     SemanticModel,
     SimpleMetricParams,
+    _smart_title,
 )
 from dbt_to_lookml.types import (
     AggregationType,
     DimensionType,
 )
+
+
+class TestSmartTitle:
+    """Test cases for _smart_title utility function."""
+
+    def test_underscore_to_title(self) -> None:
+        """Test converting underscore-separated text to title case."""
+        assert _smart_title("rental_end") == "Rental End"
+        assert _smart_title("user_name") == "User Name"
+
+    def test_preserves_acronyms(self) -> None:
+        """Test that common acronyms are preserved in uppercase."""
+        assert _smart_title("rental_end_utc") == "Rental End UTC"
+        assert _smart_title("api_key_id") == "API Key ID"
+        assert _smart_title("http_url") == "HTTP URL"
+
+    def test_preserves_preformatted_with_parentheses(self) -> None:
+        """Test that pre-formatted values with parentheses are preserved as-is."""
+        assert _smart_title("Facility Created (UTC)") == "Facility Created (UTC)"
+        assert _smart_title("Rental Updated (UTC)") == "Rental Updated (UTC)"
+        assert _smart_title("Some Value (Local)") == "Some Value (Local)"
+        # Even if lowercase, parentheses trigger preservation
+        assert _smart_title("test value (utc)") == "test value (utc)"
+
+    def test_preserves_leading_whitespace(self) -> None:
+        """Test that leading whitespace for sort order is preserved."""
+        assert _smart_title(" Metrics") == " Metrics"
+        assert _smart_title("  Date Dimensions") == "  Date Dimensions"
+        assert _smart_title(" rental_end_utc") == " Rental End UTC"
+
+    def test_preformatted_with_leading_whitespace(self) -> None:
+        """Test pre-formatted values with leading whitespace are preserved."""
+        assert _smart_title(" Facility Created (UTC)") == " Facility Created (UTC)"
 
 
 class TestEntity:

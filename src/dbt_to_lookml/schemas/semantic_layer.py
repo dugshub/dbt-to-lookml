@@ -26,11 +26,16 @@ def _smart_title(text: str) -> str:
     Replaces underscores with spaces and title-cases each word, but preserves
     common acronyms like UTC, API, ID, URL, etc. in uppercase.
 
+    If the text appears to be pre-formatted (contains parentheses, indicating
+    user has already formatted the label), returns the text unchanged to
+    preserve exact case from source YAML.
+
     Args:
         text: Input text with underscores (e.g., "rental_end_utc")
 
     Returns:
-        Title-cased text with preserved acronyms (e.g., "Rental End UTC")
+        Title-cased text with preserved acronyms (e.g., "Rental End UTC"),
+        or original text if pre-formatted.
 
     Examples:
         >>> _smart_title("rental_end_utc")
@@ -39,7 +44,19 @@ def _smart_title(text: str) -> str:
         "API Key ID"
         >>> _smart_title("user_name")
         "User Name"
+        >>> _smart_title("Facility Created (UTC)")
+        "Facility Created (UTC)"  # Preserved as-is
     """
+    # Preserve leading whitespace for sort order control
+    leading_spaces = len(text) - len(text.lstrip())
+    prefix = text[:leading_spaces]
+    text_content = text[leading_spaces:]
+
+    # Skip title-casing for pre-formatted values (contain parentheses)
+    # These are likely already properly formatted by the user
+    if "(" in text_content or ")" in text_content:
+        return text
+
     # List of acronyms to preserve in uppercase
     acronyms = {
         "UTC",
@@ -59,12 +76,8 @@ def _smart_title(text: str) -> str:
         "ISO",
     }
 
-    # Preserve leading whitespace for sort order control
-    leading_spaces = len(text) - len(text.lstrip())
-    prefix = text[:leading_spaces]
-
     # Replace underscores and title case
-    words = text.replace("_", " ").title().split()
+    words = text_content.replace("_", " ").title().split()
 
     # Preserve acronyms
     result_words = []

@@ -850,6 +850,190 @@ For time dimension organization, the complete precedence chain is:
    - `group_label: "Time Dimensions"` - Default grouping
    - `group_item_label` disabled - Default is full field names
 
+### Timezone Variant Toggle
+
+The timezone variant toggle feature allows you to group multiple timezone representations of the same time dimension (e.g., UTC and local time) into a single toggleable dimension_group in LookML. Users can switch between timezone variants using a parameter in Looker's UI, reducing field clutter and providing a better user experience.
+
+#### Use Case
+
+When you have the same timestamp stored in multiple timezone representations (e.g., `rental_starts_at_utc` and `rental_starts_at_local`), instead of exposing both as separate dimension_groups, this feature:
+
+1. Collapses variants into a single dimension_group
+2. Generates a `timezone_selector` parameter for timezone switching
+3. Uses Liquid templating to dynamically switch between column variants
+
+#### Configuration
+
+Timezone variants are configured at the dimension level using the `timezone_variant` metadata:
+
+```yaml
+dimensions:
+  - name: starts_at
+    label: "Rental Start"  # Clean label without timezone indicator
+    type: time
+    expr: rental_starts_at_utc
+    type_params:
+      time_granularity: day
+    config:
+      meta:
+        timezone_variant:
+          canonical_name: "starts_at"  # Shared identifier for grouping variants
+          variant: "utc"                # Variant identifier (matches column suffix)
+          is_primary: true              # This variant becomes the toggleable dimension
+
+  - name: starts_at_local
+    label: "Rental Start"  # Same clean label
+    type: time
+    expr: rental_starts_at_local
+    type_params:
+      time_granularity: day
+    config:
+      meta:
+        timezone_variant:
+          canonical_name: "starts_at"  # Same canonical_name groups with UTC variant
+          variant: "local"              # Variant identifier (matches column suffix)
+          is_primary: false             # Non-primary variants are excluded from output
+```
+
+#### Configuration Fields
+
+- **canonical_name**: The base name shared by all variants of this dimension. Used for grouping variants together. Can optionally be prefixed with the model name for scoping (e.g., `"rentals_starts_at"`). If not prefixed, the generator will auto-prefix to prevent collisions across models.
+
+- **variant**: The timezone variant identifier (e.g., `"utc"`, `"local"`, `"eastern"`). Must match the suffix of the column expression exactly (case-sensitive). For example, if `expr` is `"rental_starts_at_utc"`, `variant` should be `"utc"`.
+
+- **is_primary**: Whether this variant should be used as the primary dimension in the generated LookML. Only one variant per `canonical_name` should have `is_primary: true`. The primary variant's configuration (labels, descriptions, etc.) will be used in the generated toggleable dimension_group.
+
+#### Generated LookML
+
+**Input**: Two time dimensions with timezone_variant configuration
+
+**Output**: Single toggleable dimension_group with parameter
+
+```lookml
+view: rentals {
+  sql_table_name: schema.rentals ;;
+
+  # Timezone selector parameter (auto-generated)
+  parameter: timezone_selector {
+    type: unquoted
+    label: "Timezone"
+    description: "Select timezone for time dimensions"
+    allowed_value: {
+      label: "LOCAL"
+      value: "_local"
+    }
+    allowed_value: {
+      label: "UTC"
+      value: "_utc"
+    }
+    default_value: "_utc"  # Primary variant
+  }
+
+  # Toggleable dimension_group (combines both variants)
+  dimension_group: rental_start {
+    label: "Rental Start"
+    type: time
+    timeframes: [date, week, month, quarter, year]
+    sql: ${TABLE}.rental_starts_at{% parameter timezone_selector %} ;;
+    description: "Use timezone selector to toggle timezone."
+    convert_tz: no
+  }
+}
+```
+
+#### How It Works
+
+1. **Variant Grouping**: Dimensions with the same `canonical_name` are grouped together
+2. **Primary Selection**: The dimension with `is_primary: true` becomes the visible dimension_group
+3. **Parameter Generation**: A `timezone_selector` parameter is created with all unique variant values
+4. **SQL Injection**: The dimension's SQL uses Liquid templating to inject the selected timezone suffix
+5. **Field Filtering**: Non-primary variants are excluded from the generated LookML
+
+When a user selects "UTC" in the timezone selector:
+- SQL expands to: `${TABLE}.rental_starts_at_utc`
+
+When a user selects "LOCAL":
+- SQL expands to: `${TABLE}.rental_starts_at_local`
+
+#### Implementation Details
+
+**Key Methods** (in `LookMLGenerator`):
+
+- **`_get_canonical_key()`**: Auto-prefixes canonical_name with model name for scoping
+- **`_group_timezone_variants()`**: Groups dimensions by canonical_name
+- **`_generate_timezone_parameter()`**: Creates timezone_selector parameter
+- **`_extract_base_column()`**: Strips variant suffix from expression to get base column name
+- **`_generate_toggleable_dimension_group()`**: Generates dimension_group with Liquid parameter injection
+- **`generate_view()`**: Orchestrates timezone variant processing and view generation
+
+**Behavior**:
+
+| Scenario | Behavior |
+|----------|----------|
+| No timezone_variant config | Generates normally (backward compatible) |
+| Single variant | No toggle (treated as normal dimension) |
+| 2+ variants, no primary | Uses first variant as primary |
+| 2+ variants, has primary | Primary becomes toggleable dimension |
+
+#### Edge Cases
+
+1. **Single Variant**: If only one dimension has `timezone_variant` with a given `canonical_name`, no toggle is generated (misconfiguration warning candidate for future enhancement)
+
+2. **No Primary Specified**: If no variant has `is_primary: true`, the first variant in the list becomes the primary
+
+3. **Mixed Dimensions**: Models can have both timezone-variant and normal time dimensions. Only variant pairs are collapsed.
+
+4. **Malformed Config**: Missing required fields (`canonical_name`, `variant`, `is_primary`) are handled gracefully:
+   - Non-strict mode: Warning logged, dimension treated as normal
+   - Strict mode: ValueError raised
+
+#### Example: Multiple Timezone Variants
+
+```yaml
+dimensions:
+  - name: starts_at
+    type: time
+    expr: rental_starts_at_utc
+    config:
+      meta:
+        timezone_variant:
+          canonical_name: "starts_at"
+          variant: "utc"
+          is_primary: true
+
+  - name: starts_at_local
+    type: time
+    expr: rental_starts_at_local
+    config:
+      meta:
+        timezone_variant:
+          canonical_name: "starts_at"
+          variant: "local"
+          is_primary: false
+
+  - name: starts_at_eastern
+    type: time
+    expr: rental_starts_at_eastern
+    config:
+      meta:
+        timezone_variant:
+          canonical_name: "starts_at"
+          variant: "eastern"
+          is_primary: false
+```
+
+**Generated Parameter**:
+```lookml
+parameter: timezone_selector {
+  type: unquoted
+  label: "Timezone"
+  allowed_value: { label: "EASTERN", value: "_eastern" }
+  allowed_value: { label: "LOCAL", value: "_local" }
+  allowed_value: { label: "UTC", value: "_utc" }
+  default_value: "_utc"  # Primary variant
+}
+```
+
 ### Parser Error Handling
 
 - `DbtParser` supports `strict_mode` (fail fast) vs. lenient mode (log warnings, continue)

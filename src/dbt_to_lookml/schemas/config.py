@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-__all__ = ["Hierarchy", "ConfigMeta", "Config"]
+__all__ = ["Hierarchy", "TimezoneVariant", "ConfigMeta", "Config"]
 
 
 class Hierarchy(BaseModel):
@@ -18,6 +18,61 @@ class Hierarchy(BaseModel):
     entity: str | None = None
     category: str | None = None
     subcategory: str | None = None
+
+
+class TimezoneVariant(BaseModel):
+    """Configuration for timezone variant dimensions.
+
+    Used to group multiple timezone representations of the same time dimension
+    (e.g., UTC and local time) into a single toggleable dimension_group in LookML.
+
+    Attributes:
+        canonical_name: The base name shared by all variants of this dimension.
+            Used for grouping variants together. Can optionally be prefixed with
+            the model name for scoping (e.g., "rentals_starts_at"). If not prefixed,
+            the generator will auto-prefix to prevent collisions across models.
+        variant: The timezone variant identifier (e.g., "utc", "local", "eastern").
+            Must match the suffix of the column expression exactly (case-sensitive).
+            For example, if expr is "rental_starts_at_utc", variant should be "utc".
+        is_primary: Whether this variant should be used as the primary dimension in
+            the generated LookML. Only one variant per canonical_name should have
+            is_primary: true. The primary variant's configuration (labels, descriptions,
+            etc.) will be used in the generated toggleable dimension_group.
+
+    Example:
+        ```yaml
+        dimensions:
+          - name: starts_at
+            label: "Rental Start"  # Clean label without timezone indicator
+            type: time
+            expr: rental_starts_at_utc
+            config:
+              meta:
+                timezone_variant:
+                  canonical_name: "starts_at"
+                  variant: "utc"
+                  is_primary: true
+
+          - name: starts_at_local
+            label: "Rental Start"  # Same clean label
+            type: time
+            expr: rental_starts_at_local
+            config:
+              meta:
+                timezone_variant:
+                  canonical_name: "starts_at"
+                  variant: "local"
+                  is_primary: false
+        ```
+
+    See Also:
+        PHASE_1B_FINAL_PLAN.md: Implementation details and requirements
+        TIMEZONE_TOGGLE_DESIGN.md: Design rationale and examples
+    """
+
+    canonical_name: str
+    variant: str
+    is_primary: bool
 
 
 class ConfigMeta(BaseModel):
@@ -115,6 +170,7 @@ class ConfigMeta(BaseModel):
     bi_field: bool | None = None
     use_group_item_label: bool | None = None
     time_dimension_group_label: str | None = None
+    timezone_variant: TimezoneVariant | None = None
 
 
 class Config(BaseModel):

@@ -10,6 +10,7 @@ from rich.console import Console
 
 from dbt_to_lookml.interfaces.generator import Generator
 from dbt_to_lookml.schemas.semantic_layer import Metric, SemanticModel, _smart_title
+from dbt_to_lookml.types import DimensionType
 
 if TYPE_CHECKING:
     from dbt_to_lookml.schemas.semantic_layer import Measure
@@ -192,6 +193,532 @@ class LookMLGenerator(Generator):
         """
 
         return f"{measure.name}{self.measure_suffix}"
+
+    def _get_canonical_key(
+        self,
+        model: SemanticModel,
+        dimension: "Dimension",
+    ) -> str:
+        """Get scoped canonical key for timezone variant grouping.
+
+        Auto-prefixes canonical_name with model name for scoping unless already
+        prefixed. This prevents collisions when multiple models have dimensions
+        with the same canonical_name.
+
+        Args:
+            model: The semantic model containing the dimension.
+            dimension: The dimension with timezone_variant configuration.
+
+        Returns:
+            Scoped canonical key (e.g., "rentals_starts_at").
+
+        Example:
+            >>> # Auto-prefix case
+            >>> canonical_name = "starts_at"
+            >>> _get_canonical_key(model, dim)  # Returns "rentals_starts_at"
+            >>>
+            >>> # Already prefixed case
+            >>> canonical_name = "rentals_starts_at"
+            >>> _get_canonical_key(model, dim)  # Returns "rentals_starts_at" (no double prefix)
+        """
+        if (
+            not dimension.config
+            or not dimension.config.meta
+            or not dimension.config.meta.timezone_variant
+        ):
+            raise ValueError("Dimension missing timezone_variant configuration")
+
+        canonical_name = dimension.config.meta.timezone_variant.canonical_name
+
+        # If already prefixed with model name, use as-is (idempotent)
+        if canonical_name.startswith(f"{model.name}_"):
+            return canonical_name
+
+        # Otherwise auto-prefix for scoping
+        return f"{model.name}_{canonical_name}"
+
+    def _group_timezone_variants(
+        self,
+        model: SemanticModel,
+    ) -> dict[str, list["Dimension"]]:
+        """Group time dimensions by timezone variant canonical name.
+
+        Detects dimensions with timezone_variant configuration and groups them
+        by their scoped canonical_name. Only time-type dimensions are processed.
+        Groups with 2+ variants can be collapsed into a single dimension_group
+        with timezone toggle logic.
+
+        Args:
+            model: The semantic model to process.
+
+        Returns:
+            Dictionary mapping canonical keys to dimension lists.
+            Keys are scoped (e.g., "rentals_starts_at").
+            Values are lists of dimensions sharing that canonical name.
+
+        Example:
+            >>> groups = _group_timezone_variants(rentals_model)
+            >>> groups
+            {
+                "rentals_starts_at": [starts_at_dim, starts_at_local_dim],
+                "rentals_ends_at": [ends_at_dim, ends_at_local_dim],
+            }
+
+        Note:
+            - Non-time dimensions with timezone_variant are ignored
+            - Dimensions without timezone_variant are ignored
+            - Groups with 1 dimension indicate misconfiguration (warning candidate)
+        """
+        groups: dict[str, list["Dimension"]] = {}
+
+        for dim in model.dimensions:
+            # Only process time dimensions with timezone_variant config
+            if dim.type != DimensionType.TIME:
+                continue
+
+            if (
+                not dim.config
+                or not dim.config.meta
+                or not dim.config.meta.timezone_variant
+            ):
+                continue
+
+            # Get scoped canonical key and group
+            canonical_key = self._get_canonical_key(model, dim)
+            groups.setdefault(canonical_key, []).append(dim)
+
+        return groups
+
+    def _generate_timezone_parameter(
+        self,
+        variant_groups: dict[str, list["Dimension"]],
+    ) -> dict | None:
+        """Generate timezone selector parameter using variant names from meta.
+
+        Extracts unique variants from timezone_variant groups and generates
+        a parameter with values as column suffixes (e.g., "_utc", "_local").
+
+        Args:
+            variant_groups: Dictionary of grouped timezone variants from
+                _group_timezone_variants(). Keys are scoped canonical names,
+                values are lists of paired dimensions.
+
+        Returns:
+            Parameter dictionary for LookML output, or None if no variants exist.
+
+        Example:
+            Given variants ["utc", "local"], generates:
+
+            ```
+            {
+                "parameter": "timezone_selector",
+                "type": "unquoted",
+                "label": "Timezone",
+                "allowed_value": [
+                    {"label": "LOCAL", "value": "_local"},
+                    {"label": "UTC", "value": "_utc"}
+                ],
+                "default_value": "_local"
+            }
+            ```
+
+        Note:
+            - Parameter values are column suffixes, not variant names
+            - Default is set to primary variant's suffix
+            - Falls back to first alphabetical variant if no primary specified
+        """
+        if not variant_groups:
+            return None
+
+        # Extract unique variants from meta
+        variants = set()
+        default_variant = None
+
+        for canonical_key, dims in variant_groups.items():
+            for dim in dims:
+                if not dim.config or not dim.config.meta or not dim.config.meta.timezone_variant:
+                    continue
+
+                variant_cfg = dim.config.meta.timezone_variant
+                variants.add(variant_cfg.variant)
+
+                # Use primary variant as default
+                if variant_cfg.is_primary and default_variant is None:
+                    default_variant = variant_cfg.variant
+
+        if not variants:
+            return None
+
+        # Default to first variant alphabetically if no primary specified
+        # IMPORTANT: Don't hardcode "local" - user may not have that variant
+        default_variant = default_variant or sorted(variants)[0]
+
+        return {
+            "name": "timezone_selector",
+            "type": "unquoted",
+            "label": "Timezone",
+            "description": "Select timezone for time dimensions",
+            "allowed_value": [
+                {
+                    "label": variant.upper(),  # "UTC", "LOCAL"
+                    "value": f"_{variant}"     # "_utc", "_local"
+                }
+                for variant in sorted(variants)
+            ],
+            "default_value": f"_{default_variant}",  # "_local"
+        }
+
+    def _extract_base_column(self, variants: list["Dimension"]) -> str:
+        """Extract base column name by removing variant suffix from expression.
+
+        Uses the variant name from timezone_variant meta to strip the suffix
+        from the dimension's expression, revealing the base column name.
+
+        Args:
+            variants: List of paired dimension variants (2+ dimensions with
+                same canonical_name).
+
+        Returns:
+            Base column name without variant suffix (e.g., "rental_starts_at").
+
+        Example:
+            Given dimension with:
+            - expr: "rental_starts_at_utc"
+            - variant: "utc"
+
+            Returns: "rental_starts_at"
+
+        Note:
+            - If expr doesn't end with expected suffix, returns expr as-is
+            - Uses first variant in list for extraction
+            - Handles custom naming conventions (user controls via variant field)
+        """
+        if not variants:
+            raise ValueError("Cannot extract base column from empty variants list")
+
+        # Use first variant's expression
+        first = variants[0]
+        expr = first.expr or first.name
+
+        # Get variant suffix from meta
+        if not first.config or not first.config.meta or not first.config.meta.timezone_variant:
+            # Fallback if no timezone_variant (shouldn't happen but be safe)
+            return expr
+
+        variant = first.config.meta.timezone_variant.variant
+        suffix = f"_{variant}"
+
+        # Strip suffix if present
+        if expr.endswith(suffix):
+            return expr[:-len(suffix)]
+
+        # Fallback: use as-is (user might have custom naming)
+        return expr
+
+    def _generate_toggleable_dimension_group(
+        self,
+        primary_dim: "Dimension",
+        variants: list["Dimension"],
+    ) -> dict:
+        """Generate dimension_group with timezone toggle using parameter injection.
+
+        Creates a dimension_group that switches between timezone variants using
+        the timezone_selector parameter. Uses the pattern:
+        ${TABLE}.base_column{% parameter timezone_selector %}
+
+        Args:
+            primary_dim: Primary dimension (is_primary=true) whose configuration
+                is used for the generated dimension_group.
+            variants: All dimensions in the variant group (2+ dimensions).
+
+        Returns:
+            Dictionary representation of LookML dimension_group with toggle logic.
+
+        Example:
+            Given:
+            - base_column: "rental_starts_at"
+            - variants: [starts_at (utc), starts_at_local (local)]
+
+            Generates dimension_group with:
+            sql: ${TABLE}.rental_starts_at{% parameter timezone_selector %}
+
+            When user selects "UTC", expands to: rental_starts_at_utc
+            When user selects "Local", expands to: rental_starts_at_local
+
+        Note:
+            - Label is used as-is from primary dimension (should be clean)
+            - Description is enhanced with toggle instruction
+            - Inherits all other properties from primary (convert_tz, group labels, etc.)
+        """
+        # Get base configuration from primary dimension
+        result = primary_dim._to_dimension_group_dict(
+            default_convert_tz=self.convert_tz,
+            default_time_dimension_group_label=self.time_dimension_group_label,
+            default_use_group_item_label=self.use_group_item_label,
+        )
+
+        # Extract base column name (strips variant suffix)
+        base_column = self._extract_base_column(variants)
+
+        # Generate SQL with parameter injection pattern
+        result["sql"] = f"${{TABLE}}.{base_column}{{% parameter timezone_selector %}}"
+
+        # Update description to mention toggle
+        if "description" in result:
+            result["description"] += " Use timezone selector to toggle timezone."
+        else:
+            result["description"] = "Use timezone selector to toggle timezone."
+
+        # Label is used as-is from primary dimension
+        # User should provide clean label (without timezone indicator)
+        # No automatic cleaning - keep it simple and explicit
+
+        return result
+
+    def _process_timezone_variants(
+        self,
+        model: SemanticModel,
+        tz_variant_groups: dict[str, list["Dimension"]],
+    ) -> tuple[dict | None, set[str], dict[str, list["Dimension"]]]:
+        """Process timezone variant groups to determine toggleable dimensions.
+
+        Analyzes variant groups to identify:
+        - Which dimensions should be toggleable (have 2+ variants)
+        - Which dimensions should be skipped (non-primary variants)
+        - The parameter dict for timezone selection
+
+        Args:
+            model: The semantic model being processed.
+            tz_variant_groups: Groups from _group_timezone_variants().
+
+        Returns:
+            Tuple of (parameter_dict, skip_dimensions, toggleable_dimensions):
+            - parameter_dict: LookML parameter for timezone selection, or None
+            - skip_dimensions: Set of dimension names to exclude from output
+            - toggleable_dimensions: Map of primary dim name -> all variants
+        """
+        skip_dimensions: set[str] = set()
+        toggleable_dimensions: dict[str, list["Dimension"]] = {}
+
+        for canonical_key, variants in tz_variant_groups.items():
+            if len(variants) < 2:
+                # Only 1 variant found - skip toggle (misconfiguration or incomplete pair)
+                continue
+
+            # Find primary variant
+            primary = None
+            for dim in variants:
+                if dim.config.meta.timezone_variant.is_primary:
+                    primary = dim
+                    break
+
+            # Fallback to first if no primary specified
+            if primary is None:
+                primary = variants[0]
+
+            # Store primary dimension and its variants
+            toggleable_dimensions[primary.name] = variants
+
+            # Mark all non-primary variants for skipping
+            for dim in variants:
+                if dim != primary:
+                    skip_dimensions.add(dim.name)
+
+        # Generate timezone parameter if any toggleable dimensions exist
+        parameter_dict = None
+        if toggleable_dimensions:
+            parameter_dict = self._generate_timezone_parameter(tz_variant_groups)
+
+        return parameter_dict, skip_dimensions, toggleable_dimensions
+
+    def _rebuild_dimension_groups(
+        self,
+        model: SemanticModel,
+        existing_dimension_groups: list[dict],
+        skip_dimensions: set[str],
+        toggleable_dimensions: dict[str, list["Dimension"]],
+    ) -> list[dict]:
+        """Rebuild dimension_groups with timezone toggle logic.
+
+        Processes existing dimension_groups, skipping non-primary variants
+        and replacing primary variants with toggleable versions.
+
+        Args:
+            model: The semantic model being processed.
+            existing_dimension_groups: Original dimension_groups from base view.
+            skip_dimensions: Dimension names to exclude.
+            toggleable_dimensions: Map of primary dim name -> all variants.
+
+        Returns:
+            New list of dimension_group dicts with toggle logic applied.
+        """
+        new_dimension_groups = []
+
+        for dim_group in existing_dimension_groups:
+            dim_name = dim_group.get("name")
+
+            # Skip non-primary variants
+            if dim_name in skip_dimensions:
+                continue
+
+            # Check if this is a toggleable time dimension
+            if dim_name in toggleable_dimensions:
+                # Find the dimension object
+                primary_dim = next(
+                    (d for d in model.dimensions if d.name == dim_name), None
+                )
+                if primary_dim:
+                    # Regenerate with timezone toggle
+                    toggleable_dim_group = self._generate_toggleable_dimension_group(
+                        primary_dim=primary_dim,
+                        variants=toggleable_dimensions[dim_name],
+                    )
+                    new_dimension_groups.append(toggleable_dim_group)
+                else:
+                    # Shouldn't happen, but keep original if we can't find dimension
+                    new_dimension_groups.append(dim_group)
+            else:
+                # Keep original dimension group
+                new_dimension_groups.append(dim_group)
+
+        return new_dimension_groups
+
+    def _filter_sets_for_skipped_dims(
+        self,
+        view_dict: dict,
+        skip_dimensions: set[str],
+    ) -> None:
+        """Remove references to skipped dimensions from sets.
+
+        Updates sets in-place to filter out timeframe fields that belong
+        to skipped (non-primary) timezone variant dimensions.
+
+        Args:
+            view_dict: The view dictionary to modify in-place.
+            skip_dimensions: Dimension names whose fields should be removed.
+        """
+        if not skip_dimensions or "sets" not in view_dict:
+            return
+
+        for set_dict in view_dict["sets"]:
+            if "fields" not in set_dict:
+                continue
+
+            # Filter out any timeframe fields from skipped dimensions
+            # e.g., "starts_at_local_time" starts with "starts_at_local"
+            set_dict["fields"] = [
+                field
+                for field in set_dict["fields"]
+                if not any(
+                    field.startswith(f"{skip_dim}_") for skip_dim in skip_dimensions
+                )
+            ]
+
+    def _add_parameter_to_view(
+        self,
+        view_dict: dict,
+        parameter_dict: dict,
+    ) -> dict:
+        """Add timezone parameter to view with proper ordering.
+
+        Creates a new view dict with the parameter inserted after
+        name and sql_table_name but before other fields.
+
+        Args:
+            view_dict: The original view dictionary.
+            parameter_dict: The timezone selector parameter.
+
+        Returns:
+            New view dict with parameter added.
+        """
+        ordered_view_dict: dict = {}
+        ordered_view_dict["name"] = view_dict.get("name")
+        if "sql_table_name" in view_dict:
+            ordered_view_dict["sql_table_name"] = view_dict["sql_table_name"]
+
+        # Add parameter
+        ordered_view_dict["parameter"] = [parameter_dict]
+
+        # Add remaining fields
+        for key, value in view_dict.items():
+            if key not in ["name", "sql_table_name", "parameter"]:
+                ordered_view_dict[key] = value
+
+        return ordered_view_dict
+
+    def generate_view(
+        self,
+        model: SemanticModel,
+        required_measures: set[str] | None = None,
+    ) -> dict:
+        """Generate LookML view dict from semantic model with timezone toggle support.
+
+        This method enhances the standard view generation with timezone variant
+        handling. When timezone_variant configuration is detected, it:
+        1. Collapses variant pairs into single toggleable dimension_groups
+        2. Generates a timezone_selector parameter
+        3. Uses parameter injection for timezone switching
+
+        Args:
+            model: The semantic model to generate a view from.
+            required_measures: Optional set of measure names that must be included
+                regardless of bi_field status.
+
+        Returns:
+            Dictionary representation of LookML view with timezone toggle logic.
+
+        Note:
+            - Models without timezone_variant generate normally (backward compatible)
+            - Non-primary variants are excluded from output
+            - Parameter is added before dimensions in the view
+        """
+        # Start with base view dict from semantic model
+        base_view_dict = model.to_lookml_dict(
+            schema=self.schema,
+            convert_tz=self.convert_tz,
+            time_dimension_group_label=self.time_dimension_group_label,
+            use_group_item_label=self.use_group_item_label,
+            use_bi_field_filter=self.use_bi_field_filter,
+            required_measures=required_measures,
+        )
+
+        # Extract the view from the wrapper dict
+        if "views" not in base_view_dict or not base_view_dict["views"]:
+            return base_view_dict
+
+        view_dict = base_view_dict["views"][0]
+
+        # Group dimensions by timezone variant
+        tz_variant_groups = self._group_timezone_variants(model)
+
+        if not tz_variant_groups:
+            # No timezone variants - return base view as-is
+            return base_view_dict
+
+        # Process variant groups to get toggleable dimensions and skips
+        parameter_dict, skip_dimensions, toggleable_dimensions = (
+            self._process_timezone_variants(model, tz_variant_groups)
+        )
+
+        # Rebuild dimension_groups with toggle logic
+        existing_dimension_groups = view_dict.get("dimension_groups", [])
+        new_dimension_groups = self._rebuild_dimension_groups(
+            model, existing_dimension_groups, skip_dimensions, toggleable_dimensions
+        )
+        if new_dimension_groups:
+            view_dict["dimension_groups"] = new_dimension_groups
+
+        # Filter sets to remove skipped dimension references
+        self._filter_sets_for_skipped_dims(view_dict, skip_dimensions)
+
+        # Add parameter to view with proper ordering
+        if parameter_dict:
+            view_dict = self._add_parameter_to_view(view_dict, parameter_dict)
+
+        # Rebuild wrapper dict
+        base_view_dict["views"][0] = view_dict
+
+        return base_view_dict
 
     def _validate_metrics(
         self, metrics: list[Metric], models: list[SemanticModel]
@@ -1190,21 +1717,15 @@ class LookMLGenerator(Generator):
                         if k != "name"
                     },
                 )
-                view_dict = prefixed_model.to_lookml_dict(
-                    schema=self.schema,
-                    convert_tz=self.convert_tz,
-                    time_dimension_group_label=self.time_dimension_group_label,
-                    use_group_item_label=self.use_group_item_label,
-                    use_bi_field_filter=self.use_bi_field_filter,
+                # Use new generate_view() method with timezone toggle support
+                view_dict = self.generate_view(
+                    model=prefixed_model,
                     required_measures=required_measures,
                 )
             else:
-                view_dict = semantic_model.to_lookml_dict(
-                    schema=self.schema,
-                    convert_tz=self.convert_tz,
-                    time_dimension_group_label=self.time_dimension_group_label,
-                    use_group_item_label=self.use_group_item_label,
-                    use_bi_field_filter=self.use_bi_field_filter,
+                # Use new generate_view() method with timezone toggle support
+                view_dict = self.generate_view(
+                    model=semantic_model,
                     required_measures=required_measures,
                 )
         else:
