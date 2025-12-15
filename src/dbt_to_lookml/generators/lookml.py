@@ -1768,24 +1768,29 @@ class LookMLGenerator(Generator):
                                 entity.name,
                             )
 
-                            # For reverse joins, only expose dimensions by default
-                            # (measures excluded to prevent fan-out)
-                            fields_list = [f"{child_view_name}.dimensions_only*"]
+                            # Check for explicit join_cardinality override
+                            relationship = "one_to_many"  # Default for reverse joins
+                            if entity.config and entity.config.meta:
+                                explicit_cardinality = entity.config.meta.join_cardinality
+                                if explicit_cardinality:
+                                    relationship = explicit_cardinality
 
-                            # Apply bi_field filtering if enabled
-                            fields_list = self._filter_fields_by_bi_field(
-                                other_model, fields_list
-                            )
-
-                            # Relationship is one_to_many from fact perspective
-                            # (one rental has many reviews)
-                            join = {
+                            join: dict[str, Any] = {
                                 "view_name": child_view_name,
                                 "sql_on": sql_on,
-                                "relationship": "one_to_many",
+                                "relationship": relationship,
                                 "type": "left_outer",
-                                "fields": fields_list,
                             }
+
+                            # For one-to-one, include all fields (no fields param needed)
+                            # For one-to-many, restrict to dimensions only to prevent fan-out
+                            if relationship != "one_to_one":
+                                fields_list = [f"{child_view_name}.dimensions_only*"]
+                                # Apply bi_field filtering if enabled
+                                fields_list = self._filter_fields_by_bi_field(
+                                    other_model, fields_list
+                                )
+                                join["fields"] = fields_list
 
                             joins.append(join)
                             break  # Only one FK per model to same entity
@@ -2152,13 +2157,15 @@ class LookMLGenerator(Generator):
                 # with specific structure
                 explore_dict["joins"] = []
                 for join in joins:
-                    join_dict = {
+                    join_dict: dict[str, Any] = {
                         "name": join["view_name"],
                         "sql_on": join["sql_on"],
                         "relationship": join["relationship"],
                         "type": join["type"],
-                        "fields": join["fields"],
                     }
+                    # Only include fields if specified (omit for one_to_one to include all)
+                    if "fields" in join:
+                        join_dict["fields"] = join["fields"]
                     explore_dict["joins"].append(join_dict)
 
             # Add always_filter for timezone_selector if fact model has timezone variants

@@ -186,11 +186,23 @@ class DbtParser(Parser):
             entities = []
             for entity_data in model_data.get("entities", []):
                 try:
+                    # Parse entity config if present
+                    entity_config = None
+                    if "config" in entity_data:
+                        config_data = entity_data["config"]
+                        if "meta" in config_data:
+                            meta_data = config_data["meta"]
+                            entity_config_meta = ConfigMeta(
+                                join_cardinality=meta_data.get("join_cardinality"),
+                            )
+                            entity_config = Config(meta=entity_config_meta)
+
                     entity = Entity(
                         name=entity_data["name"],
                         type=entity_data["type"],
                         expr=entity_data.get("expr"),
                         description=entity_data.get("description"),
+                        config=entity_config,
                     )
                     entities.append(entity)
                 except Exception as e:
