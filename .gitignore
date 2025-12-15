@@ -75,9 +75,10 @@ explores.lkml
 uv.lock  # Exclude lock file for libraries
 .uv-cache/
 
-# Claude Code (except commands)
+# Claude Code (except commands and ai-docs)
 .claude/*
 !.claude/commands/
+!.claude/ai-docs/
 .mcp.json
 AGENTS.md
 

@@ -1,0 +1,234 @@
+version: 2
+
+metrics:
+  # ===== CORE REVENUE METRICS =====
+  - name: total_revenue
+    label: "Total Revenue (Local Currency)"
+    description: "Sum of rental checkout amounts in local currency from completed rentals (includes all fees and taxes)."
+    type: simple
+    type_params:
+      measure: total_revenue
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Revenue"
+        bi_field: true
+        primary_entity: rental
+
+  # ===== GMV / GOV METRICS =====
+  - name: gross_order_value
+    label: "Gross Order Value (GOV)"
+    description: |
+      Total revenue including SpotHero fees. This is what the customer pays at checkout.
+      GOV = checkout_price = base + spothero_fees + operator_fees
+    type: simple
+    type_params:
+      measure: total_revenue
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Revenue"
+        bi_field: true
+        primary_entity: rental
+        note: "Same as total_revenue - explicit naming for business clarity"
+
+  - name: gross_merchandise_value
+    label: "Gross Merchandise Value (GMV)"
+    description: |
+      Total revenue excluding SpotHero fees. This is the display price shown to customers.
+      GMV = checkout_price - spothero_fees = base + operator_fees
+    type: derived
+    type_params:
+      expr: gov - spothero_fees
+      metrics:
+        - name: total_revenue
+          alias: gov
+        - name: total_spothero_fees
+          alias: spothero_fees
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Revenue"
+        bi_field: true
+        primary_entity: rental
+        note: "LookML parity - matches analytics_parking GMV definition"
+
+  - name: total_spothero_fees
+    label: "Total SpotHero Fees"
+    description: "Sum of SpotHero service fees (blanket + monthly + event) for completed rentals."
+    type: simple
+    type_params:
+      measure: total_spothero_fees
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Revenue"
+        bi_field: true
+        primary_entity: rental
+
+  - name: spothero_take_rate
+    label: "SpotHero Take Rate"
+    description: "SpotHero fees as a percentage of total revenue (GOV). Calculated as spothero_fees / checkout_price."
+    type: derived
+    type_params:
+      expr: spothero_fees / nullif(gov, 0)
+      metrics:
+        - name: total_spothero_fees
+          alias: spothero_fees
+        - name: total_revenue
+          alias: gov
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Revenue"
+        bi_field: true
+        primary_entity: rental
+        note: "Useful for margin analysis"
+
+  - name: average_rental_value
+    label: "Average Rental Value (Local Currency)"
+    description: "Average revenue in local currency per completed rental transaction (total revenue / rental count)."
+    type: derived
+    type_params:
+      expr: revenue / rentals
+      metrics:
+        - name: total_revenue
+          alias: revenue
+        - name: rental_count
+          alias: rentals
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Revenue"
+        bi_field: true
+        primary_entity: rental
+
+  # ===== CORE COUNT METRICS =====
+  - name: rental_count
+    label: "Rental Count"
+    description: "Distinct count of rental transactions."
+    type: simple
+    type_params:
+      measure: rental_count
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Counts"
+        bi_field: true
+        primary_entity: rental
+
+  - name: renter_count
+    label: "Renter Count"
+    description: "Distinct count of renters who made rental transactions."
+    type: simple
+    type_params:
+      measure: renter_count
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Counts"
+        bi_field: true
+        primary_entity: rental
+
+  # ===== DURATION METRICS =====
+  - name: total_rental_hours
+    label: "Total Rental Hours"
+    description: "Sum of rental duration in hours across all transactions."
+    type: simple
+    type_params:
+      measure: total_rental_hours
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Duration"
+        bi_field: true
+        primary_entity: rental
+
+  - name: average_rental_hours
+    label: "Average Rental Duration (Hours)"
+    description: "Average rental duration in hours for completed rentals (total hours / rental count)."
+    type: derived
+    type_params:
+      expr: total_hours / rentals
+      metrics:
+        - name: total_rental_hours
+          alias: total_hours
+        - name: rental_count
+          alias: rentals
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Duration"
+        bi_field: true
+        primary_entity: rental
+
+  - name: average_lead_time_hours
+    label: "Average Lead Time (Hours)"
+    description: "Average hours between booking creation and rental start time."
+    type: simple
+    type_params:
+      measure: average_lead_time_hours
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Duration"
+        bi_field: true
+        primary_entity: rental
+
+  # ===== ANALYTICAL METRICS (HIDDEN - FOR VALIDATION) =====
+  - name: total_revenue_all_statuses
+    label: "Total Revenue (All Statuses)"
+    description: "Revenue across all status types (COMPLETE, CANCELLED, REFUNDED, etc.) - for validation and reconciliation."
+    type: simple
+    type_params:
+      measure: total_revenue_all_statuses
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Revenue"
+        note: "Hidden from BI tools - for validation only"
+        primary_entity: rental
+
+  - name: rental_count_all_statuses
+    label: "Rental Count (All Statuses)"
+    description: "Count of all rental transactions regardless of status - for validation and analysis."
+    type: simple
+    type_params:
+      measure: rental_count_all_statuses
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Counts"
+        note: "Hidden from BI tools - for validation only"
+        primary_entity: rental
+
+  - name: completion_rate
+    label: "Rental Completion Rate"
+    description: "Percentage of rental transactions that reach COMPLETE status (completed rentals / all statuses)."
+    type: ratio
+    type_params:
+      numerator: rental_count
+      denominator: rental_count_all_statuses
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Performance"
+        note: "Analytical metric - can be exposed if useful"
+        primary_entity: rental
+
+  # ===== FACILITY LIFECYCLE METRICS (LookML parity) =====
+  - name: active_canonical_facility_count
+    label: "Active Canonical Facility Count"
+    description: |
+      Distinct count of canonical facilities with completed rental revenue in the period.
+      Matches LookML definition where "active" = MTD GOV > 0.
+    type: simple
+    type_params:
+      measure: active_canonical_facility_count
+    config:
+      meta:
+        subject: " Metrics"
+        category: "Facilities"
+        bi_field: true
+        primary_entity: rental
+        note: "LookML parity metric - count facilities with revenue"

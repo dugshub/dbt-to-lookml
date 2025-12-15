@@ -1,0 +1,15 @@
+version: 2
+
+metrics:
+  - name: parking_spot_count
+    label: "Parking Spot Count"
+    description: "Distinct count of unique parking facilities (by facility_id) in the network. Represents total number of individual parking locations."
+    type: simple
+    type_params:
+      measure: parking_spot_count
+    config:
+      meta:
+        subject: "Facilities"
+        category: "Counts"
+        bi_field: true
+        primary_entity: facility

@@ -1,0 +1,54 @@
+version: 2
+
+metrics:
+  - name: review_count
+    label: "Review Count"
+    description: "Total count of customer reviews."
+    type: simple
+    type_params:
+      measure: review_count
+    config:
+      meta:
+        subject: "Metrics"
+        category: "Ratings and Reviews"
+        bi_field: true
+        primary_entity: review
+
+  - name: average_star_rating
+    label: "Average Star Rating"
+    description: "Average star rating across reviews (1-5 scale)."
+    type: simple
+    type_params:
+      measure: average_star_rating
+    config:
+      meta:
+        subject: "Metrics"
+        category: "Ratings and Reviews"
+        bi_field: true
+        primary_entity: review
+
+  - name: total_positive_prompts
+    label: "Total Positive Prompts"
+    description: "Sum of positive sentiment prompts selected."
+    type: simple
+    type_params:
+      measure: total_positive_prompts
+    config:
+      meta:
+        subject: "Metrics"
+        category: "Ratings and Reviews"
+        bi_field: true
+        primary_entity: review
+
+  - name: total_negative_prompts
+    label: "Total Negative Prompts"
+    description: "Sum of negative sentiment prompts selected."
+    type: simple
+    type_params:
+      measure: total_negative_prompts
+    config:
+      meta:
+        subject: "Metrics"
+        category: "Ratings and Reviews"
+        bi_field: true
+        primary_entity: review

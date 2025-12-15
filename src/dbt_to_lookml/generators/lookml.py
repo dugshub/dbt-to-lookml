@@ -682,19 +682,26 @@ class LookMLGenerator(Generator):
         self,
         model: SemanticModel,
         required_measures: set[str] | None = None,
+        usage_map: dict[str, dict[str, Any]] | None = None,
     ) -> dict:
         """Generate LookML view dict from semantic model with timezone toggle support.
 
         This method enhances the standard view generation with timezone variant
-        handling. When timezone_variant configuration is detected, it:
+        handling and smart measure optimization. When timezone_variant configuration
+        is detected, it:
         1. Collapses variant pairs into single toggleable dimension_groups
         2. Generates a timezone_selector parameter
         3. Uses parameter injection for timezone switching
+
+        When usage_map is provided, it optimizes measure generation:
+        1. Skips hidden measures for measures exposed via simple metrics
+        2. Only generates hidden measures when needed by complex metrics
 
         Args:
             model: The semantic model to generate a view from.
             required_measures: Optional set of measure names that must be included
                 regardless of bi_field status.
+            usage_map: Optional measure usage map for smart measure optimization.
 
         Returns:
             Dictionary representation of LookML view with timezone toggle logic.
@@ -713,6 +720,38 @@ class LookMLGenerator(Generator):
             use_bi_field_filter=self.use_bi_field_filter,
             required_measures=required_measures,
         )
+
+        # Apply smart measure filtering if usage_map provided
+        if usage_map and "views" in base_view_dict and base_view_dict["views"]:
+            view_dict = base_view_dict["views"][0]
+            if "measures" in view_dict:
+                filtered_measures = []
+                for measure_dict in view_dict["measures"]:
+                    measure_name = measure_dict["name"].removesuffix("_measure")
+                    # Strip view_prefix from model name for usage_map lookup
+                    # (usage_map uses original model names, not prefixed)
+                    original_model_name = model.name
+                    if self.view_prefix and original_model_name.startswith(self.view_prefix):
+                        original_model_name = original_model_name[len(self.view_prefix):]
+                    usage_key = f"{original_model_name}.{measure_name}"
+
+                    # Determine if this hidden measure should be included
+                    if usage_key in usage_map:
+                        usage = usage_map[usage_key]
+                        has_simple_metric = usage["simple_metric"] is not None
+                        used_by_complex = usage["used_by_complex"]
+
+                        if has_simple_metric:
+                            # Skip - simple metric provides the visible aggregation
+                            continue
+                        if not used_by_complex:
+                            # Skip - measure not used by any metric at all
+                            continue
+
+                    filtered_measures.append(measure_dict)
+
+                view_dict["measures"] = filtered_measures
+                base_view_dict["views"][0] = view_dict
 
         # Extract the view from the wrapper dict
         if "views" not in base_view_dict or not base_view_dict["views"]:
@@ -753,6 +792,88 @@ class LookMLGenerator(Generator):
         base_view_dict["views"][0] = view_dict
 
         return base_view_dict
+
+    def _analyze_measure_usage(
+        self, models: list[SemanticModel], metrics: list[Metric] | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """Analyze how each measure is used across metrics.
+
+        Builds a usage map tracking:
+        - Which measures are exposed via simple metrics (visible)
+        - Which measures are used by complex metrics (need hidden version)
+        - Source model for each measure
+
+        Args:
+            models: List of semantic models containing measures.
+            metrics: Optional list of metrics to analyze.
+
+        Returns:
+            Dictionary mapping "model_name.measure_name" to usage info:
+            {
+                "source_model": SemanticModel,
+                "measure": Measure,
+                "simple_metric": Metric | None,  # Simple metric exposing this measure
+                "used_by_complex": bool,  # Whether any complex metric references this
+            }
+
+        Example:
+            >>> usage = generator._analyze_measure_usage(models, metrics)
+            >>> # Check if measure needs hidden version
+            >>> key = "rentals.total_revenue"
+            >>> needs_hidden = usage[key]["used_by_complex"] and not usage[key]["simple_metric"]
+        """
+        from dbt_to_lookml.parsers.dbt_metrics import extract_measure_dependencies
+        from dbt_to_lookml.schemas import (
+            DerivedMetricParams,
+            RatioMetricParams,
+            SimpleMetricParams,
+        )
+
+        usage_map: dict[str, dict[str, Any]] = {}
+
+        # Initialize usage map with all measures
+        for model in models:
+            for measure in model.measures:
+                key = f"{model.name}.{measure.name}"
+                usage_map[key] = {
+                    "source_model": model,
+                    "measure": measure,
+                    "simple_metric": None,
+                    "used_by_complex": False,
+                }
+
+        if not metrics:
+            return usage_map
+
+        # Track simple metric exposures
+        for metric in metrics:
+            if isinstance(metric.type_params, SimpleMetricParams):
+                measure_name = metric.type_params.measure
+                # Find which model contains this measure
+                for model in models:
+                    for measure in model.measures:
+                        if measure.name == measure_name:
+                            key = f"{model.name}.{measure.name}"
+                            if key in usage_map:
+                                usage_map[key]["simple_metric"] = metric
+                            break
+
+        # Track complex metric references
+        for metric in metrics:
+            if isinstance(metric.type_params, (RatioMetricParams, DerivedMetricParams)):
+                # Extract measure dependencies
+                measure_deps = extract_measure_dependencies(metric)
+                for measure_name in measure_deps:
+                    # Find which model contains this measure
+                    for model in models:
+                        for measure in model.measures:
+                            if measure.name == measure_name:
+                                key = f"{model.name}.{measure.name}"
+                                if key in usage_map:
+                                    usage_map[key]["used_by_complex"] = True
+                                break
+
+        return usage_map
 
     def _validate_metrics(
         self, metrics: list[Metric], models: list[SemanticModel]
@@ -824,18 +945,25 @@ class LookMLGenerator(Generator):
         return None
 
     def _resolve_measure_reference(
-        self, measure_name: str, primary_entity: str, models: dict[str, SemanticModel]
+        self,
+        measure_name: str,
+        primary_entity: str,
+        models: dict[str, SemanticModel],
+        usage_map: dict[str, dict[str, Any]] | None = None,
     ) -> str:
         """Resolve measure name to LookML reference syntax.
+
+        Prefers visible simple metrics over hidden measures when available.
 
         Args:
             measure_name: Name of the measure to reference.
             primary_entity: Primary entity of the metric (determines "same view").
             models: Dictionary mapping model names to SemanticModel objects.
+            usage_map: Optional measure usage map for smart resolution.
 
         Returns:
-            LookML reference with suffix: "${measure_measure}" or
-            "${view_prefix}{model}.{measure_measure}"
+            LookML reference: "${simple_metric}" if exposed via simple metric,
+            otherwise "${measure_measure}" or "${view_prefix}{model}.{measure_measure}"
 
         Raises:
             ValueError: If measure not found in any model.
@@ -853,6 +981,20 @@ class LookMLGenerator(Generator):
         if not primary_model:
             raise ValueError(f"No model found with primary entity '{primary_entity}'")
 
+        # Check if measure has a simple metric exposing it (preferred)
+        if usage_map:
+            usage_key = f"{source_model.name}.{measure_name}"
+            if usage_key in usage_map and usage_map[usage_key]["simple_metric"]:
+                simple_metric = usage_map[usage_key]["simple_metric"]
+                # Reference the visible simple metric instead of hidden measure
+                if source_model.name == primary_model.name:
+                    return f"${{{simple_metric.name}}}"
+                else:
+                    # Cross-view reference to simple metric
+                    view_name = f"{self.view_prefix}{source_model.name}"
+                    return f"${{{view_name}.{simple_metric.name}}}"
+
+        # Fall back to hidden measure reference
         # Find the dbt Measure object to translate its name
         measure = next(m for m in source_model.measures if m.name == measure_name)
         lookml_name = self.get_measure_lookml_name(measure)
@@ -897,13 +1039,17 @@ class LookMLGenerator(Generator):
         return self._resolve_measure_reference(measure_name, primary_entity, models)
 
     def _generate_ratio_sql(
-        self, metric: Metric, models: dict[str, SemanticModel]
+        self,
+        metric: Metric,
+        models: dict[str, SemanticModel],
+        usage_map: dict[str, dict[str, Any]] | None = None,
     ) -> str:
         """Generate SQL for ratio metric.
 
         Args:
             metric: The metric with RatioMetricParams.
             models: Dictionary of all semantic models.
+            usage_map: Optional measure usage map for smart resolution.
 
         Returns:
             LookML SQL expression: "1.0 * num / NULLIF(denom, 0)"
@@ -926,11 +1072,15 @@ class LookMLGenerator(Generator):
         if not primary_entity:
             raise ValueError(f"Metric '{metric.name}' has no primary_entity")
 
-        # Resolve numerator reference
-        num_ref = self._resolve_measure_reference(numerator, primary_entity, models)
+        # Resolve numerator reference (prefers simple metrics)
+        num_ref = self._resolve_measure_reference(
+            numerator, primary_entity, models, usage_map
+        )
 
-        # Resolve denominator reference
-        denom_ref = self._resolve_measure_reference(denominator, primary_entity, models)
+        # Resolve denominator reference (prefers simple metrics)
+        denom_ref = self._resolve_measure_reference(
+            denominator, primary_entity, models, usage_map
+        )
 
         # Build ratio SQL with null safety
         return f"1.0 * {num_ref} / NULLIF({denom_ref}, 0)"
@@ -940,6 +1090,7 @@ class LookMLGenerator(Generator):
         metric: Metric,
         models: dict[str, SemanticModel],
         all_metrics: list[Metric],
+        usage_map: dict[str, dict[str, Any]] | None = None,
     ) -> str:
         """Generate SQL for derived metric.
 
@@ -951,6 +1102,7 @@ class LookMLGenerator(Generator):
             metric: The metric with DerivedMetricParams.
             models: Dictionary of all semantic models.
             all_metrics: List of all metrics (to resolve metric references).
+            usage_map: Optional measure usage map for smart resolution.
 
         Returns:
             LookML SQL expression with metric references replaced.
@@ -981,7 +1133,7 @@ class LookMLGenerator(Generator):
             # This is a simplification - assumes metric name = measure name
             measure_name = ref.name
             measure_ref = self._resolve_measure_reference(
-                measure_name, primary_entity, models
+                measure_name, primary_entity, models, usage_map
             )
             # Use alias as replacement key if provided, otherwise use metric name
             replacement_key = ref.alias if ref.alias else ref.name
@@ -1111,14 +1263,19 @@ class LookMLGenerator(Generator):
         primary_model: SemanticModel,
         all_models: list[SemanticModel],
         all_metrics: list[Metric] | None = None,
+        usage_map: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Generate LookML measure dict from metric definition.
+
+        Simple metrics are generated directly as aggregate measures (type: sum, count, etc.)
+        instead of type: number wrappers. Complex metrics remain type: number.
 
         Args:
             metric: The metric to convert.
             primary_model: The semantic model that owns this metric.
             all_models: All available semantic models.
             all_metrics: All metrics (needed for derived metric resolution).
+            usage_map: Optional measure usage map for smart generation.
 
         Returns:
             Complete LookML measure dictionary.
@@ -1131,34 +1288,75 @@ class LookMLGenerator(Generator):
             RatioMetricParams,
             SimpleMetricParams,
         )
+        from dbt_to_lookml.types import (
+            FLOAT_CAST_AGGREGATIONS,
+            LOOKML_TYPE_MAP,
+            AggregationType,
+        )
 
         # Build models lookup dict for SQL generation
         models_dict = {model.name: model for model in all_models}
 
-        # Generate SQL based on metric type
+        # Handle simple metrics differently - generate as aggregate measures
         if isinstance(metric.type_params, SimpleMetricParams):
-            sql = self._generate_simple_sql(metric, models_dict)
-        elif isinstance(metric.type_params, RatioMetricParams):
-            sql = self._generate_ratio_sql(metric, models_dict)
-        elif isinstance(metric.type_params, DerivedMetricParams):
-            if all_metrics is None:
-                raise ValueError("all_metrics required for derived metric generation")
-            sql = self._generate_derived_sql(metric, models_dict, all_metrics)
+            measure_name = metric.type_params.measure
+
+            # Find the source measure
+            source_measure = None
+            for model in all_models:
+                for measure in model.measures:
+                    if measure.name == measure_name:
+                        source_measure = measure
+                        break
+                if source_measure:
+                    break
+
+            if not source_measure:
+                raise ValueError(
+                    f"Measure '{measure_name}' not found for simple metric '{metric.name}'"
+                )
+
+            # Generate as aggregate measure (NOT type: number)
+            measure_dict: dict[str, Any] = {
+                "name": metric.name,
+                "type": LOOKML_TYPE_MAP.get(source_measure.agg, "number"),
+                "view_label": "  Metrics",  # 2 spaces prefix for top sort order
+            }
+
+            # Add SQL (same logic as Measure.to_lookml_dict)
+            if source_measure.agg != AggregationType.COUNT:
+                base_sql = source_measure.expr or f"${{TABLE}}.{source_measure.name}"
+                # Auto-cast for aggregations that truncate integers
+                if source_measure.agg in FLOAT_CAST_AGGREGATIONS:
+                    measure_dict["sql"] = f"({base_sql})::FLOAT"
+                else:
+                    measure_dict["sql"] = base_sql
+
         else:
-            raise ValueError(f"Unsupported metric type: {type(metric.type_params)}")
+            # Complex metrics (ratio, derived) - use type: number
+            if isinstance(metric.type_params, RatioMetricParams):
+                sql = self._generate_ratio_sql(metric, models_dict, usage_map)
+            elif isinstance(metric.type_params, DerivedMetricParams):
+                if all_metrics is None:
+                    raise ValueError("all_metrics required for derived metric generation")
+                sql = self._generate_derived_sql(metric, models_dict, all_metrics, usage_map)
+            else:
+                raise ValueError(f"Unsupported metric type: {type(metric.type_params)}")
 
-        # Extract required fields
-        required_fields = self._extract_required_fields(
-            metric, primary_model, all_models
-        )
+            # Extract required fields for complex metrics
+            required_fields = self._extract_required_fields(
+                metric, primary_model, all_models
+            )
 
-        # Build measure dict (2 space prefix on view_label for sort order)
-        measure_dict: dict[str, Any] = {
-            "name": metric.name,
-            "type": "number",  # Always number for cross-entity metrics
-            "sql": sql,
-            "view_label": "  Metrics",  # 2 spaces prefix for top sort order
-        }
+            measure_dict: dict[str, Any] = {
+                "name": metric.name,
+                "type": "number",
+                "sql": sql,
+                "view_label": "  Metrics",  # 2 spaces prefix for top sort order
+            }
+
+            if required_fields:
+                measure_dict["required_fields"] = required_fields
 
         # Add value format
         value_format = self._infer_value_format(metric)
@@ -1170,8 +1368,6 @@ class LookMLGenerator(Generator):
             measure_dict["label"] = metric.label
         if metric.description:
             measure_dict["description"] = metric.description
-        if required_fields:
-            measure_dict["required_fields"] = required_fields
 
         # Add group_label
         group_label = self._infer_group_label(metric, primary_model)
@@ -1566,6 +1762,9 @@ class LookMLGenerator(Generator):
             if validate:
                 self._validate_metrics(metrics, models)
 
+        # Analyze measure usage for smart generation
+        usage_map = self._analyze_measure_usage(models, metrics)
+
         # Build metric ownership mapping: model_name → [metrics]
         metric_map: dict[str, list[Metric]] = {}
         if metrics:
@@ -1630,8 +1829,10 @@ class LookMLGenerator(Generator):
             # Get required measures for this model (from bi_field metrics)
             required_measures = required_measures_map.get(model.name)
 
-            # Generate view content
-            view_content = self._generate_view_lookml(model, required_measures)
+            # Generate view content with usage_map for smart measure optimization
+            view_content = self._generate_view_lookml(
+                model, required_measures, usage_map
+            )
 
             # Check if we need to add metrics to this view
             owned_metrics = metric_map.get(model.name, [])
@@ -1656,7 +1857,7 @@ class LookMLGenerator(Generator):
 
                     try:
                         measure_dict = self._generate_metric_measure(
-                            metric, model, models, metrics
+                            metric, model, models, metrics, usage_map
                         )
                         metric_measures.append(measure_dict)
                     except Exception as e:
@@ -1752,6 +1953,7 @@ class LookMLGenerator(Generator):
         self,
         semantic_model: SemanticModel,
         required_measures: set[str] | None = None,
+        usage_map: dict[str, dict[str, Any]] | None = None,
     ) -> str:
         """Generate LookML content for a semantic model or LookMLView.
 
@@ -1759,6 +1961,7 @@ class LookMLGenerator(Generator):
             semantic_model: The semantic model or LookMLView to generate content for.
             required_measures: Optional set of measure names that must be included
                 regardless of bi_field status (e.g., measures needed by metrics).
+            usage_map: Optional measure usage map for smart measure optimization.
 
         Returns:
             The LookML content as a string.
@@ -1784,12 +1987,14 @@ class LookMLGenerator(Generator):
                 view_dict = self.generate_view(
                     model=prefixed_model,
                     required_measures=required_measures,
+                    usage_map=usage_map,
                 )
             else:
                 # Use new generate_view() method with timezone toggle support
                 view_dict = self.generate_view(
                     model=semantic_model,
                     required_measures=required_measures,
+                    usage_map=usage_map,
                 )
         else:
             raise TypeError(

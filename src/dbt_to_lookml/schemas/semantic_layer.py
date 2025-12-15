@@ -593,18 +593,23 @@ class Measure(BaseModel):
 
         return view_label, group_label
 
-    def to_lookml_dict(self, model_name: str | None = None) -> dict[str, Any]:
+    def to_lookml_dict(
+        self, model_name: str | None = None, skip_hidden: bool = False
+    ) -> dict[str, Any] | None:
         """Convert measure to LookML format with universal suffix and hiding.
 
-        All measures are generated with:
-        - Name suffix: '_measure' appended to distinguish from metrics
-        - Hidden property: 'yes' to hide from end users (building blocks for metrics)
+        Measures can be conditionally generated based on usage:
+        - If skip_hidden=True and measure has simple metric: returns None (skip)
+        - Otherwise: generates hidden measure with '_measure' suffix
 
         Args:
             model_name: Optional semantic model name for inferring group_label.
+            skip_hidden: If True, return None (skip generation).
+                Used when measure is exposed via simple metric.
 
         Returns:
-            Dictionary with LookML measure configuration including:
+            Dictionary with LookML measure configuration, or None if skip_hidden=True.
+            Dictionary includes:
             - name: Measure name with '_measure' suffix
             - type: LookML aggregation type
             - sql: SQL expression for the measure
@@ -613,12 +618,20 @@ class Measure(BaseModel):
 
         Example:
             ```python
+            # Generate hidden measure
             measure = Measure(name="revenue", agg=AggregationType.SUM)
             result = measure.to_lookml_dict()
             # Returns: {"name": "revenue_measure", "type": "sum",
             #           "sql": "${TABLE}.revenue", "hidden": "yes", ...}
+
+            # Skip generation (exposed via simple metric)
+            result = measure.to_lookml_dict(skip_hidden=True)
+            # Returns: None
             ```
         """
+        if skip_hidden:
+            return None
+
         result: dict[str, Any] = {
             "name": f"{self.name}_measure",
             "type": LOOKML_TYPE_MAP.get(self.agg, "number"),
@@ -779,10 +792,17 @@ class SemanticModel(BaseModel):
 
         # Convert measures (pass model name for group_label inference)
         # Apply bi_field filtering if enabled
+        # Optionally skip measures that are exposed via simple metrics (usage_map)
         measures = []
         required_measure_names = required_measures or set()
         for measure in self.measures:
             force_hidden = False
+            skip_hidden = False
+
+            # Check if measure should be skipped (exposed via simple metric, not needed by complex)
+            # This is handled externally by the generator now, so we keep default behavior here
+            # The generator will pass usage info through other means
+
             if use_bi_field_filter:
                 has_bi_field = (
                     measure.config
@@ -795,7 +815,12 @@ class SemanticModel(BaseModel):
                 # Force hidden if only included as metric dependency
                 if is_required and not has_bi_field:
                     force_hidden = True
-            measure_dict = measure.to_lookml_dict(model_name=self.name)
+
+            measure_dict = measure.to_lookml_dict(
+                model_name=self.name, skip_hidden=skip_hidden
+            )
+            if measure_dict is None:
+                continue  # Measure was skipped
             if force_hidden:
                 measure_dict["hidden"] = "yes"
             measures.append(measure_dict)

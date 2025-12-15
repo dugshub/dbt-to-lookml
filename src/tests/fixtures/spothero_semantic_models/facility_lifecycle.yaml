@@ -1,0 +1,176 @@
+version: 2
+
+semantic_models:
+  - name: facility_lifecycle
+    description: |
+      Facility lifecycle state transitions (SCD Type 2 pattern).
+
+      Tracks when facilities change state - both status changes ("can it transact?")
+      and activity changes ("did it transact recently?").
+
+      Query Patterns:
+      - Current state: Filter is_current = true
+      - Historical point-in-time: Filter valid_from <= date AND (valid_to > date OR valid_to IS NULL)
+      - Transitions in period: Group by transition_type
+
+    model: ref('fct_facility_lifecycle_transitions')
+    defaults:
+      agg_time_dimension: valid_from
+
+    entities:
+      - name: facility_lifecycle_transition
+        type: primary
+        expr: transition_sk
+
+      - name: facility
+        type: foreign
+        expr: facility_sk
+
+      - name: canonical_facility
+        type: foreign
+        expr: canonical_facility_id
+
+    dimensions:
+      # ===== TIME DIMENSIONS =====
+      - name: valid_from
+        label: "Transition Date"
+        description: "Date when the facility entered this state"
+        type: time
+        type_params:
+          time_granularity: day
+        expr: valid_from
+        config:
+          meta:
+            subject: "Date Dimensions"
+            category: "Facility Lifecycle (UTC)"
+            bi_field: true
+
+      # ===== SCD DIMENSIONS =====
+      - name: is_current
+        label: "Is Current State"
+        description: "True if this is the facility's current state. IMPORTANT: Filter on this for current-state queries."
+        type: categorical
+        expr: is_current
+        config:
+          meta:
+            subject: "State"
+            category: "SCD"
+            bi_field: true
+
+      # ===== STATE DIMENSIONS =====
+      - name: is_on
+        label: "Is On"
+        description: "Facility can transact (status is live_sales or live_limited)"
+        type: categorical
+        expr: is_on
+        config:
+          meta:
+            subject: "State"
+            category: "Status"
+            bi_field: true
+
+      - name: is_active
+        label: "Is Active"
+        description: "Facility had rental within 30 days"
+        type: categorical
+        expr: is_active
+        config:
+          meta:
+            subject: "State"
+            category: "Activity"
+            bi_field: true
+
+      - name: is_on_and_active
+        label: "Is Healthy"
+        description: "Facility is both ON and ACTIVE - the 'healthy facility' metric"
+        type: categorical
+        expr: is_on_and_active
+        config:
+          meta:
+            subject: "State"
+            category: "Health"
+            bi_field: true
+
+      - name: transition_type
+        label: "Transition Type"
+        description: |
+          How facility entered this state: initial, gained, lost, status_change,
+          activity_change, activity_decay, state_change
+        type: categorical
+        expr: transition_type
+        config:
+          meta:
+            subject: "Transition"
+            category: "Classification"
+            bi_field: true
+
+      - name: facility_status
+        label: "Facility Status"
+        description: "Detailed status: live_sales, live_limited, building, suspended_*, archived, deleted"
+        type: categorical
+        expr: facility_status
+        config:
+          meta:
+            subject: "State"
+            category: "Status"
+            bi_field: true
+
+      - name: activity_state
+        label: "Activity State"
+        description: "Activity level: active, inactive_30d, inactive_90d, inactive_365d"
+        type: categorical
+        expr: activity_state
+        config:
+          meta:
+            subject: "State"
+            category: "Activity"
+            bi_field: true
+
+      # ===== ENTITY IDENTIFIERS =====
+      - name: facility_id
+        label: "Facility ID"
+        description: "Parking facility identifier"
+        type: categorical
+        expr: facility_id
+        config:
+          meta:
+            subject: "Identifiers"
+            category: "Facility"
+            bi_field: true
+
+      - name: canonical_facility_id
+        label: "Canonical Facility ID"
+        description: "Canonical facility identifier for rollup/grouping"
+        type: categorical
+        expr: canonical_facility_id
+        config:
+          meta:
+            subject: "Identifiers"
+            category: "Facility"
+            bi_field: true
+
+    measures:
+      - name: transition_count
+        label: "Transition Count"
+        description: "Count of state transitions. Filter by transition_type for gained/lost counts."
+        agg: count
+        expr: "1"
+        config:
+          meta:
+            subject: "Facilities"
+            category: "Metrics"
+            hidden: true
+
+      - name: facility_count
+        label: "Facility Count"
+        description: |
+          Distinct count of facilities.
+          WARNING: Without is_current=true filter, includes all historical states (inflated).
+          For current facility count, always filter is_current=true.
+        agg: count_distinct
+        expr: facility_id
+        config:
+          meta:
+            subject: "Facilities"
+            category: "Metrics"
+            hidden: true
