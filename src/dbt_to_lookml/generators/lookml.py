@@ -1415,6 +1415,13 @@ class LookMLGenerator(Generator):
                 "view_label": "  Metrics",  # 2 spaces prefix for top sort order
             }
 
+            # Parse metric filter if present
+            filter_sql = None
+            if metric.filter:
+                from dbt_to_lookml.parsers.metric_filter import MetricFilterParser
+                filter_parser = MetricFilterParser(all_models)
+                filter_sql = filter_parser.parse_filters(metric.filter)
+
             # Add SQL (same logic as Measure.to_lookml_dict)
             if source_measure.agg != AggregationType.COUNT:
                 base_sql = self._qualify_measure_sql(
@@ -1422,9 +1429,17 @@ class LookMLGenerator(Generator):
                 )
                 # Auto-cast for aggregations that truncate integers
                 if source_measure.agg in FLOAT_CAST_AGGREGATIONS:
-                    measure_dict["sql"] = f"({base_sql})::FLOAT"
+                    base_sql = f"({base_sql})::FLOAT"
+
+                # Apply filter as CASE WHEN if present
+                if filter_sql:
+                    measure_dict["sql"] = f"CASE WHEN {filter_sql} THEN {base_sql} END"
                 else:
                     measure_dict["sql"] = base_sql
+            else:
+                # COUNT aggregation - need to generate filtered count expression
+                if filter_sql:
+                    measure_dict["sql"] = f"CASE WHEN {filter_sql} THEN 1 END"
 
         else:
             # Complex metrics (ratio, derived) - use type: number

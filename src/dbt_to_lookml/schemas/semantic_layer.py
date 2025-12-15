@@ -1109,6 +1109,7 @@ class Metric(BaseModel):
     )
     label: str | None = None
     description: str | None = None
+    filter: list[str] | None = None
     meta: dict[str, Any] | None = None
 
     @property

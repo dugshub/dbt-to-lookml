@@ -331,6 +331,9 @@ class DbtMetricParser(Parser):
             elif "meta" in metric_data:
                 meta = metric_data.get("meta")
 
+            # Extract filter (list of filter expressions)
+            metric_filter = metric_data.get("filter")
+
             # Construct metric object
             return Metric(
                 name=metric_data["name"],
@@ -338,6 +341,7 @@ class DbtMetricParser(Parser):
                 type_params=type_params,
                 label=metric_data.get("label"),
                 description=metric_data.get("description"),
+                filter=metric_filter,
                 meta=meta,
             )
 
