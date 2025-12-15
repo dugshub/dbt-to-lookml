@@ -103,7 +103,10 @@ class TestHierarchyLabeling:
         assert lookml_dict["type"] == "count"
 
     def test_time_dimension_with_hierarchy(self) -> None:
-        """Test time dimension_group includes hierarchy labels."""
+        """Test time dimension_group includes hierarchy labels.
+
+        Time dimension view_label gets 1-space prefix for sort order positioning.
+        """
         hierarchy = Hierarchy(
             entity="rental", category="temporal", subcategory="booking_time"
         )
@@ -117,7 +120,8 @@ class TestHierarchyLabeling:
         )
 
         lookml_dict = dimension.to_lookml_dict()
-        assert lookml_dict["view_label"] == "Rental"
+        # Time dimensions get 1-space prefix on view_label for sort order
+        assert lookml_dict["view_label"] == " Rental"
         assert lookml_dict["group_label"] == "Temporal"
         assert lookml_dict["type"] == "time"
         assert "timeframes" in lookml_dict

@@ -31,7 +31,10 @@ class TestFlatMetaLabeling:
         assert group_label == "Transaction Details"
 
     def test_dimension_lookml_with_flat_meta(self) -> None:
-        """Test dimension LookML output includes labels from flat meta."""
+        """Test dimension LookML output includes labels from flat meta.
+
+        Time dimension view_label gets 1-space prefix for sort order positioning.
+        """
         config = Config(meta=ConfigMeta(subject="Universal", category="Time Periods"))
 
         dimension = Dimension(
@@ -43,7 +46,8 @@ class TestFlatMetaLabeling:
         )
 
         lookml_dict = dimension.to_lookml_dict()
-        assert lookml_dict["view_label"] == "Universal"
+        # Time dimensions get 1-space prefix on view_label for sort order
+        assert lookml_dict["view_label"] == " Universal"
         assert lookml_dict["group_label"] == "Time Periods"
         assert lookml_dict["name"] == "created_date"
         assert lookml_dict["type"] == "time"

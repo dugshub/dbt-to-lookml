@@ -463,7 +463,9 @@ class Dimension(BaseModel):
         # Add hierarchy labels
         view_label, group_label = self.get_dimension_labels()
         if view_label:
-            result["view_label"] = view_label
+            # Add 1-space prefix to time dimension view_label for sort order
+            # (after Metrics with 2 spaces, before other views without prefix)
+            result["view_label"] = f" {view_label.lstrip()}"
         if group_label:
             result["group_label"] = group_label
 

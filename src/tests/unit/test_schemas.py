@@ -435,7 +435,10 @@ class TestDimensionConvertTz:
         assert result["convert_tz"] == "yes"
 
     def test_convert_tz_with_all_optional_fields(self) -> None:
-        """Test convert_tz coexists properly with other optional fields."""
+        """Test convert_tz coexists properly with other optional fields.
+
+        Time dimension view_label gets 1-space prefix for sort order positioning.
+        """
         # Arrange: Create comprehensive dimension
         dimension = Dimension(
             name="created_at",
@@ -459,7 +462,8 @@ class TestDimensionConvertTz:
         assert result["sql"] == "created_timestamp"
         assert result["description"] == "When the event was created"
         assert result["label"] == "Created Date"
-        assert result["view_label"] == "Events"  # Formatted from subject
+        # Time dimensions get 1-space prefix on view_label for sort order
+        assert result["view_label"] == " Events"
         assert result["group_label"] == "Timing"  # Formatted from category
         assert result["convert_tz"] == "yes"
 
@@ -566,7 +570,10 @@ class TestDimensionTimeDimensionGroupLabel:
     def test_dimension_group_hierarchy_group_label_overrides_time_group_label(
         self,
     ) -> None:
-        """Test that hierarchy-based group_label takes precedence over time group_label."""
+        """Test that hierarchy-based group_label takes precedence over time group_label.
+
+        Time dimension view_label gets 1-space prefix for sort order positioning.
+        """
         # Arrange - dimension has hierarchy with category
         dimension = Dimension(
             name="created_at",
@@ -588,8 +595,8 @@ class TestDimensionTimeDimensionGroupLabel:
 
         # Assert - hierarchy group_label wins
         assert result.get("group_label") == "Event Tracking"  # From hierarchy
-        # view_label from hierarchy is still preserved
-        assert result.get("view_label") == "Event"
+        # Time dimensions get 1-space prefix on view_label for sort order
+        assert result.get("view_label") == " Event"
 
     def test_time_dimension_group_label_with_generator_default(self) -> None:
         """Test that generator default applies to all time dimensions."""
@@ -980,7 +987,8 @@ class TestDimensionGroupItemLabel:
         assert result["convert_tz"] == "yes"
         assert result["group_label"] == " Event Dates"  # 1 space prefix
         assert "group_item_label" in result
-        assert result["view_label"] == "Order"  # From hierarchy
+        # Time dimensions get 1-space prefix on view_label for sort order
+        assert result["view_label"] == " Order"
 
 
 class TestMeasure:
