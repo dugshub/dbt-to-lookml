@@ -202,6 +202,33 @@ class LookMLGenerator(Generator):
 
         return f"{measure.name}{self.measure_suffix}"
 
+    def _qualify_measure_sql(self, expr: str | None, field_name: str) -> str:
+        """Ensure SQL expressions use ${TABLE} to avoid ambiguous column references.
+
+        This prevents ambiguous column errors in joins by ensuring all column
+        references are qualified with ${TABLE}.
+
+        Args:
+            expr: Custom SQL expression or None
+            field_name: Name of the field (used as default)
+
+        Returns:
+            Qualified SQL expression
+        """
+        if expr is None:
+            return f"${{TABLE}}.{field_name}"
+
+        # Already contains LookML references, use as-is
+        if "${TABLE}" in expr or "${" in expr:
+            return expr
+
+        # Simple column name (alphanumeric + underscore only) - qualify it
+        if expr.replace("_", "").isalnum():
+            return f"${{TABLE}}.{expr}"
+
+        # Complex expression - use as-is
+        return expr
+
     def _get_canonical_key(
         self,
         model: SemanticModel,
@@ -384,8 +411,8 @@ class LookMLGenerator(Generator):
         # IMPORTANT: Don't hardcode "local" - user may not have that variant
         default_variant = default_variant or sorted(variants)[0]
 
-        # Use provided group_label or default to "Time Dimensions"
-        effective_group_label = group_label if group_label is not None else "Time Dimensions"
+        # Use provided group_label or default to " Date Dimensions" (leading space for sort order)
+        effective_group_label = group_label if group_label is not None else " Date Dimensions"
 
         return {
             "name": "timezone_selector",
@@ -492,11 +519,34 @@ class LookMLGenerator(Generator):
             default_use_group_item_label=self.use_group_item_label,
         )
 
-        # Extract base column name (strips variant suffix)
-        base_column = self._extract_base_column(variants)
+        # Build Liquid conditional for timezone switching
+        # This is more reliable than string concatenation with parameter injection
+        sql_parts = []
+        sorted_variants = sorted(
+            variants,
+            key=lambda d: d.config.meta.timezone_variant.variant
+            if d.config and d.config.meta and d.config.meta.timezone_variant
+            else "",
+        )
 
-        # Generate SQL with parameter injection pattern
-        result["sql"] = f"${{TABLE}}.{base_column}{{% parameter timezone_selector %}}"
+        for i, dim in enumerate(sorted_variants):
+            if not dim.config or not dim.config.meta or not dim.config.meta.timezone_variant:
+                continue
+            variant = dim.config.meta.timezone_variant.variant
+            expr = dim.expr or dim.name
+
+            if i == 0:
+                sql_parts.append(
+                    f"{{% if timezone_selector._parameter_value == '_{variant}' %}}"
+                )
+            else:
+                sql_parts.append(
+                    f"{{% elsif timezone_selector._parameter_value == '_{variant}' %}}"
+                )
+            sql_parts.append(f"${{TABLE}}.{expr}")
+
+        sql_parts.append("{% endif %}")
+        result["sql"] = "\n".join(sql_parts)
 
         # Update description to mention toggle
         if "description" in result:
@@ -1333,7 +1383,9 @@ class LookMLGenerator(Generator):
 
             # Add SQL (same logic as Measure.to_lookml_dict)
             if source_measure.agg != AggregationType.COUNT:
-                base_sql = source_measure.expr or f"${{TABLE}}.{source_measure.name}"
+                base_sql = self._qualify_measure_sql(
+                    source_measure.expr, source_measure.name
+                )
                 # Auto-cast for aggregations that truncate integers
                 if source_measure.agg in FLOAT_CAST_AGGREGATIONS:
                     measure_dict["sql"] = f"({base_sql})::FLOAT"
