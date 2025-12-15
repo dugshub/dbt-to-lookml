@@ -491,9 +491,9 @@ class Dimension(BaseModel):
             time_group_label = self.config.meta.time_dimension_group_label
 
         # Apply time dimension group_label if not explicitly disabled
-        # and no hierarchy group_label exists (hierarchy takes precedence)
+        # This OVERRIDES any hierarchy group_label for consistent time dimension grouping
         # Prefix with 1 space for sort order (after Metrics with 2 spaces)
-        if time_group_label and "group_label" not in result:
+        if time_group_label:
             result["group_label"] = f" {time_group_label.lstrip()}"  # 1 space prefix
 
         # Determine convert_tz with three-tier precedence:

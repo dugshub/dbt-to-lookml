@@ -435,7 +435,11 @@ class TestDimensionConvertTz:
         assert result["convert_tz"] == "yes"
 
     def test_convert_tz_with_all_optional_fields(self) -> None:
-        """Test convert_tz coexists properly with other optional fields."""
+        """Test convert_tz coexists properly with other optional fields.
+
+        For TIME dimensions, time_dimension_group_label overrides category-based
+        group_label to ensure consistent time dimension grouping with space prefix.
+        """
         # Arrange: Create comprehensive dimension
         dimension = Dimension(
             name="created_at",
@@ -460,7 +464,8 @@ class TestDimensionConvertTz:
         assert result["description"] == "When the event was created"
         assert result["label"] == "Created Date"
         assert result["view_label"] == "Events"  # Formatted from subject
-        assert result["group_label"] == "Timing"  # Formatted from category
+        # Time dimensions use time_dimension_group_label with space prefix, not category
+        assert result["group_label"] == " Date Dimensions - Local Time"
         assert result["convert_tz"] == "yes"
 
     def test_convert_tz_no_config_uses_parameter(self) -> None:
@@ -563,10 +568,16 @@ class TestDimensionTimeDimensionGroupLabel:
         # Assert
         assert result.get("group_label") == " Date Dimensions - Local Time"
 
-    def test_dimension_group_hierarchy_group_label_overrides_time_group_label(
+    def test_time_dimension_group_label_overrides_hierarchy_group_label(
         self,
     ) -> None:
-        """Test that hierarchy-based group_label takes precedence over time group_label."""
+        """Test that time_dimension_group_label overrides hierarchy-based group_label.
+
+        Time dimensions should always use time_dimension_group_label (with space prefix
+        for sort order) regardless of hierarchy metadata. This ensures consistent
+        organization of all time dimensions under a common grouping.
+        view_label from hierarchy is still preserved.
+        """
         # Arrange - dimension has hierarchy with category
         dimension = Dimension(
             name="created_at",
@@ -578,7 +589,7 @@ class TestDimensionTimeDimensionGroupLabel:
                         entity="event",
                         category="event_tracking",
                     ),
-                    time_dimension_group_label=" Date Dimensions - Local Time",  # Should be ignored
+                    time_dimension_group_label="Date Dimensions - Local Time",
                 )
             ),
         )
@@ -586,8 +597,8 @@ class TestDimensionTimeDimensionGroupLabel:
         # Act
         result = dimension._to_dimension_group_dict()
 
-        # Assert - hierarchy group_label wins
-        assert result.get("group_label") == "Event Tracking"  # From hierarchy
+        # Assert - time_dimension_group_label wins with space prefix
+        assert result.get("group_label") == " Date Dimensions - Local Time"
         # view_label from hierarchy is still preserved
         assert result.get("view_label") == "Event"
 
