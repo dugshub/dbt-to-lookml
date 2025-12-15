@@ -103,12 +103,7 @@ class TestHierarchyLabeling:
         assert lookml_dict["type"] == "count"
 
     def test_time_dimension_with_hierarchy(self) -> None:
-        """Test time dimension_group uses time_dimension_group_label over hierarchy.
-
-        Time dimensions should always use time_dimension_group_label (with space prefix
-        for sort order) regardless of hierarchy metadata. This ensures consistent
-        organization of all time dimensions under a common grouping.
-        """
+        """Test time dimension_group includes hierarchy labels."""
         hierarchy = Hierarchy(
             entity="rental", category="temporal", subcategory="booking_time"
         )
@@ -123,9 +118,7 @@ class TestHierarchyLabeling:
 
         lookml_dict = dimension.to_lookml_dict()
         assert lookml_dict["view_label"] == "Rental"
-        # Time dimensions use time_dimension_group_label, not hierarchy category
-        # Space prefix ensures sorting to top of field picker
-        assert lookml_dict["group_label"] == " Date Dimensions - Local Time"
+        assert lookml_dict["group_label"] == "Temporal"
         assert lookml_dict["type"] == "time"
         assert "timeframes" in lookml_dict
 
