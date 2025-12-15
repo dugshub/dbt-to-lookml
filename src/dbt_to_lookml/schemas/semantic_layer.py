@@ -155,6 +155,11 @@ class Entity(BaseModel):
             # Already contains LookML references, use as-is
             return expr
 
+        # Numeric literals (e.g., "1" for count-as-sum) - don't qualify
+        # These are not column references
+        if expr.strip().lstrip("-").replace(".", "", 1).isdigit():
+            return expr
+
         # Check if it's a simple column reference (alphanumeric + underscore only)
         # This handles cases like "id" or "facility_sk"
         if expr.replace("_", "").replace(" ", "").isalnum() and " " not in expr.strip():

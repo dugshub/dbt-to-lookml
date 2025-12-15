@@ -217,6 +217,28 @@ class TestEntity:
         lookml_dict = entity.to_lookml_dict()
         assert lookml_dict["sql"] == "CAST(user_id AS VARCHAR)"
 
+    def test_entity_expr_qualification_numeric_literals(self) -> None:
+        """Test that numeric literals are not qualified with ${TABLE}."""
+        # Integer literal (e.g., for count-as-sum pattern)
+        entity = Entity(name="row_count", type="primary", expr="1")
+        lookml_dict = entity.to_lookml_dict()
+        assert lookml_dict["sql"] == "1"
+
+        # Negative integer
+        entity2 = Entity(name="neg_value", type="primary", expr="-1")
+        lookml_dict2 = entity2.to_lookml_dict()
+        assert lookml_dict2["sql"] == "-1"
+
+        # Decimal literal
+        entity3 = Entity(name="weight", type="primary", expr="1.5")
+        lookml_dict3 = entity3.to_lookml_dict()
+        assert lookml_dict3["sql"] == "1.5"
+
+        # Negative decimal
+        entity4 = Entity(name="neg_weight", type="primary", expr="-0.5")
+        lookml_dict4 = entity4.to_lookml_dict()
+        assert lookml_dict4["sql"] == "-0.5"
+
 
 class TestDimension:
     """Test cases for Dimension model."""

@@ -222,6 +222,11 @@ class LookMLGenerator(Generator):
         if "${TABLE}" in expr or "${" in expr:
             return expr
 
+        # Numeric literals (e.g., "1" for count-as-sum) - don't qualify
+        # These are not column references
+        if expr.strip().lstrip("-").replace(".", "", 1).isdigit():
+            return expr
+
         # Simple column name (alphanumeric + underscore only) - qualify it
         if expr.replace("_", "").isalnum():
             return f"${{TABLE}}.{expr}"

@@ -502,8 +502,8 @@ class TestGenerateTimezoneParameter:
         assert param["label"] == "Timezone"
         assert param["default_value"] == "_utc"  # Primary variant
 
-        # Check group_label defaults to "Time Dimensions"
-        assert param["group_label"] == "Time Dimensions"
+        # Check group_label defaults to " Date Dimensions" (leading space for sort order)
+        assert param["group_label"] == " Date Dimensions"
 
         # Check allowed values
         assert len(param["allowed_value"]) == 2
@@ -788,8 +788,15 @@ class TestGenerateToggleableDimensionGroup:
             variants=[primary, variant],
         )
 
-        # Check SQL has parameter injection
-        assert dim_group["sql"] == "${TABLE}.rental_starts_at{% parameter timezone_selector %}"
+        # Check SQL uses Liquid conditionals (variants sorted alphabetically: local, utc)
+        expected_sql = "\n".join([
+            "{% if timezone_selector._parameter_value == '_local' %}",
+            "${TABLE}.rental_starts_at_local",
+            "{% elsif timezone_selector._parameter_value == '_utc' %}",
+            "${TABLE}.rental_starts_at_utc",
+            "{% endif %}",
+        ])
+        assert dim_group["sql"] == expected_sql
 
         # Check description mentions toggle
         assert "toggle timezone" in dim_group["description"]
@@ -913,9 +920,9 @@ class TestGenerateViewWithTimezoneVariants:
         assert "starts_at" in dim_group_names
         assert "starts_at_local" not in dim_group_names  # Should be excluded
 
-        # Check the dimension_group has toggle SQL
+        # Check the dimension_group has toggle SQL (Liquid conditional pattern)
         starts_at_dg = next(dg for dg in dimension_groups if dg["name"] == "starts_at")
-        assert "{% parameter timezone_selector %}" in starts_at_dg["sql"]
+        assert "timezone_selector._parameter_value" in starts_at_dg["sql"]
 
     def test_generate_view_single_variant_no_toggle(self):
         """Test single variant doesn't generate toggle (misconfiguration)."""
@@ -1272,7 +1279,7 @@ class TestTimezoneVariantGroupLabel:
         view = view_dict["views"][0]
         assert "parameter" in view
         param = view["parameter"][0]
-        assert param["group_label"] == "Time Dimensions"
+        assert param["group_label"] == " Date Dimensions"  # Leading space for sort order
 
     def test_view_generation_custom_group_label(self):
         """Test that custom time_dimension_group_label is applied."""

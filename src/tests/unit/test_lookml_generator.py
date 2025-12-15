@@ -660,6 +660,80 @@ dimension: { user_id: { type: string sql: ${TABLE}.user_id } }
         assert "你好" in content or "unicode" in content  # Content should be preserved
 
 
+class TestQualifyMeasureSql:
+    """Tests for _qualify_measure_sql method."""
+
+    def test_qualify_simple_column_name(self) -> None:
+        """Test that simple column names are qualified with ${TABLE}."""
+        generator = LookMLGenerator()
+
+        # Simple column name
+        result = generator._qualify_measure_sql("revenue", "revenue")
+        assert result == "${TABLE}.revenue"
+
+        # Column with underscores
+        result = generator._qualify_measure_sql("total_amount", "total_amount")
+        assert result == "${TABLE}.total_amount"
+
+    def test_qualify_none_defaults_to_field_name(self) -> None:
+        """Test that None expr defaults to ${TABLE}.{field_name}."""
+        generator = LookMLGenerator()
+
+        result = generator._qualify_measure_sql(None, "revenue")
+        assert result == "${TABLE}.revenue"
+
+    def test_qualify_already_qualified_unchanged(self) -> None:
+        """Test that expressions with ${TABLE} are unchanged."""
+        generator = LookMLGenerator()
+
+        result = generator._qualify_measure_sql("${TABLE}.revenue", "revenue")
+        assert result == "${TABLE}.revenue"
+
+        # With other LookML references
+        result = generator._qualify_measure_sql("${other_view.amount}", "amount")
+        assert result == "${other_view.amount}"
+
+    def test_qualify_numeric_literals_not_qualified(self) -> None:
+        """Test that numeric literals are not qualified with ${TABLE}."""
+        generator = LookMLGenerator()
+
+        # Integer literal (e.g., for count-as-sum pattern)
+        result = generator._qualify_measure_sql("1", "row_count")
+        assert result == "1"
+
+        # Negative integer
+        result = generator._qualify_measure_sql("-1", "neg_count")
+        assert result == "-1"
+
+        # Decimal literal
+        result = generator._qualify_measure_sql("1.5", "weight")
+        assert result == "1.5"
+
+        # Negative decimal
+        result = generator._qualify_measure_sql("-0.5", "neg_weight")
+        assert result == "-0.5"
+
+        # Zero
+        result = generator._qualify_measure_sql("0", "zero_val")
+        assert result == "0"
+
+        # With whitespace
+        result = generator._qualify_measure_sql(" 1 ", "padded")
+        assert result == " 1 "
+
+    def test_qualify_complex_expressions_unchanged(self) -> None:
+        """Test that complex expressions are left as-is."""
+        generator = LookMLGenerator()
+
+        # Expression with operators
+        result = generator._qualify_measure_sql("revenue * 0.1", "tax")
+        assert result == "revenue * 0.1"
+
+        # Expression with functions
+        result = generator._qualify_measure_sql("COALESCE(amount, 0)", "safe_amount")
+        assert result == "COALESCE(amount, 0)"
+
+
 # Tests for low coverage code paths
 class TestFindModelByPrimaryEntity:
     """Tests for _find_model_by_primary_entity method."""
