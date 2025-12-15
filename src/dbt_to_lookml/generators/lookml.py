@@ -350,6 +350,7 @@ class LookMLGenerator(Generator):
         self,
         variant_groups: dict[str, list["Dimension"]],
         group_label: str | None = None,
+        view_label: str | None = None,
     ) -> dict | None:
         """Generate timezone selector parameter using variant names from meta.
 
@@ -363,6 +364,8 @@ class LookMLGenerator(Generator):
             group_label: Optional group label for the parameter. When provided,
                 groups the timezone_selector with time dimensions in Looker's
                 field picker. Defaults to "Time Dimensions" if not specified.
+            view_label: Optional view label for the parameter. Should match the
+                time dimensions' view_label so they appear together in Looker.
 
         Returns:
             Parameter dictionary for LookML output, or None if no variants exist.
@@ -419,7 +422,7 @@ class LookMLGenerator(Generator):
         # Use provided group_label or default to " Date Dimensions" (leading space for sort order)
         effective_group_label = group_label if group_label is not None else " Date Dimensions"
 
-        return {
+        result = {
             "name": "timezone_selector",
             "type": "unquoted",
             "label": "Timezone",
@@ -434,6 +437,12 @@ class LookMLGenerator(Generator):
             ],
             "default_value": f"_{default_variant}",  # "_local"
         }
+
+        # Add view_label if provided (matches time dimensions' view_label)
+        if view_label:
+            result["view_label"] = view_label
+
+        return result
 
     def _extract_base_column(self, variants: list["Dimension"]) -> str:
         """Extract base column name by removing variant suffix from expression.
@@ -620,8 +629,28 @@ class LookMLGenerator(Generator):
         # Generate timezone parameter if any toggleable dimensions exist
         parameter_dict = None
         if toggleable_dimensions:
+            # Extract view_label from the first primary dimension
+            # This ensures the timezone selector appears with the time dimensions
+            first_primary = next(iter(toggleable_dimensions.keys()))
+            first_primary_dim = None
+            for dim_name, variants in toggleable_dimensions.items():
+                for dim in variants:
+                    if dim.name == first_primary:
+                        first_primary_dim = dim
+                        break
+                if first_primary_dim:
+                    break
+
+            # Get view_label from the primary dimension (with space prefix like time dims)
+            param_view_label = None
+            if first_primary_dim:
+                view_label, _ = first_primary_dim.get_dimension_labels()
+                if view_label:
+                    # Add 1-space prefix to match time dimension view_label
+                    param_view_label = f" {view_label.lstrip()}"
+
             parameter_dict = self._generate_timezone_parameter(
-                tz_variant_groups, group_label=group_label
+                tz_variant_groups, group_label=group_label, view_label=param_view_label
             )
 
         return parameter_dict, skip_dimensions, toggleable_dimensions
