@@ -922,7 +922,11 @@ class TestMetricMeasureGeneration:
     def test_generate_metric_measure_simple(
         self, generator: LookMLGenerator, all_models: list[SemanticModel]
     ) -> None:
-        """Test generating measure dict for simple metric."""
+        """Test generating measure dict for simple metric.
+
+        Simple metrics now generate as direct aggregates (type: count, sum, etc.)
+        instead of type: number wrappers per smart optimization.
+        """
         metric = Metric(
             name="total_orders",
             type="simple",
@@ -937,8 +941,10 @@ class TestMetricMeasureGeneration:
         )
 
         assert measure_dict["name"] == "total_orders"
-        assert measure_dict["type"] == "number"
-        assert measure_dict["sql"] == "${order_count_measure}"
+        # Smart optimization: simple metrics use direct aggregate type
+        assert measure_dict["type"] == "count"
+        # COUNT type doesn't have sql field
+        assert "sql" not in measure_dict
         assert measure_dict["view_label"] == "  Metrics"
         assert measure_dict["label"] == "Total Orders"
         assert measure_dict["description"] == "Total count of orders"
@@ -1020,11 +1026,17 @@ class TestMetricMeasureGeneration:
     def test_generate_metric_measure_required_fields(
         self, generator: LookMLGenerator, all_models: list[SemanticModel]
     ) -> None:
-        """Test that required_fields is populated for cross-view metrics."""
+        """Test that required_fields is populated for cross-view ratio metrics.
+
+        Simple metrics no longer have required_fields (they're direct aggregates).
+        Ratio metrics still need required_fields for cross-view measure references.
+        """
         metric = Metric(
-            name="total_searches",
-            type="simple",
-            type_params=SimpleMetricParams(measure="search_count"),
+            name="conversion_rate",
+            type="ratio",
+            type_params=RatioMetricParams(
+                numerator="order_count", denominator="search_count"
+            ),
             meta={"primary_entity": "order"},
         )
         primary_model = all_models[0]
@@ -1222,7 +1234,11 @@ class TestMetricIntegration:
         assert "total_searches" not in files["orders.view.lkml"]
 
     def test_generate_metrics_appended(self, all_models: list[SemanticModel]) -> None:
-        """Test that metrics are appended to existing measures."""
+        """Test that metrics are generated in view files.
+
+        With smart optimization, simple metrics generate as direct aggregates.
+        Hidden _measure versions are only created when needed by complex metrics.
+        """
         generator = LookMLGenerator()
         metrics = [
             Metric(
@@ -1234,9 +1250,10 @@ class TestMetricIntegration:
         ]
         files = generator.generate(all_models, metrics)
 
-        # Both the original measure and the metric measure should be present
-        assert "order_count" in files["orders.view.lkml"]
+        # Metric should be present as a direct aggregate measure
         assert "total_orders" in files["orders.view.lkml"]
+        # With smart optimization, hidden _measure versions are not created
+        # unless needed by complex metrics (ratio, derived)
 
     def test_generate_missing_primary_entity_warning(
         self, all_models: list[SemanticModel]
