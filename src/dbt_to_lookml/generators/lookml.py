@@ -1177,6 +1177,77 @@ class LookMLGenerator(Generator):
         # Build ratio SQL with null safety
         return f"1.0 * {num_ref} / NULLIF({denom_ref}, 0)"
 
+    def _resolve_metric_reference(
+        self,
+        metric_name: str,
+        primary_entity: str,
+        all_metrics: list[Metric],
+        models: dict[str, SemanticModel],
+    ) -> str:
+        """Resolve metric name to LookML reference for use in derived metrics.
+
+        Derived metrics reference OTHER METRICS, not measures directly.
+        This method finds the referenced metric and generates a LookML reference
+        to its measure (which has the same name as the metric).
+
+        Args:
+            metric_name: Name of the metric to reference.
+            primary_entity: Primary entity of the derived metric (determines "same view").
+            all_metrics: List of all metrics to search.
+            models: Dictionary mapping model names to SemanticModel objects.
+
+        Returns:
+            LookML reference: "${metric_name}" if in same view,
+            otherwise "${view_prefix}{model}.{metric_name}"
+
+        Raises:
+            ValueError: If metric not found in all_metrics.
+        """
+        # Find the metric definition
+        referenced_metric = None
+        for m in all_metrics:
+            if m.name == metric_name:
+                referenced_metric = m
+                break
+
+        if not referenced_metric:
+            raise ValueError(
+                f"Metric '{metric_name}' not found in all_metrics list"
+            )
+
+        # Find the model that owns this metric (via primary_entity)
+        metric_primary_entity = referenced_metric.primary_entity
+        if not metric_primary_entity:
+            raise ValueError(
+                f"Referenced metric '{metric_name}' has no primary_entity"
+            )
+
+        metric_model = self._find_model_by_primary_entity(
+            metric_primary_entity, list(models.values())
+        )
+        if not metric_model:
+            raise ValueError(
+                f"No model found with primary entity '{metric_primary_entity}' "
+                f"for metric '{metric_name}'"
+            )
+
+        # Find the model for the current derived metric
+        primary_model = self._find_model_by_primary_entity(
+            primary_entity, list(models.values())
+        )
+        if not primary_model:
+            raise ValueError(f"No model found with primary entity '{primary_entity}'")
+
+        # Generate LookML reference to the metric's measure
+        # Metrics generate measures with the same name as the metric
+        if metric_model.name == primary_model.name:
+            # Same view - simple reference
+            return f"${{{metric_name}}}"
+        else:
+            # Cross-view reference
+            view_name = f"{self.view_prefix}{metric_model.name}"
+            return f"${{{view_name}.{metric_name}}}"
+
     def _generate_derived_sql(
         self,
         metric: Metric,
@@ -1217,24 +1288,23 @@ class LookMLGenerator(Generator):
         if not primary_entity:
             raise ValueError(f"Metric '{metric.name}' has no primary_entity")
 
-        # Build replacement map: alias/metric_name → ${view.measure}
+        # Build replacement map: alias/metric_name → ${view.metric_measure}
         # Use alias if provided (what appears in expr), otherwise metric name
         replacements = {}
         for ref in metric_refs:
-            # Find the metric definition (metrics map to measures via same name)
-            # This is a simplification - assumes metric name = measure name
-            measure_name = ref.name
-            measure_ref = self._resolve_measure_reference(
-                measure_name, primary_entity, models, usage_map
+            # Resolve the metric reference (NOT a measure reference)
+            # Derived metrics reference OTHER METRICS, not measures
+            metric_ref = self._resolve_metric_reference(
+                ref.name, primary_entity, all_metrics, models
             )
             # Use alias as replacement key if provided, otherwise use metric name
             replacement_key = ref.alias if ref.alias else ref.name
-            replacements[replacement_key] = measure_ref
+            replacements[replacement_key] = metric_ref
 
-        # Replace all aliases/metric names in expression with LookML measure references
+        # Replace all aliases/metric names in expression with LookML metric references
         result_expr = expr
-        for alias_or_name, measure_ref in replacements.items():
-            result_expr = result_expr.replace(alias_or_name, measure_ref)
+        for alias_or_name, metric_ref in replacements.items():
+            result_expr = result_expr.replace(alias_or_name, metric_ref)
 
         return result_expr
 
