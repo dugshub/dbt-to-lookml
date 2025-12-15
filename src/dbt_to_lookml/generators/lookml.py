@@ -43,6 +43,7 @@ class LookMLGenerator(Generator):
         use_group_item_label: bool | None = None,
         fact_models: list[str] | None = None,
         time_dimension_group_label: str | None = None,
+        include_children: bool = False,
     ) -> None:
         """Initialize the generator.
 
@@ -109,6 +110,12 @@ class LookMLGenerator(Generator):
                 This setting is overridden by per-dimension
                 config.meta.time_dimension_group_label in semantic models, allowing
                 fine-grained control at the dimension level.
+            include_children: Whether to discover and join "child" models that
+                have foreign keys pointing TO the fact model's primary entity.
+                When enabled, models like "reviews" (which has rental as FK) will
+                automatically join to the "rentals" explore. Only dimensions are
+                exposed from child models by default (not measures) to prevent
+                aggregation fan-out. Default is False for backward compatibility.
 
         Example:
             Enable group_item_label globally:
@@ -163,6 +170,7 @@ class LookMLGenerator(Generator):
         self.use_group_item_label = use_group_item_label
         self.fact_models = fact_models
         self.time_dimension_group_label = time_dimension_group_label
+        self.include_children = include_children
 
         # Backward compatibility attribute
         class MapperCompat:
@@ -1726,6 +1734,61 @@ class LookMLGenerator(Generator):
 
                 # Track the join path for this model
                 join_paths[target_model.name] = (current_view_name, entity.name)
+
+        # Reverse join discovery: find models with FKs pointing TO the fact model
+        if self.include_children:
+            # Find the fact model's primary entity
+            fact_primary_entity = None
+            for entity in fact_model.entities:
+                if entity.type == "primary":
+                    fact_primary_entity = entity
+                    break
+
+            if fact_primary_entity:
+                # Look for models that have a FK matching the fact's primary entity
+                for other_model in all_models:
+                    if other_model.name in visited:
+                        continue
+
+                    # Check if this model has a FK pointing to our primary entity
+                    for entity in other_model.entities:
+                        if (
+                            entity.type == "foreign"
+                            and entity.name == fact_primary_entity.name
+                        ):
+                            # Found a child model - add reverse join
+                            visited.add(other_model.name)
+                            child_view_name = model_view_names[other_model.name]
+
+                            # Generate SQL ON clause (child FK = fact PK)
+                            sql_on = self._generate_sql_on_clause(
+                                fact_view_name,
+                                fact_primary_entity.name,
+                                child_view_name,
+                                entity.name,
+                            )
+
+                            # For reverse joins, only expose dimensions by default
+                            # (measures excluded to prevent fan-out)
+                            fields_list = [f"{child_view_name}.dimensions_only*"]
+
+                            # Apply bi_field filtering if enabled
+                            fields_list = self._filter_fields_by_bi_field(
+                                other_model, fields_list
+                            )
+
+                            # Relationship is one_to_many from fact perspective
+                            # (one rental has many reviews)
+                            join = {
+                                "view_name": child_view_name,
+                                "sql_on": sql_on,
+                                "relationship": "one_to_many",
+                                "type": "left_outer",
+                                "fields": fields_list,
+                            }
+
+                            joins.append(join)
+                            break  # Only one FK per model to same entity
 
         return joins
 

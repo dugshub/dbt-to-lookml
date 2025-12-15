@@ -359,6 +359,17 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
     ),
 )
 @click.option(
+    "--include-children",
+    is_flag=True,
+    default=False,
+    help=(
+        "Discover and join 'child' models that have foreign keys pointing to "
+        "the fact model's primary entity. For example, if 'reviews' has a FK to "
+        "'rentals', it will auto-join to the rentals explore. Only dimensions "
+        "are exposed from child models (measures excluded to prevent fan-out)."
+    ),
+)
+@click.option(
     "--yes",
     "-y",
     is_flag=True,
@@ -390,6 +401,7 @@ def generate(
     use_group_item_label: bool,
     no_group_item_label: bool,
     fact_models: str | None,
+    include_children: bool,
     yes: bool,
     preview: bool,
 ) -> None:
@@ -733,6 +745,7 @@ def generate(
             use_group_item_label=group_item_label_value,
             fact_models=fact_model_names,
             time_dimension_group_label=time_dim_group_label_value,
+            include_children=include_children,
         )
 
         # Generate files
