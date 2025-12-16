@@ -8,7 +8,15 @@ from typing import Any
 from pydantic import ValidationError
 
 from dbt_to_lookml.interfaces.parser import Parser
-from dbt_to_lookml.schemas.config import Config, ConfigMeta, Hierarchy
+from dbt_to_lookml.schemas.config import (
+    Config,
+    ConfigMeta,
+    Hierarchy,
+    PopConfig,
+    PopGrain,
+    PopComparison,
+    PopWindow,
+)
 from dbt_to_lookml.schemas.semantic_layer import (
     Dimension,
     Entity,
@@ -144,6 +152,69 @@ class DbtParser(Parser):
         """
         # Required fields for a semantic model
         return "name" in model and "model" in model
+
+    def _parse_pop_config(
+        self,
+        pop_data: dict[str, Any],
+        model_data: dict[str, Any],
+    ) -> PopConfig | None:
+        """Parse PoP configuration from measure meta with resolution.
+
+        Resolves date_dimension and date_filter through hierarchy:
+        1. Measure-level pop config
+        2. Model-level pop config
+        3. Model defaults.agg_time_dimension
+
+        Args:
+            pop_data: The pop config dict from measure meta.
+            model_data: The full model data for fallback resolution.
+
+        Returns:
+            Parsed PopConfig or None if not enabled.
+        """
+        if not pop_data.get("enabled", False):
+            return None
+
+        # Parse enum values
+        grains = [
+            PopGrain(g) for g in pop_data.get("grains", ["mtd", "ytd"])
+        ]
+        comparisons = [
+            PopComparison(c) for c in pop_data.get("comparisons", ["pp", "py"])
+        ]
+        windows = [
+            PopWindow(w) for w in pop_data.get("windows", ["month"])
+        ]
+
+        # Get explicit values from measure config
+        date_dimension = pop_data.get("date_dimension")
+        date_filter = pop_data.get("date_filter")
+
+        # Resolve date_dimension if not specified
+        if not date_dimension:
+            # Try model-level pop config
+            model_meta = model_data.get("config", {}).get("meta", {})
+            model_pop = model_meta.get("pop", {})
+            date_dimension = model_pop.get("date_dimension")
+
+            # Fall back to defaults.agg_time_dimension
+            if not date_dimension:
+                defaults = model_data.get("defaults", {})
+                date_dimension = defaults.get("agg_time_dimension")
+
+        # Derive date_filter if not specified
+        if not date_filter and date_dimension:
+            date_filter = f"{date_dimension}_date"
+
+        return PopConfig(
+            enabled=True,
+            grains=grains,
+            comparisons=comparisons,
+            windows=windows,
+            format=pop_data.get("format"),
+            date_dimension=date_dimension,
+            date_filter=date_filter,
+        )
 
     def _parse_semantic_model(self, model_data: dict[str, Any]) -> SemanticModel:
         """Parse a single semantic model from dictionary data.
@@ -410,6 +481,14 @@ class DbtParser(Parser):
                                     category=meta_data.get("category"),
                                     subcategory=meta_data.get("subcategory"),
                                 )
+
+                            # Parse pop config if present
+                            pop_config = None
+                            if "pop" in meta_data:
+                                pop_config = self._parse_pop_config(
+                                    meta_data["pop"], model_data
+                                )
+
                             config_meta = ConfigMeta(
                                 domain=meta_data.get("domain"),
                                 owner=meta_data.get("owner"),
@@ -426,6 +505,7 @@ class DbtParser(Parser):
                                 time_dimension_group_label=meta_data.get(
                                     "time_dimension_group_label"
                                 ),
+                                pop=pop_config,
                             )
                         measure_config = Config(meta=config_meta)
 

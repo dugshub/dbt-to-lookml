@@ -1,0 +1,360 @@
+epic:
+  title: "Epic: PoP (Period-over-Period) and Grain-to-Date Support"
+  description: |
+    ## Problem Statement
+    Business users need to compare metrics across time periods (MTD vs prior month, YTD vs prior year)
+    without manually creating dozens of filtered measures. Currently, every comparison requires
+    hand-crafted LookML measures, leading to view files with hundreds of lines of repetitive code.
+
+    ## Solution Approach
+    Implement a PoP (Period-over-Period) feature that:
+    1. Parses `pop` configuration from dbt measure meta blocks
+    2. Auto-generates PoP date filter dimensions (is_mtd, is_ytd, is_prior_period, etc.)
+    3. Creates global parameters for period grain and comparison selection
+    4. Generates hidden measures for each grain x comparison combination
+    5. Creates visible measure groups with current, comparison, delta, and % change
+
+    The feature auto-detects PoP configuration from meta - no CLI flag required. It uses the
+    semantic model's `defaults.agg_time_dimension` as the date reference for PoP calculations.
+
+    ## Success Criteria
+    - Measures with `pop.enabled: true` in meta generate complete PoP measure groups
+    - Only configured grains (mtd, ytd) and comparisons (pp, py) generate measures
+    - Generated LookML integrates with existing date selection infrastructure
+    - 95%+ test coverage on new PoP functionality
+    - Type-safe implementation passing mypy --strict
+
+    ## Sub-Issues
+    1. DTL-027: Add PoP configuration schema
+    2. DTL-028: Parse pop meta from measures
+    3. DTL-029: Generate PoP date dimensions
+    4. DTL-030: Generate PoP global parameters
+    5. DTL-031: Generate hidden PoP measures
+    6. DTL-032: Generate visible PoP measure group
+    7. DTL-033: Wire PoP into generation pipeline
+    8. DTL-034: Add PoP test suite
+
+    ## Configuration Example
+    ```yaml
+    measures:
+      - name: revenue
+        agg: sum
+        expr: checkout_amount
+        config:
+          meta:
+            pop:
+              enabled: true
+              grains: [mtd, ytd]
+              comparisons: [pp, py]
+              format: usd
+    ```
+
+    ## Out of Scope (Phase 2+)
+    - Generic metric selector for single-KPI widgets
+    - WoW/MoM/QoQ shortcuts
+    - Custom offset windows
+  labels: [stack:backend, type:epic, priority:high]
+  status: Refinement
+  children:
+    - title: "Add PoP configuration schema"
+      description: |
+        Create Pydantic models for PoP (Period-over-Period) configuration in `schemas/config.py`.
+
+        ## What to Build
+        - `PopConfig` model with fields: enabled, grains, comparisons, format, date_dimension
+        - `PopGrain` enum: mtd, ytd, qtd, wtd (Phase 1: mtd, ytd only)
+        - `PopComparison` enum: pp (prior period), py (prior year)
+        - Add `pop: PopConfig | None` field to `ConfigMeta` class
+        - Support model-level `pop.date_dimension` default in semantic model config
+
+        ## Why It's Needed
+        The PoP feature needs strongly-typed configuration parsing to validate user input
+        and provide clear error messages. This schema is the foundation for parser and
+        generator components.
+
+        ## Technical Scope
+        - File: `src/dbt_to_lookml/schemas/config.py`
+        - Add to `__all__` exports
+        - Use `Optional` for Pydantic compatibility
+        - Follow existing ConfigMeta patterns
+
+        ## Testing Requirements
+        - Unit tests for PopConfig validation
+        - Test default values and optional fields
+        - Test invalid grain/comparison values raise ValidationError
+      labels: [stack:backend, type:feature, priority:high]
+      status: Refinement
+
+    - title: "Parse pop meta from measures"
+      description: |
+        Extend the dbt parser to extract PoP configuration from measure meta blocks.
+
+        ## What to Build
+        - Parse `config.meta.pop` block from measure definitions
+        - Resolve model-level `pop.date_dimension` defaults
+        - Link PoP config to `defaults.agg_time_dimension` when no explicit date_dimension
+        - Track which measures have PoP enabled for downstream generation
+
+        ## Why It's Needed
+        The parser must extract PoP configuration so the generator knows which measures
+        need PoP variants and what grains/comparisons to generate.
+
+        ## Technical Scope
+        - File: `src/dbt_to_lookml/parsers/dbt.py`
+        - Extend measure parsing logic
+        - Add `pop_config` field to internal measure representation
+        - Handle missing/partial config gracefully
+
+        ## Testing Requirements
+        - Test parsing measures with full pop config
+        - Test parsing measures with partial config (uses defaults)
+        - Test parsing measures without pop (returns None)
+        - Test model-level date_dimension inheritance
+      labels: [stack:backend, type:feature, priority:high]
+      status: Refinement
+
+    - title: "Generate PoP date dimensions"
+      description: |
+        Generate LookML yesno dimensions for PoP date filtering.
+
+        ## What to Build
+        Generate hidden yesno dimensions that filter data for each grain and comparison:
+        - `is_mtd`: Current month-to-date
+        - `is_ytd`: Current year-to-date
+        - `is_prior_period`: Same period offset by 1 period
+        - `is_prior_year`: Same period offset by 1 year
+        - Combined variants: `is_mtd_prior_period`, `is_mtd_prior_year`, etc.
+
+        ## Example Output
+        ```lookml
+        dimension: is_mtd {
+          hidden: yes
+          type: yesno
+          sql: ${agg_time_dim_raw} >= DATE_TRUNC('month', CURRENT_DATE) ;;
+        }
+        ```
+
+        ## Why It's Needed
+        These dimensions act as filters on hidden measures to isolate data for specific
+        time periods. They're the building blocks for PoP calculations.
+
+        ## Technical Scope
+        - File: `src/dbt_to_lookml/generators/lookml.py`
+        - New method: `_generate_pop_dimensions()`
+        - Reference model's agg_time_dimension for SQL
+        - Only generate dimensions for configured grains/comparisons
+
+        ## Testing Requirements
+        - Test dimension SQL for each grain type
+        - Test dimension SQL for each comparison type
+        - Test combined grain x comparison dimensions
+        - Test correct agg_time_dimension reference
+      labels: [stack:backend, type:feature, priority:high]
+      status: Refinement
+
+    - title: "Generate PoP global parameters"
+      description: |
+        Generate LookML parameters for period grain and comparison selection.
+
+        ## What to Build
+        Two global parameters that control PoP behavior:
+
+        ```lookml
+        parameter: period_grain {
+          label: "Period"
+          type: unquoted
+          allowed_value: { label: "Full Period", value: "current" }
+          allowed_value: { label: "MTD", value: "mtd" }
+          allowed_value: { label: "YTD", value: "ytd" }
+          default_value: "current"
+        }
+
+        parameter: comparison_period {
+          label: "Compare To"
+          type: unquoted
+          allowed_value: { label: "Prior Period", value: "pp" }
+          allowed_value: { label: "Prior Year", value: "py" }
+          default_value: "py"
+        }
+        ```
+
+        ## Why It's Needed
+        Users need UI controls to select which period grain (full/MTD/YTD) and
+        comparison (prior period/prior year) to display. These parameters drive
+        the CASE statements in visible measures.
+
+        ## Technical Scope
+        - File: `src/dbt_to_lookml/generators/lookml.py`
+        - New method: `_generate_pop_parameters()`
+        - Only include allowed_values for configured grains/comparisons
+        - Add to view's parameters block
+
+        ## Testing Requirements
+        - Test parameter generation with all grains
+        - Test parameter generation with subset of grains
+        - Test default values
+        - Test parameter placement in view output
+      labels: [stack:backend, type:feature, priority:high]
+      status: Refinement
+
+    - title: "Generate hidden PoP measures"
+      description: |
+        Generate hidden measures for each grain x comparison combination.
+
+        ## What to Build
+        For each pop-enabled measure, generate hidden measures filtered by PoP dimensions:
+        - `{measure}_measure`: Base measure (current period, full)
+        - `{measure}_mtd_measure`: MTD filtered
+        - `{measure}_ytd_measure`: YTD filtered
+        - `{measure}_pp_measure`: Prior period filtered
+        - `{measure}_py_measure`: Prior year filtered
+        - Combined: `{measure}_mtd_pp_measure`, `{measure}_mtd_py_measure`, etc.
+
+        ## Example Output
+        ```lookml
+        measure: revenue_mtd_measure {
+          hidden: yes
+          type: sum
+          sql: ${TABLE}.checkout_amount ;;
+          filters: [is_mtd: "yes"]
+        }
+        ```
+
+        ## Why It's Needed
+        Hidden measures provide the pre-filtered aggregations that visible measures
+        reference via CASE statements. This pattern allows single-query execution
+        with parameter-driven display.
+
+        ## Technical Scope
+        - File: `src/dbt_to_lookml/generators/lookml.py`
+        - New method: `_generate_pop_hidden_measures()`
+        - Only generate measures for configured grains/comparisons
+        - Preserve original measure aggregation type and SQL
+
+        ## Testing Requirements
+        - Test hidden measure naming convention
+        - Test filter application per grain/comparison
+        - Test measure count matches configured variants
+        - Test SQL and type preservation
+      labels: [stack:backend, type:feature, priority:high]
+      status: Refinement
+
+    - title: "Generate visible PoP measure group"
+      description: |
+        Generate the user-facing measure group with current, comparison, delta, and % change.
+
+        ## What to Build
+        Four visible measures per pop-enabled metric:
+
+        1. **Current Value** - Switches based on period_grain parameter
+        2. **Comparison Value** - Switches based on grain + comparison parameters
+        3. **Delta (Change)** - Current minus comparison
+        4. **Percent Change** - Delta / comparison (with NULLIF protection)
+
+        ## Example Output
+        ```lookml
+        measure: revenue {
+          group_label: "Revenue"
+          label: "Revenue"
+          type: number
+          value_format_name: usd
+          sql: CASE {% parameter period_grain %}
+                 WHEN 'current' THEN ${revenue_measure}
+                 WHEN 'mtd' THEN ${revenue_mtd_measure}
+                 WHEN 'ytd' THEN ${revenue_ytd_measure}
+               END ;;
+        }
+
+        measure: revenue_comparison {
+          group_label: "Revenue"
+          label: "Revenue (Comp)"
+          type: number
+          value_format_name: usd
+          required_fields: [revenue]
+          sql: CASE
+                 WHEN {% parameter period_grain %} = 'current' AND {% parameter comparison_period %} = 'pp'
+                   THEN ${revenue_pp_measure}
+                 -- ... more cases
+               END ;;
+        }
+        ```
+
+        ## Why It's Needed
+        These are the measures users interact with in Looker. The CASE statement pattern
+        allows a single measure to represent multiple calculations based on parameter values.
+
+        ## Technical Scope
+        - File: `src/dbt_to_lookml/generators/lookml.py`
+        - New method: `_generate_pop_visible_measures()`
+        - Apply format from pop config (usd, decimal, percent)
+        - Use group_label for measure organization
+        - Add required_fields for dependent measures
+
+        ## Testing Requirements
+        - Test CASE statement generation for all grain/comparison combos
+        - Test value_format_name application
+        - Test group_label assignment
+        - Test required_fields linkage
+        - Test percent change NULLIF protection
+      labels: [stack:backend, type:feature, priority:high]
+      status: Refinement
+
+    - title: "Wire PoP into generation pipeline"
+      description: |
+        Integrate PoP generation into the main LookML generator workflow.
+
+        ## What to Build
+        - Add PoP detection in `generate()` method
+        - Call PoP generators when measures with pop config exist
+        - Ensure PoP dimensions/parameters appear before measures in output
+        - Handle models with mixed pop/non-pop measures
+        - Maintain backward compatibility for models without PoP
+
+        ## Why It's Needed
+        The individual PoP generators need to be orchestrated within the existing
+        generation pipeline to produce correct, complete LookML output.
+
+        ## Technical Scope
+        - File: `src/dbt_to_lookml/generators/lookml.py`
+        - Modify `generate()` method
+        - Add PoP detection helper
+        - Ensure proper ordering in output dict
+
+        ## Testing Requirements
+        - Test end-to-end generation with pop-enabled model
+        - Test generation with mixed pop/non-pop measures
+        - Test generation with no pop measures (no changes)
+        - Test output ordering (dimensions, parameters, measures)
+        - Integration test with full semantic model
+      labels: [stack:backend, type:feature, priority:high]
+      status: Refinement
+
+    - title: "Add PoP test suite"
+      description: |
+        Comprehensive test coverage for all PoP functionality.
+
+        ## What to Build
+        Unit and integration tests covering:
+        - Schema validation tests (PopConfig, grains, comparisons)
+        - Parser tests (meta extraction, defaults, inheritance)
+        - Generator tests (dimensions, parameters, measures)
+        - Integration tests (full pipeline with real semantic models)
+        - Edge case tests (empty config, partial config, invalid values)
+
+        ## Why It's Needed
+        The project requires 95%+ test coverage. PoP introduces significant new
+        functionality that must be thoroughly tested before release.
+
+        ## Technical Scope
+        - Files: `tests/unit/test_pop_*.py`, `tests/integration/test_pop_*.py`
+        - Follow existing test patterns and markers
+        - Use pytest fixtures for common setup
+        - Mock file I/O in unit tests
+
+        ## Testing Requirements
+        - Achieve 95%+ coverage on new PoP code
+        - All tests pass on Python 3.9-3.13
+        - Tests run in under 30 seconds
+        - Clear test names describing behavior
+      labels: [stack:backend, type:chore, priority:high]
+      status: Refinement

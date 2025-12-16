@@ -13,6 +13,7 @@ from dbt_to_lookml.schemas.semantic_layer import Metric, SemanticModel, _smart_t
 from dbt_to_lookml.types import DimensionType
 
 if TYPE_CHECKING:
+    from dbt_to_lookml.schemas.config import PopConfig
     from dbt_to_lookml.schemas.semantic_layer import Measure
 
 console = Console()
@@ -770,6 +771,203 @@ class LookMLGenerator(Generator):
 
         return ordered_view_dict
 
+    def _generate_pop_dimensions(
+        self,
+        pop_config: "PopConfig",
+        date_dimension: str,
+        date_filter: str,
+    ) -> list[dict[str, Any]]:
+        """Generate dimensions for PoP (no longer needed with native PoP).
+
+        Native Looker period_over_period measures handle date comparisons
+        internally, so no filter dimensions are required.
+
+        Args:
+            pop_config: The PopConfig (unused with native PoP).
+            date_dimension: Name of the date dimension (unused with native PoP).
+            date_filter: Name of the filter field (unused with native PoP).
+
+        Returns:
+            Empty list - native PoP doesn't require filter dimensions.
+        """
+        # Native PoP measures handle date comparisons internally
+        # No hidden filter dimensions needed
+        return []
+
+    def _generate_pop_parameters(
+        self,
+        pop_config: "PopConfig",
+    ) -> list[dict[str, Any]]:
+        """Generate parameters for PoP (none needed with direct native PoP).
+
+        Native PoP measures are exposed directly without parameter switching
+        because Looker doesn't allow type: number to reference type: period_over_period.
+
+        Args:
+            pop_config: The PopConfig (unused with direct native PoP).
+
+        Returns:
+            Empty list - no parameters needed for direct native PoP.
+        """
+        # Native PoP measures are exposed directly, no parameter switching needed
+        return []
+
+    def _generate_pop_hidden_measures(
+        self,
+        measure: "Measure",
+        pop_config: "PopConfig",
+        date_dimension: str,
+    ) -> list[dict[str, Any]]:
+        """Generate native PoP measures using Looker's type: period_over_period.
+
+        Creates visible native PoP measures for each comparison period:
+        - Prior Year (py): period: year
+        - Prior Month (pm): period: month
+        - Prior Quarter (pq): period: quarter
+        - Prior Week (pw): period: week
+
+        For each period, generates three measure kinds:
+        - previous: The value from the prior period
+        - difference: Current - Prior
+        - relative_change: (Current - Prior) / Prior
+
+        Note: These are exposed directly (not hidden) because Looker doesn't allow
+        type: number measures to reference type: period_over_period measures.
+
+        Args:
+            measure: The source measure with PoP config.
+            pop_config: The PopConfig specifying comparisons and windows.
+            date_dimension: The date dimension name for based_on_time.
+
+        Returns:
+            List of native PoP measure dicts ready for LookML output.
+        """
+        from dbt_to_lookml.schemas.config import PopComparison, PopWindow
+        from dbt_to_lookml.schemas.semantic_layer import _smart_title
+        from dbt_to_lookml.types import FLOAT_CAST_AGGREGATIONS, LOOKML_TYPE_MAP, AggregationType
+
+        measures: list[dict[str, Any]] = []
+        base_name = measure.name
+        base_label = measure.label or _smart_title(base_name)
+        base_type = LOOKML_TYPE_MAP.get(measure.agg, "number")
+        base_sql = self._qualify_measure_sql(measure.expr, measure.name)
+        format_name = pop_config.format
+
+        # Apply float cast if needed
+        if measure.agg in FLOAT_CAST_AGGREGATIONS:
+            base_sql = f"({base_sql})::FLOAT"
+
+        # Base measure (hidden, used by native PoP)
+        base_measure: dict[str, Any] = {
+            "name": f"{base_name}_measure",
+            "hidden": "yes",
+            "type": base_type,
+        }
+        if measure.agg != AggregationType.COUNT:
+            base_measure["sql"] = base_sql
+        measures.append(base_measure)
+
+        # Map config to native PoP periods with labels
+        # py -> year, pp with windows -> month/quarter/week
+        periods_to_generate: list[tuple[str, str, str]] = []  # (suffix, period, label)
+
+        if PopComparison.PY in pop_config.comparisons:
+            periods_to_generate.append(("py", "year", "Prior Year"))
+
+        if PopComparison.PP in pop_config.comparisons:
+            for window in pop_config.windows:
+                if window == PopWindow.MONTH:
+                    periods_to_generate.append(("pm", "month", "Prior Month"))
+                elif window == PopWindow.QUARTER:
+                    periods_to_generate.append(("pq", "quarter", "Prior Quarter"))
+                elif window == PopWindow.WEEK:
+                    periods_to_generate.append(("pw", "week", "Prior Week"))
+
+        # Generate native PoP measures for each period
+        based_on_time = f"{date_dimension}_date"
+
+        for suffix, period, period_label in periods_to_generate:
+            # Previous value (kind: previous) - VISIBLE
+            prev_measure: dict[str, Any] = {
+                "name": f"{base_name}_{suffix}",
+                "group_label": "Metrics (PoP)",
+                "label": f"{base_label} ({period_label})",
+                "type": "period_over_period",
+                "based_on": f"{base_name}_measure",
+                "based_on_time": based_on_time,
+                "period": period,
+                "kind": "previous",
+            }
+            if format_name:
+                prev_measure["value_format_name"] = format_name
+            measures.append(prev_measure)
+
+            # Difference (kind: difference) - VISIBLE
+            diff_measure: dict[str, Any] = {
+                "name": f"{base_name}_{suffix}_change",
+                "group_label": "Metrics (PoP)",
+                "label": f"{base_label} Δ ({period_label})",
+                "type": "period_over_period",
+                "based_on": f"{base_name}_measure",
+                "based_on_time": based_on_time,
+                "period": period,
+                "kind": "difference",
+            }
+            if format_name:
+                diff_measure["value_format_name"] = format_name
+            measures.append(diff_measure)
+
+            # Relative change (kind: relative_change) - VISIBLE
+            measures.append({
+                "name": f"{base_name}_{suffix}_pct_change",
+                "group_label": "Metrics (PoP)",
+                "label": f"{base_label} %Δ ({period_label})",
+                "type": "period_over_period",
+                "based_on": f"{base_name}_measure",
+                "based_on_time": based_on_time,
+                "period": period,
+                "kind": "relative_change",
+                "value_format_name": "percent_1",
+            })
+
+        return measures
+
+    def _generate_pop_visible_measures(
+        self,
+        measure: "Measure",
+        pop_config: "PopConfig",
+    ) -> list[dict[str, Any]]:
+        """Generate the current period measure for PoP comparison.
+
+        Creates just the base visible measure (current period value).
+        The PoP comparison measures are generated directly as visible
+        native period_over_period measures in _generate_pop_hidden_measures.
+
+        Args:
+            measure: The source measure with PoP config.
+            pop_config: The PopConfig specifying format.
+
+        Returns:
+            List containing just the current period measure.
+        """
+        from dbt_to_lookml.schemas.semantic_layer import _smart_title
+
+        base_name = measure.name
+        label = measure.label or _smart_title(base_name)
+        format_name = pop_config.format
+
+        # Current value - references the hidden base measure
+        current_measure: dict[str, Any] = {
+            "name": base_name,
+            "group_label": "Metrics (PoP)",
+            "label": label,
+            "type": "number",
+            "sql": f"${{{base_name}_measure}}",
+        }
+        if format_name:
+            current_measure["value_format_name"] = format_name
+
+        return [current_measure]
     def generate_view(
         self,
         model: SemanticModel,
@@ -854,31 +1052,92 @@ class LookMLGenerator(Generator):
         # Group dimensions by timezone variant
         tz_variant_groups = self._group_timezone_variants(model)
 
-        if not tz_variant_groups:
-            # No timezone variants - return base view as-is
-            return base_view_dict
-
-        # Process variant groups to get toggleable dimensions and skips
-        parameter_dict, skip_dimensions, toggleable_dimensions = (
-            self._process_timezone_variants(
-                model, tz_variant_groups, group_label=self.time_dimension_group_label
+        if tz_variant_groups:
+            # Process variant groups to get toggleable dimensions and skips
+            parameter_dict, skip_dimensions, toggleable_dimensions = (
+                self._process_timezone_variants(
+                    model, tz_variant_groups, group_label=self.time_dimension_group_label
+                )
             )
-        )
 
-        # Rebuild dimension_groups with toggle logic
-        existing_dimension_groups = view_dict.get("dimension_groups", [])
-        new_dimension_groups = self._rebuild_dimension_groups(
-            model, existing_dimension_groups, skip_dimensions, toggleable_dimensions
-        )
-        if new_dimension_groups:
-            view_dict["dimension_groups"] = new_dimension_groups
+            # Rebuild dimension_groups with toggle logic
+            existing_dimension_groups = view_dict.get("dimension_groups", [])
+            new_dimension_groups = self._rebuild_dimension_groups(
+                model, existing_dimension_groups, skip_dimensions, toggleable_dimensions
+            )
+            if new_dimension_groups:
+                view_dict["dimension_groups"] = new_dimension_groups
 
-        # Filter sets to remove skipped dimension references
-        self._filter_sets_for_skipped_dims(view_dict, skip_dimensions)
+            # Filter sets to remove skipped dimension references
+            self._filter_sets_for_skipped_dims(view_dict, skip_dimensions)
 
-        # Add parameter to view with proper ordering
-        if parameter_dict:
-            view_dict = self._add_parameter_to_view(view_dict, parameter_dict)
+            # Add parameter to view with proper ordering
+            if parameter_dict:
+                view_dict = self._add_parameter_to_view(view_dict, parameter_dict)
+
+        # PoP processing - check for pop-enabled measures
+        pop_measures = [
+            m for m in model.measures
+            if m.config and m.config.meta and m.config.meta.pop
+            and m.config.meta.pop.enabled
+        ]
+
+        if pop_measures:
+            # Get first PoP config for shared dimensions/parameters
+            first_pop = pop_measures[0].config.meta.pop
+
+            # Resolve date_dimension
+            date_dim = first_pop.date_dimension
+            if not date_dim and model.defaults:
+                date_dim = model.defaults.get("agg_time_dimension")
+
+            if date_dim:
+                date_filter = first_pop.date_filter or f"{date_dim}_date"
+
+                # Generate PoP dimensions (shared across all PoP measures)
+                pop_dims = self._generate_pop_dimensions(first_pop, date_dim, date_filter)
+
+                # Generate PoP parameters (shared)
+                pop_params = self._generate_pop_parameters(first_pop)
+
+                # Add dimensions to view
+                if "dimensions" not in view_dict:
+                    view_dict["dimensions"] = []
+                view_dict["dimensions"].extend(pop_dims)
+
+                # Add parameters (before other parameters if any)
+                if pop_params:
+                    existing_params = view_dict.get("parameter", [])
+                    if not isinstance(existing_params, list):
+                        existing_params = [existing_params] if existing_params else []
+                    view_dict["parameter"] = pop_params + existing_params
+
+                # Initialize measures list if not present
+                if "measures" not in view_dict:
+                    view_dict["measures"] = []
+
+                # Remove original measures for PoP-enabled measures
+                # (they will be replaced by PoP-generated measures)
+                pop_measure_names = {m.name for m in pop_measures}
+                filtered_measures = [
+                    m for m in view_dict["measures"]
+                    if m["name"].removesuffix("_measure") not in pop_measure_names
+                ]
+                view_dict["measures"] = filtered_measures
+
+                # Generate hidden and visible measures for each PoP measure
+                for measure in pop_measures:
+                    pop_config = measure.config.meta.pop
+
+                    # Hidden measures (native PoP)
+                    hidden_measures = self._generate_pop_hidden_measures(
+                        measure, pop_config, date_dim
+                    )
+                    view_dict["measures"].extend(hidden_measures)
+
+                    # Visible measures (wrapper with CASE switching)
+                    visible_measures = self._generate_pop_visible_measures(measure, pop_config)
+                    view_dict["measures"].extend(visible_measures)
 
         # Rebuild wrapper dict
         base_view_dict["views"][0] = view_dict
@@ -1426,11 +1685,13 @@ class LookMLGenerator(Generator):
         all_models: list[SemanticModel],
         all_metrics: list[Metric] | None = None,
         usage_map: dict[str, dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """Generate LookML measure dict from metric definition.
 
         Simple metrics are generated directly as aggregate measures (type: sum, count, etc.)
         instead of type: number wrappers. Complex metrics remain type: number.
+
+        Returns None if the metric should be skipped (e.g., source measure has PoP enabled).
 
         Args:
             metric: The metric to convert.
@@ -1477,6 +1738,17 @@ class LookMLGenerator(Generator):
                 raise ValueError(
                     f"Measure '{measure_name}' not found for simple metric '{metric.name}'"
                 )
+
+            # Skip if source measure has PoP enabled and metric name matches measure name
+            # (PoP will generate the visible measure with that name)
+            if (
+                source_measure.config
+                and source_measure.config.meta
+                and source_measure.config.meta.pop
+                and source_measure.config.meta.pop.enabled
+                and metric.name == source_measure.name
+            ):
+                return None  # Signal to skip this metric
 
             # Generate as aggregate measure (NOT type: number)
             measure_dict: dict[str, Any] = {
@@ -2098,7 +2370,8 @@ class LookMLGenerator(Generator):
                         measure_dict = self._generate_metric_measure(
                             metric, model, models, metrics, usage_map
                         )
-                        metric_measures.append(measure_dict)
+                        if measure_dict is not None:
+                            metric_measures.append(measure_dict)
                     except Exception as e:
                         console.print(
                             f"[red]Error generating metric '{metric.name}': {e}[/red]"

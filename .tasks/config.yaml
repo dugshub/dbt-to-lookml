@@ -1,7 +1,7 @@
 project:
   name: dbt-to-lookml
   prefix: DTL
-  next_id: 26
+  next_id: 46
   repository: dugshub/dbt-to-lookml
 labels:
   stack:

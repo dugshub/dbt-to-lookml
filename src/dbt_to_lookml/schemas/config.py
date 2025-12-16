@@ -7,11 +7,100 @@ for metadata and hierarchy management.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel
 
-__all__ = ["Hierarchy", "TimezoneVariant", "ConfigMeta", "Config"]
+__all__ = [
+    "Hierarchy",
+    "TimezoneVariant",
+    "ConfigMeta",
+    "Config",
+    "PopGrain",
+    "PopComparison",
+    "PopWindow",
+    "PopConfig",
+]
+
+
+class PopGrain(str, Enum):
+    """Period grains for PoP calculations.
+
+    Defines how to slice the "current" period:
+    - SELECTED: Use the user's date filter exactly as-is
+    - MTD: Override to Month-to-Date (current month through today)
+    - YTD: Override to Year-to-Date (current year through today)
+    """
+
+    SELECTED = "selected"
+    MTD = "mtd"
+    YTD = "ytd"
+
+
+class PopComparison(str, Enum):
+    """Comparison periods for PoP calculations.
+
+    Defines what to compare against:
+    - PP: Prior Period (offset by period_window parameter)
+    - PY: Prior Year (always 1 year offset)
+    """
+
+    PP = "pp"
+    PY = "py"
+
+
+class PopWindow(str, Enum):
+    """Period window definitions.
+
+    Defines what "Prior Period" means:
+    - WEEK: 1 week offset
+    - MONTH: 1 month offset
+    - QUARTER: 1 quarter offset
+    """
+
+    WEEK = "week"
+    MONTH = "month"
+    QUARTER = "quarter"
+
+
+class PopConfig(BaseModel):
+    """Configuration for Period-over-Period calculations.
+
+    Enables automatic generation of MTD/YTD and prior period/year
+    comparison measures from a single measure definition.
+
+    Attributes:
+        enabled: Whether to generate PoP variants for this measure.
+        grains: Which period grains to generate (default: MTD, YTD).
+        comparisons: Which comparison periods to generate (default: PP, PY).
+        windows: What "Prior Period" can mean (default: month).
+        format: LookML value_format_name for generated measures.
+        date_dimension: Override date dimension reference in SQL.
+        date_filter: Override filter field for {% date_start/end %}.
+
+    Example:
+        ```yaml
+        measures:
+          - name: revenue
+            agg: sum
+            config:
+              meta:
+                pop:
+                  enabled: true
+                  grains: [mtd, ytd]
+                  comparisons: [pp, py]
+                  format: usd
+        ```
+    """
+
+    enabled: bool
+    grains: list[PopGrain] = [PopGrain.MTD, PopGrain.YTD]
+    comparisons: list[PopComparison] = [PopComparison.PP, PopComparison.PY]
+    windows: list[PopWindow] = [PopWindow.MONTH]
+    format: str | None = None
+    date_dimension: str | None = None
+    date_filter: str | None = None
 
 
 class Hierarchy(BaseModel):
@@ -183,6 +272,7 @@ class ConfigMeta(BaseModel):
     time_dimension_group_label: str | None = None
     timezone_variant: TimezoneVariant | None = None
     join_cardinality: Literal["one_to_one", "many_to_one"] | None = None
+    pop: PopConfig | None = None
 
 
 class Config(BaseModel):
