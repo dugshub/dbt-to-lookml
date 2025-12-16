@@ -2,6 +2,7 @@
 
 import pytest
 
+from dbt_to_lookml.constants import SUFFIX_PERFORMANCE, VIEW_LABEL_METRICS
 from dbt_to_lookml.generators.lookml import LookMLGenerator
 from dbt_to_lookml.schemas.semantic_layer import (
     DerivedMetricParams,
@@ -870,7 +871,7 @@ class TestInferenceMethods:
             meta={"primary_entity": "order"},
         )
         label = generator._infer_group_label(metric, primary_model)
-        assert label == "Orders Performance"
+        assert label == f"Orders {SUFFIX_PERFORMANCE}"
 
     def test_infer_group_label_formatting(self, generator: LookMLGenerator) -> None:
         """Test group label formatting with underscores."""
@@ -887,7 +888,7 @@ class TestInferenceMethods:
             meta={"primary_entity": "rental"},
         )
         label = generator._infer_group_label(metric, model)
-        assert label == "Rental Orders Performance"
+        assert label == f"Rental Orders {SUFFIX_PERFORMANCE}"
 
 
 class TestMetricMeasureGeneration:
@@ -945,10 +946,10 @@ class TestMetricMeasureGeneration:
         assert measure_dict["type"] == "count"
         # COUNT type doesn't have sql field
         assert "sql" not in measure_dict
-        assert measure_dict["view_label"] == "  Metrics"
+        assert measure_dict["view_label"] == f"  {VIEW_LABEL_METRICS}"
         assert measure_dict["label"] == "Total Orders"
         assert measure_dict["description"] == "Total count of orders"
-        assert measure_dict["group_label"] == "Orders Performance"
+        assert measure_dict["group_label"] == f"Orders {SUFFIX_PERFORMANCE}"
         # value_format_name is not set because "total_orders" doesn't match heuristics
         assert "value_format_name" not in measure_dict
 
@@ -976,7 +977,7 @@ class TestMetricMeasureGeneration:
         assert "NULLIF" in measure_dict["sql"]
         assert "${order_count_measure}" in measure_dict["sql"]
         assert "${searches.search_count_measure}" in measure_dict["sql"]
-        assert measure_dict["view_label"] == "  Metrics"
+        assert measure_dict["view_label"] == f"  {VIEW_LABEL_METRICS}"
         assert measure_dict["value_format_name"] == "percent_2"
         assert measure_dict["required_fields"] == ["searches.search_count_measure"]
         assert measure_dict["group_label"] == "Performance"

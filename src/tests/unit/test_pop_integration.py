@@ -2,6 +2,7 @@
 
 import pytest
 
+from dbt_to_lookml.constants import SUFFIX_POP, VIEW_LABEL_METRICS_POP
 from dbt_to_lookml.generators.lookml import LookMLGenerator
 from dbt_to_lookml.schemas.config import (
     Config,
@@ -278,8 +279,8 @@ class TestPopPipelineIntegration:
         # All should have same view_label and group_label
         assert len(pop_measures) == 4
         for measure in pop_measures:
-            assert measure.get("view_label") == "  Metrics (PoP)"
-            assert measure.get("group_label") == "Revenue PoP"
+            assert measure.get("view_label") == VIEW_LABEL_METRICS_POP
+            assert measure.get("group_label") == f"Revenue {SUFFIX_POP}"
 
     def test_pop_with_custom_format(self) -> None:
         """Test PoP measures respect custom format."""

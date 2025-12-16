@@ -16,6 +16,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from dbt_to_lookml.constants import (
+    GROUP_LABEL_JOIN_KEYS,
+    GROUP_LABEL_TIME_DIMENSIONS_LOCAL,
+    SUFFIX_PERFORMANCE,
+    VIEW_LABEL_METRICS,
+)
 from dbt_to_lookml.schemas.config import Config
 from dbt_to_lookml.types import (
     FLOAT_CAST_AGGREGATIONS,
@@ -192,7 +198,7 @@ class Entity(BaseModel):
             if is_fact_table:
                 if view_label:
                     result["view_label"] = view_label
-                result["group_label"] = "Join Keys"
+                result["group_label"] = GROUP_LABEL_JOIN_KEYS
 
         # Hide all entities (typically surrogate keys)
         # Natural keys should be defined as dimensions
@@ -482,7 +488,7 @@ class Dimension(BaseModel):
         # None means "use next level in precedence chain".
         # Leading space in default ensures time dimensions sort to top of field picker.
         # Default time dimension group label (space prefix added when applied)
-        time_group_label = "Date Dimensions - Local Time"
+        time_group_label = GROUP_LABEL_TIME_DIMENSIONS_LOCAL
         if default_time_dimension_group_label is not None:
             time_group_label = default_time_dimension_group_label
         if (
@@ -588,15 +594,15 @@ class Measure(BaseModel):
             # Fall back to flat structure for backward compatibility
             elif meta.category:
                 # For flat structure: "Metrics" → view_label, category → group_label
-                view_label = "Metrics"  # Space prefix added when applied
+                view_label = VIEW_LABEL_METRICS  # Space prefix added when applied
                 group_label = _smart_title(meta.category)
 
         # If no labels from meta and model_name provided, use model_name fallback
         if not view_label and not group_label and model_name:
             # Convert model name to title case and add "Performance"
             formatted_name = _smart_title(model_name)
-            group_label = f"{formatted_name} Performance"
-            view_label = "Metrics"  # Space prefix added when applied
+            group_label = f"{formatted_name} {SUFFIX_PERFORMANCE}"
+            view_label = VIEW_LABEL_METRICS  # Space prefix added when applied
 
         return view_label, group_label
 

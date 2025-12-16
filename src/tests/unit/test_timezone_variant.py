@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from dbt_to_lookml.constants import GROUP_LABEL_DATE_DIMENSIONS
 from dbt_to_lookml.generators.lookml import LookMLGenerator
 from dbt_to_lookml.parsers.dbt import DbtParser
 from dbt_to_lookml.schemas.config import Config, ConfigMeta, TimezoneVariant
@@ -502,8 +503,8 @@ class TestGenerateTimezoneParameter:
         assert param["label"] == "Timezone"
         assert param["default_value"] == "_utc"  # Primary variant
 
-        # Check group_label defaults to " Date Dimensions" (leading space for sort order)
-        assert param["group_label"] == " Date Dimensions"
+        # Check group_label defaults to GROUP_LABEL_DATE_DIMENSIONS (leading space for sort order)
+        assert param["group_label"] == GROUP_LABEL_DATE_DIMENSIONS
 
         # Check allowed values
         assert len(param["allowed_value"]) == 2
@@ -1279,7 +1280,7 @@ class TestTimezoneVariantGroupLabel:
         view = view_dict["views"][0]
         assert "parameter" in view
         param = view["parameter"][0]
-        assert param["group_label"] == " Date Dimensions"  # Leading space for sort order
+        assert param["group_label"] == GROUP_LABEL_DATE_DIMENSIONS  # Leading space for sort order
 
     def test_view_generation_custom_group_label(self):
         """Test that custom time_dimension_group_label is applied."""

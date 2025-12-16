@@ -8,6 +8,12 @@ from typing import TYPE_CHECKING, Any
 import lkml
 from rich.console import Console
 
+from dbt_to_lookml.constants import (
+    GROUP_LABEL_DATE_DIMENSIONS,
+    SUFFIX_PERFORMANCE,
+    SUFFIX_POP,
+    VIEW_LABEL_METRICS_POP,
+)
 from dbt_to_lookml.interfaces.generator import Generator
 from dbt_to_lookml.schemas.semantic_layer import Metric, SemanticModel, _smart_title
 from dbt_to_lookml.types import DimensionType
@@ -420,8 +426,8 @@ class LookMLGenerator(Generator):
         # IMPORTANT: Don't hardcode "local" - user may not have that variant
         default_variant = default_variant or sorted(variants)[0]
 
-        # Use provided group_label or default to " Date Dimensions" (leading space for sort order)
-        effective_group_label = group_label if group_label is not None else " Date Dimensions"
+        # Use provided group_label or default (leading space for sort order)
+        effective_group_label = group_label if group_label is not None else GROUP_LABEL_DATE_DIMENSIONS
 
         result = {
             "name": "timezone_selector",
@@ -890,8 +896,8 @@ class LookMLGenerator(Generator):
             # Previous value (kind: previous) - VISIBLE
             prev_measure: dict[str, Any] = {
                 "name": f"{base_name}_{suffix}",
-                "view_label": "  Metrics (PoP)",
-                "group_label": f"{base_label} PoP",
+                "view_label": VIEW_LABEL_METRICS_POP,
+                "group_label": f"{base_label} {SUFFIX_POP}",
                 "label": f"{base_label} ({period_label})",
                 "type": "period_over_period",
                 "based_on": f"{base_name}_measure",
@@ -906,8 +912,8 @@ class LookMLGenerator(Generator):
             # Difference (kind: difference) - VISIBLE
             diff_measure: dict[str, Any] = {
                 "name": f"{base_name}_{suffix}_change",
-                "view_label": "  Metrics (PoP)",
-                "group_label": f"{base_label} PoP",
+                "view_label": VIEW_LABEL_METRICS_POP,
+                "group_label": f"{base_label} {SUFFIX_POP}",
                 "label": f"{base_label} Δ ({period_label})",
                 "type": "period_over_period",
                 "based_on": f"{base_name}_measure",
@@ -922,8 +928,8 @@ class LookMLGenerator(Generator):
             # Relative change (kind: relative_change) - VISIBLE
             measures.append({
                 "name": f"{base_name}_{suffix}_pct_change",
-                "view_label": "  Metrics (PoP)",
-                "group_label": f"{base_label} PoP",
+                "view_label": VIEW_LABEL_METRICS_POP,
+                "group_label": f"{base_label} {SUFFIX_POP}",
                 "label": f"{base_label} %Δ ({period_label})",
                 "type": "period_over_period",
                 "based_on": f"{base_name}_measure",
@@ -962,8 +968,8 @@ class LookMLGenerator(Generator):
         # Current value - references the hidden base measure
         current_measure: dict[str, Any] = {
             "name": base_name,
-            "view_label": "  Metrics (PoP)",
-            "group_label": f"{label} PoP",
+            "view_label": VIEW_LABEL_METRICS_POP,
+            "group_label": f"{label} {SUFFIX_POP}",
             "label": label,
             "type": "number",
             "sql": f"${{{base_name}_measure}}",
@@ -1680,7 +1686,7 @@ class LookMLGenerator(Generator):
 
         # Default: "{Model} Performance"
         model_name = _smart_title(primary_model.name)
-        return f"{model_name} Performance"
+        return f"{model_name} {SUFFIX_PERFORMANCE}"
 
     def _generate_metric_measure(
         self,

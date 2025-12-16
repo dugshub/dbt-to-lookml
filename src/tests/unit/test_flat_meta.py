@@ -1,5 +1,10 @@
 """Unit tests for flat meta structure (subject, category) labeling."""
 
+from dbt_to_lookml.constants import (
+    GROUP_LABEL_JOIN_KEYS,
+    SUFFIX_PERFORMANCE,
+    VIEW_LABEL_METRICS,
+)
 from dbt_to_lookml.schemas.config import Config, ConfigMeta
 from dbt_to_lookml.schemas.semantic_layer import (
     Dimension,
@@ -65,7 +70,7 @@ class TestFlatMetaLabeling:
 
         view_label, group_label = measure.get_measure_labels()
         # get_measure_labels returns raw value; to_lookml_dict adds the prefix
-        assert view_label == "Metrics"
+        assert view_label == VIEW_LABEL_METRICS
         assert group_label == "Revenue Metrics"
 
     def test_measure_without_meta_uses_model_name(self) -> None:
@@ -78,8 +83,8 @@ class TestFlatMetaLabeling:
 
         view_label, group_label = measure.get_measure_labels(model_name="rentals")
         # get_measure_labels returns raw value; to_lookml_dict adds the prefix
-        assert view_label == "Metrics"
-        assert group_label == "Rentals Performance"
+        assert view_label == VIEW_LABEL_METRICS
+        assert group_label == f"Rentals {SUFFIX_PERFORMANCE}"
 
     def test_measure_lookml_with_flat_meta(self) -> None:
         """Test measure LookML output with flat meta structure."""
@@ -111,7 +116,7 @@ class TestFlatMetaLabeling:
 
         assert lookml_dict["primary_key"] == "yes"
         assert lookml_dict["view_label"] == "Rentals"
-        assert lookml_dict["group_label"] == "Join Keys"
+        assert lookml_dict["group_label"] == GROUP_LABEL_JOIN_KEYS
         assert lookml_dict["hidden"] == "yes"
 
     def test_entity_in_dimension_table_no_labels(self) -> None:
@@ -176,7 +181,7 @@ class TestFlatMetaLabeling:
         assert (
             rental_entity["view_label"] == "Rentals"
         )  # From first dimension's subject
-        assert rental_entity["group_label"] == "Join Keys"  # Fact table
+        assert rental_entity["group_label"] == GROUP_LABEL_JOIN_KEYS  # Fact table
 
         # Check dimension labels
         payment_dim = view["dimensions"][1]
@@ -187,8 +192,8 @@ class TestFlatMetaLabeling:
         # Check measure labels
         revenue_measure = view["measures"][0]
         assert revenue_measure["name"] == "total_revenue_measure"
-        assert revenue_measure["view_label"] == "  Metrics"
-        assert revenue_measure["group_label"] == "Rentals Performance"
+        assert revenue_measure["view_label"] == f"  {VIEW_LABEL_METRICS}"
+        assert revenue_measure["group_label"] == f"Rentals {SUFFIX_PERFORMANCE}"
 
     def test_flat_meta_precedence_over_hierarchy(self) -> None:
         """Test that flat meta (subject, category) takes precedence over hierarchy."""
