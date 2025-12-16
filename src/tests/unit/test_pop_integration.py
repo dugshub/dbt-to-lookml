@@ -278,7 +278,7 @@ class TestPopPipelineIntegration:
         # All should have same view_label and group_label
         assert len(pop_measures) == 4
         for measure in pop_measures:
-            assert measure.get("view_label") == " Metrics (PoP)"
+            assert measure.get("view_label") == "  Metrics (PoP)"
             assert measure.get("group_label") == "Revenue PoP"
 
     def test_pop_with_custom_format(self) -> None:
