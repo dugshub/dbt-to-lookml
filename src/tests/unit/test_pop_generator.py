@@ -210,7 +210,8 @@ class TestPopHiddenMeasures:
 
         py_measure = next(m for m in measures if m["name"] == "revenue_py")
         assert py_measure["label"] == "Revenue (Prior Year)"
-        assert py_measure["group_label"] == "Metrics (PoP)"
+        assert py_measure["group_label"] == "Revenue PoP"
+        assert py_measure["view_label"] == "Metrics (PoP)"
 
     def test_pop_measures_have_format(self) -> None:
         """Test PoP measures have format applied."""
@@ -270,8 +271,8 @@ class TestPopVisibleMeasures:
         current = measures[0]
         assert current["value_format_name"] == "usd"
 
-    def test_group_label_is_metrics_pop(self) -> None:
-        """Test group_label is Metrics (PoP)."""
+    def test_view_label_and_group_label(self) -> None:
+        """Test view_label is Metrics (PoP) and group_label uses measure label."""
         generator = LookMLGenerator()
         measure = Measure(name="revenue", agg=AggregationType.SUM, label="Revenue")
         config = PopConfig(enabled=True, comparisons=[PopComparison.PY])
@@ -279,7 +280,8 @@ class TestPopVisibleMeasures:
         measures = generator._generate_pop_visible_measures(measure, config)
 
         current = measures[0]
-        assert current["group_label"] == "Metrics (PoP)"
+        assert current["view_label"] == "Metrics (PoP)"
+        assert current["group_label"] == "Revenue PoP"
 
     def test_label_generation_from_measure_name(self) -> None:
         """Test labels generated from measure name when no label provided."""
@@ -292,4 +294,5 @@ class TestPopVisibleMeasures:
         current = measures[0]
         # Should use _smart_title
         assert current["label"] == "Total Revenue"
-        assert current["group_label"] == "Metrics (PoP)"
+        assert current["group_label"] == "Total Revenue PoP"
+        assert current["view_label"] == "Metrics (PoP)"
