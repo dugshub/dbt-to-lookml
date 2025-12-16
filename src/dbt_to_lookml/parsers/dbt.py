@@ -52,6 +52,9 @@ class DbtParser(Parser):
         if isinstance(content, dict):
             if "semantic_models" in content:
                 models_data = content["semantic_models"]
+            elif "metrics" in content and "name" not in content:
+                # This is a metrics-only file, not a semantic model file
+                return []
             else:
                 # Assume the entire content is a single model
                 models_data = [content]
