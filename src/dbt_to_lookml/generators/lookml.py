@@ -890,7 +890,7 @@ class LookMLGenerator(Generator):
             # Previous value (kind: previous) - VISIBLE
             prev_measure: dict[str, Any] = {
                 "name": f"{base_name}_{suffix}",
-                "view_label": "Metrics (PoP)",
+                "view_label": " Metrics (PoP)",
                 "group_label": f"{base_label} PoP",
                 "label": f"{base_label} ({period_label})",
                 "type": "period_over_period",
@@ -906,7 +906,7 @@ class LookMLGenerator(Generator):
             # Difference (kind: difference) - VISIBLE
             diff_measure: dict[str, Any] = {
                 "name": f"{base_name}_{suffix}_change",
-                "view_label": "Metrics (PoP)",
+                "view_label": " Metrics (PoP)",
                 "group_label": f"{base_label} PoP",
                 "label": f"{base_label} Δ ({period_label})",
                 "type": "period_over_period",
@@ -922,7 +922,7 @@ class LookMLGenerator(Generator):
             # Relative change (kind: relative_change) - VISIBLE
             measures.append({
                 "name": f"{base_name}_{suffix}_pct_change",
-                "view_label": "Metrics (PoP)",
+                "view_label": " Metrics (PoP)",
                 "group_label": f"{base_label} PoP",
                 "label": f"{base_label} %Δ ({period_label})",
                 "type": "period_over_period",
@@ -962,7 +962,7 @@ class LookMLGenerator(Generator):
         # Current value - references the hidden base measure
         current_measure: dict[str, Any] = {
             "name": base_name,
-            "view_label": "Metrics (PoP)",
+            "view_label": " Metrics (PoP)",
             "group_label": f"{label} PoP",
             "label": label,
             "type": "number",
