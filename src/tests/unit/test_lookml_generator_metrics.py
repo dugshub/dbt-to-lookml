@@ -436,7 +436,7 @@ class TestSQLGenerationDerived:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
-        assert sql == "${order_count_measure} + ${searches.search_count_measure}"
+        assert sql == "${order_count} + ${searches.search_count}"
 
     def test_generate_derived_sql_simple_subtraction(
         self,
@@ -458,7 +458,7 @@ class TestSQLGenerationDerived:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
-        assert sql == "${order_count_measure} - ${searches.search_count_measure}"
+        assert sql == "${order_count} - ${searches.search_count}"
 
     def test_generate_derived_sql_with_parentheses(
         self,
@@ -480,7 +480,7 @@ class TestSQLGenerationDerived:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
-        assert sql == "(${order_count_measure} + ${searches.search_count_measure}) / 2"
+        assert sql == "(${order_count} + ${searches.search_count}) / 2"
 
     def test_generate_derived_sql_cross_view_refs(
         self,
@@ -502,7 +502,7 @@ class TestSQLGenerationDerived:
             meta={"primary_entity": "order"},
         )
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
-        assert sql == "${revenue_measure} + ${searches.search_count_measure}"
+        assert sql == "${revenue} + ${searches.search_count}"
 
     def test_generate_derived_sql_with_aliases(
         self,
@@ -530,7 +530,7 @@ class TestSQLGenerationDerived:
         )
         sql = generator._generate_derived_sql(metric, models_dict, all_metrics)
         # Should replace aliases (total_rev, total_orders) not metric names
-        assert sql == "${revenue_measure} / ${order_count_measure}"
+        assert sql == "${revenue} / ${order_count}"
         # Verify aliases were replaced (not present in final SQL)
         assert "total_rev" not in sql
         assert "total_orders" not in sql
@@ -676,7 +676,8 @@ class TestRequiredFieldsExtraction:
         )
         primary_model = all_models[0]  # orders
         required = generator._extract_required_fields(metric, primary_model, all_models)
-        assert required == ["searches.search_count_measure"]
+        # Derived metrics reference other METRICS, not dbt measures, so no _measure suffix
+        assert required == ["searches.search_count"]
 
     def test_extract_required_fields_with_prefix(
         self, all_models: list[SemanticModel]
@@ -723,9 +724,10 @@ class TestRequiredFieldsExtraction:
         primary_model = all_models[2]  # users
         required = generator._extract_required_fields(metric, primary_model, all_models)
         # Should be sorted alphabetically
+        # Derived metrics reference other METRICS, not dbt measures, so no _measure suffix
         assert required == [
-            "orders.order_count_measure",
-            "searches.search_count_measure",
+            "orders.order_count",
+            "searches.search_count",
         ]
 
 
@@ -1020,9 +1022,9 @@ class TestMetricMeasureGeneration:
 
         assert measure_dict["name"] == "total_count"
         assert measure_dict["type"] == "number"
-        assert "${order_count_measure}" in measure_dict["sql"]
-        assert "${searches.search_count_measure}" in measure_dict["sql"]
-        assert measure_dict["required_fields"] == ["searches.search_count_measure"]
+        assert "${order_count}" in measure_dict["sql"]
+        assert "${searches.search_count}" in measure_dict["sql"]
+        assert measure_dict["required_fields"] == ["searches.search_count"]
 
     def test_generate_metric_measure_required_fields(
         self, generator: LookMLGenerator, all_models: list[SemanticModel]

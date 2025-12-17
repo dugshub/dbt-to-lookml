@@ -297,3 +297,130 @@ class TestPopVisibleMeasures:
         assert current["label"] == "Total Revenue"
         assert current["group_label"] == f"Total Revenue {SUFFIX_POP}"
         assert current["view_label"] == VIEW_LABEL_METRICS_POP
+
+
+class TestMetricPopMeasures:
+    """Tests for metric-level PoP measure generation."""
+
+    def _create_metric(
+        self,
+        name: str = "total_revenue",
+        label: str | None = None,
+    ) -> "Metric":
+        """Helper to create a simple metric for testing."""
+        from dbt_to_lookml.schemas.semantic_layer import Metric, SimpleMetricParams
+
+        return Metric(
+            name=name,
+            type="simple",
+            type_params=SimpleMetricParams(measure="revenue"),
+            label=label,
+        )
+
+    def test_metric_pop_structure(self) -> None:
+        """Test metric PoP measures have correct structure."""
+        generator = LookMLGenerator()
+        metric = self._create_metric()
+        config = PopConfig(enabled=True, comparisons=[PopComparison.PY])
+
+        measures = generator._generate_metric_pop_measures(metric, config, "created_at")
+
+        py_prev = next(m for m in measures if m["name"] == "total_revenue_py")
+        assert py_prev["type"] == "period_over_period"
+        # Key difference: references metric directly (no _measure suffix)
+        assert py_prev["based_on"] == "total_revenue"
+        assert py_prev["based_on_time"] == "created_at_date"
+        assert py_prev["period"] == "year"
+        assert py_prev["kind"] == "previous"
+
+    def test_metric_pop_no_hidden_base_measure(self) -> None:
+        """Test metric PoP doesn't generate hidden base measure."""
+        generator = LookMLGenerator()
+        metric = self._create_metric()
+        config = PopConfig(enabled=True, comparisons=[PopComparison.PY])
+
+        measures = generator._generate_metric_pop_measures(metric, config, "created_at")
+
+        # Should NOT have a base _measure - metric itself is the base
+        measure_names = {m["name"] for m in measures}
+        assert "total_revenue_measure" not in measure_names
+
+    def test_metric_pop_generates_three_kinds(self) -> None:
+        """Test previous, difference, relative_change generated."""
+        generator = LookMLGenerator()
+        metric = self._create_metric()
+        config = PopConfig(enabled=True, comparisons=[PopComparison.PY])
+
+        measures = generator._generate_metric_pop_measures(metric, config, "created_at")
+
+        measure_names = {m["name"] for m in measures}
+        assert "total_revenue_py" in measure_names  # previous
+        assert "total_revenue_py_change" in measure_names  # difference
+        assert "total_revenue_py_pct_change" in measure_names  # relative_change
+        assert len(measures) == 3
+
+    def test_metric_pop_with_multiple_comparisons(self) -> None:
+        """Test metric PoP with both PP and PY comparisons."""
+        generator = LookMLGenerator()
+        metric = self._create_metric()
+        config = PopConfig(
+            enabled=True,
+            comparisons=[PopComparison.PP, PopComparison.PY],
+            windows=[PopWindow.MONTH],
+        )
+
+        measures = generator._generate_metric_pop_measures(metric, config, "created_at")
+
+        measure_names = {m["name"] for m in measures}
+        # PY measures
+        assert "total_revenue_py" in measure_names
+        assert "total_revenue_py_change" in measure_names
+        assert "total_revenue_py_pct_change" in measure_names
+        # PM measures
+        assert "total_revenue_pm" in measure_names
+        assert "total_revenue_pm_change" in measure_names
+        assert "total_revenue_pm_pct_change" in measure_names
+        assert len(measures) == 6
+
+    def test_metric_pop_labels(self) -> None:
+        """Test metric PoP measures have correct labels."""
+        generator = LookMLGenerator()
+        metric = self._create_metric(label="Total Revenue")
+        config = PopConfig(enabled=True, comparisons=[PopComparison.PY])
+
+        measures = generator._generate_metric_pop_measures(metric, config, "created_at")
+
+        py_measure = next(m for m in measures if m["name"] == "total_revenue_py")
+        assert py_measure["label"] == "Total Revenue (Prior Year)"
+        assert py_measure["group_label"] == f"Total Revenue {SUFFIX_POP}"
+        assert py_measure["view_label"] == VIEW_LABEL_METRICS_POP
+
+    def test_metric_pop_format_applied(self) -> None:
+        """Test format applied to metric PoP measures."""
+        generator = LookMLGenerator()
+        metric = self._create_metric()
+        config = PopConfig(enabled=True, comparisons=[PopComparison.PY], format="usd")
+
+        measures = generator._generate_metric_pop_measures(metric, config, "created_at")
+
+        py_measure = next(m for m in measures if m["name"] == "total_revenue_py")
+        assert py_measure["value_format_name"] == "usd"
+
+        # Percent change always uses percent_1
+        pct_measure = next(
+            m for m in measures if m["name"] == "total_revenue_py_pct_change"
+        )
+        assert pct_measure["value_format_name"] == "percent_1"
+
+    def test_metric_pop_label_from_name(self) -> None:
+        """Test label generated from metric name when no label provided."""
+        generator = LookMLGenerator()
+        metric = self._create_metric(name="gross_revenue")  # no label
+        config = PopConfig(enabled=True, comparisons=[PopComparison.PY])
+
+        measures = generator._generate_metric_pop_measures(metric, config, "created_at")
+
+        py_measure = next(m for m in measures if m["name"] == "gross_revenue_py")
+        # Should use _smart_title
+        assert py_measure["label"] == "Gross Revenue (Prior Year)"
+        assert py_measure["group_label"] == f"Gross Revenue {SUFFIX_POP}"

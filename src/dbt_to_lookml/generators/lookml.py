@@ -1955,30 +1955,39 @@ class LookMLGenerator(Generator):
 
         required = set()
 
-        # Extract measure references based on type
-        measures = []
-        if isinstance(metric.type_params, SimpleMetricParams):
-            measures = [metric.type_params.measure]
-        elif isinstance(metric.type_params, RatioMetricParams):
-            measures = [metric.type_params.numerator, metric.type_params.denominator]
-        elif isinstance(metric.type_params, DerivedMetricParams):
-            # Extract from metric references (assume metric name = measure name)
-            measures = [ref.name for ref in metric.type_params.metrics]
-
         # Build models lookup
         models_dict = {model.name: model for model in all_models}
 
-        # Filter to cross-view references only
-        for measure_name in measures:
+        # Handle based on metric type
+        if isinstance(metric.type_params, SimpleMetricParams):
+            # Simple metrics reference a single dbt measure
+            measure_name = metric.type_params.measure
             source_model = self._find_model_with_measure(measure_name, models_dict)
             if source_model and source_model.name != primary_model.name:
-                # Find the dbt Measure object to translate its name
-                measure = next(
-                    m for m in source_model.measures if m.name == measure_name
-                )
+                measure = next(m for m in source_model.measures if m.name == measure_name)
                 lookml_name = self.get_measure_lookml_name(measure)
                 view_name = f"{self.view_prefix}{source_model.name}"
                 required.add(f"{view_name}.{lookml_name}")
+
+        elif isinstance(metric.type_params, RatioMetricParams):
+            # Ratio metrics reference two dbt measures
+            for measure_name in [metric.type_params.numerator, metric.type_params.denominator]:
+                source_model = self._find_model_with_measure(measure_name, models_dict)
+                if source_model and source_model.name != primary_model.name:
+                    measure = next(m for m in source_model.measures if m.name == measure_name)
+                    lookml_name = self.get_measure_lookml_name(measure)
+                    view_name = f"{self.view_prefix}{source_model.name}"
+                    required.add(f"{view_name}.{lookml_name}")
+
+        elif isinstance(metric.type_params, DerivedMetricParams):
+            # Derived metrics reference other METRICS (not measures)
+            # Metrics generate measures with their metric name (no suffix)
+            for ref in metric.type_params.metrics:
+                measure_name = ref.name
+                source_model = self._find_model_with_measure(measure_name, models_dict)
+                if source_model and source_model.name != primary_model.name:
+                    view_name = f"{self.view_prefix}{source_model.name}"
+                    required.add(f"{view_name}.{measure_name}")
 
         return sorted(list(required))
 
