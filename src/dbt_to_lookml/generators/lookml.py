@@ -1194,9 +1194,16 @@ class LookMLGenerator(Generator):
         if not self.date_selector:
             return parameters, dimension_groups
 
-        # Check if this is a fact model
-        if self.fact_models and model.name not in self.fact_models:
-            return parameters, dimension_groups
+        # Check if this is a fact model (account for view_prefix)
+        if self.fact_models:
+            # Model name may be prefixed (e.g., "gold_rentals") while fact_models
+            # contains unprefixed names (e.g., "rentals")
+            model_name = model.name
+            unprefixed_name = model_name
+            if self.view_prefix and model_name.startswith(self.view_prefix):
+                unprefixed_name = model_name[len(self.view_prefix) :]
+            if unprefixed_name not in self.fact_models:
+                return parameters, dimension_groups
 
         # Get time dimensions
         time_dims = self._get_date_selector_dimensions(model)
