@@ -21,7 +21,7 @@ from dbt_to_lookml.types import DimensionType
 
 if TYPE_CHECKING:
     from dbt_to_lookml.schemas.config import PopConfig
-    from dbt_to_lookml.schemas.semantic_layer import Measure
+    from dbt_to_lookml.schemas.semantic_layer import Dimension, Measure
 
 console = Console()
 
