@@ -328,6 +328,55 @@ class Dimension(BaseModel):
 
         return result
 
+    def _to_filter_dimension_dict(
+        self,
+        fallback_group_label: str | None = None,
+    ) -> dict[str, Any]:
+        """Convert time dimension to plain date dimension for filtering/drilling.
+
+        When date_selector is enabled, time dimensions included in the selector
+        are demoted from full dimension_groups to plain date dimensions. This
+        removes their temporal analysis capabilities (no week/month/quarter rollups)
+        while preserving their use for filtering and drilling.
+
+        Args:
+            fallback_group_label: Group label to use if no hierarchy.category
+                is configured. Typically the model's subject.
+
+        Returns:
+            LookML dimension dict with type: date or date_time based on granularity.
+        """
+        # Determine type based on time granularity
+        granularity = "day"
+        if self.type_params and "time_granularity" in self.type_params:
+            granularity = self.type_params["time_granularity"]
+
+        dim_type = "date_time" if granularity in ("hour", "minute") else "date"
+
+        result: dict[str, Any] = {
+            "name": self.name,
+            "type": dim_type,
+            "sql": self.expr or f"${{TABLE}}.{self.name}",
+        }
+
+        if self.description:
+            result["description"] = self.description
+        if self.label:
+            result["label"] = self.label
+
+        # Use hierarchy.category for group_label, fall back to provided default
+        _, group_label = self.get_dimension_labels()
+        if group_label:
+            result["group_label"] = group_label
+        elif fallback_group_label:
+            result["group_label"] = fallback_group_label
+
+        # Add hidden parameter if specified
+        if self.config and self.config.meta and self.config.meta.hidden is True:
+            result["hidden"] = "yes"
+
+        return result
+
     def _get_timeframes(self) -> list[str]:
         """Get the list of timeframes for this time dimension.
 
@@ -690,6 +739,7 @@ class SemanticModel(BaseModel):
         use_group_item_label: bool | None = None,
         use_bi_field_filter: bool = False,
         required_measures: set[str] | None = None,
+        filter_time_dimensions: set[str] | None = None,
     ) -> dict[str, Any]:
         """Convert entire semantic model to lkml views format.
 
@@ -716,6 +766,10 @@ class SemanticModel(BaseModel):
             required_measures: Optional set of measure names that should be
                 included regardless of bi_field status (e.g., measures needed
                 by metrics with bi_field=True).
+            filter_time_dimensions: Optional set of time dimension names to
+                convert to plain date dimensions instead of dimension_groups.
+                When date_selector is enabled, time dimensions included in the
+                selector are demoted to filter-only dimensions (no timeframes).
 
         Returns:
             Dictionary with LookML view configuration including dimensions,
@@ -778,20 +832,27 @@ class SemanticModel(BaseModel):
             # Track this dimension as included
             included_dimensions.append(dim)
 
-            # Pass convert_tz, time_dimension_group_label, and use_group_item_label
-            # to time dimensions to propagate generator defaults
+            # Handle time dimensions - may be full dimension_group or filter-only
             if dim.type == DimensionType.TIME:
-                dim_dict = dim.to_lookml_dict(
-                    default_convert_tz=convert_tz,
-                    default_time_dimension_group_label=time_dimension_group_label,
-                    default_use_group_item_label=use_group_item_label,
-                )
+                # Check if this time dim should be demoted to filter dimension
+                if filter_time_dimensions and dim.name in filter_time_dimensions:
+                    # Generate as plain date dimension (no timeframes)
+                    # Use model subject as fallback group_label
+                    dim_dict = dim._to_filter_dimension_dict(
+                        fallback_group_label=entity_view_label
+                    )
+                    dimensions.append(dim_dict)
+                else:
+                    # Generate as full dimension_group with timeframes
+                    dim_dict = dim.to_lookml_dict(
+                        default_convert_tz=convert_tz,
+                        default_time_dimension_group_label=time_dimension_group_label,
+                        default_use_group_item_label=use_group_item_label,
+                    )
+                    dimension_groups.append(dim_dict)
             else:
+                # Regular categorical dimension
                 dim_dict = dim.to_lookml_dict()
-
-            if dim.type == DimensionType.TIME:
-                dimension_groups.append(dim_dict)
-            else:
                 dimensions.append(dim_dict)
 
         # Convert measures (pass model name for group_label inference)
@@ -835,14 +896,19 @@ class SemanticModel(BaseModel):
         for entity in self.entities:
             dimension_field_names.append(entity.name)
         for dim in included_dimensions:
-            # For time dimensions, add each individual timeframe field
-            # (e.g., created_at_date, created_at_week, created_at_month)
-            # For regular dimensions, use the base name
             if dim.type == DimensionType.TIME:
-                timeframes = dim._get_timeframes()
-                for timeframe in timeframes:
-                    dimension_field_names.append(f"{dim.name}_{timeframe}")
+                # Check if this was converted to a filter dimension
+                if filter_time_dimensions and dim.name in filter_time_dimensions:
+                    # Filter dimensions use base name (no timeframe suffixes)
+                    dimension_field_names.append(dim.name)
+                else:
+                    # Full dimension_group - add each individual timeframe field
+                    # (e.g., created_at_date, created_at_week, created_at_month)
+                    timeframes = dim._get_timeframes()
+                    for timeframe in timeframes:
+                        dimension_field_names.append(f"{dim.name}_{timeframe}")
             else:
+                # Regular dimensions use the base name
                 dimension_field_names.append(dim.name)
 
         # Build the view dict

@@ -813,6 +813,21 @@ class LookMLGenerator(Generator):
         Returns:
             Dictionary representation of LookML view.
         """
+        # Determine if date selector is enabled for this model
+        # and get the time dimensions to convert to filter dimensions
+        filter_time_dimensions: set[str] | None = None
+        if self.date_selector and self.fact_models:
+            # Check if this is a fact model (account for view_prefix)
+            model_name = model.name
+            unprefixed_name = model_name
+            if self.view_prefix and model_name.startswith(self.view_prefix):
+                unprefixed_name = model_name[len(self.view_prefix):]
+            if unprefixed_name in self.fact_models:
+                # Get time dimensions in the selector - these become filter dims
+                time_dims = self._get_date_selector_dimensions(model)
+                if time_dims:
+                    filter_time_dimensions = {td.name for td in time_dims}
+
         # Start with base view dict from semantic model
         base_view_dict = model.to_lookml_dict(
             schema=self.schema,
@@ -821,6 +836,7 @@ class LookMLGenerator(Generator):
             use_group_item_label=self.use_group_item_label,
             use_bi_field_filter=self.use_bi_field_filter,
             required_measures=required_measures,
+            filter_time_dimensions=filter_time_dimensions,
         )
 
         # Apply smart measure filtering if usage_map provided
