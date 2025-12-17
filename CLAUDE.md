@@ -62,6 +62,18 @@ dbt-to-lookml wizard generate        # Interactive mode
 dbt-to-lookml generate -i semantic_models/ -o build/ -s public --fact-models rentals,orders
 ```
 
+### Date Selector (Dynamic Calendar)
+
+```bash
+# Enable date selector for fact models (allows switching analysis date field)
+dbt-to-lookml generate ... --fact-models rentals --date-selector
+
+# Use explicit mode (only include dims with meta.date_selector: true)
+dbt-to-lookml generate ... --date-selector --date-selector-mode explicit
+```
+
+Generated LookML includes a `calendar_date` parameter and `calendar` dimension_group that lets users dynamically choose which date field to analyze by.
+
 ## Code Style
 
 - **Type hints**: All functions (mypy --strict)
@@ -86,8 +98,30 @@ dbt-to-lookml generate -i semantic_models/ -o build/ -s public --fact-models ren
 | Measures | Only written if used by complex metrics without simple metric exposure |
 | Simple Metrics | `measure` with direct aggregation (`type: sum`, etc.) |
 | Complex Metrics | `measure` with `type: number` referencing other measures |
+| Metric PoP | `period_over_period` measures referencing metric directly (no hidden base) |
 
 **Smart Optimization**: Simple metrics generate as direct aggregates. Hidden `_measure` versions only created when needed by complex metrics. Unused measures excluded entirely.
+
+### Period-over-Period (PoP) on Metrics
+
+Define PoP directly on simple metrics (cleaner than measure-level PoP):
+
+```yaml
+metrics:
+  - name: total_revenue
+    type: simple
+    type_params:
+      measure: revenue
+    meta:
+      primary_entity: order
+      pop:
+        enabled: true
+        comparisons: [pp, py]  # prior period, prior year
+        windows: [month]       # month, quarter, week
+        format: usd            # optional value format
+```
+
+**Limitation**: Only simple metrics are supported (they generate direct aggregates). Ratio/derived metrics silently skip PoP due to Looker `type: number` limitations.
 
 See `.claude/ai-docs/conversion-rules.md` for full details.
 
