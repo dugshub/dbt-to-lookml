@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +24,16 @@ if TYPE_CHECKING:
     from dbt_to_lookml.schemas.semantic_layer import Measure
 
 console = Console()
+
+
+@dataclass
+class TimeDimensionInfo:
+    """Information about a time dimension for date selector generation."""
+
+    name: str  # e.g., "created_at"
+    label: str  # e.g., "Rental Created"
+    column: str  # e.g., "rental_created_at_utc" (SQL column)
+    is_default: bool  # True if matches agg_time_dimension
 
 
 class LookMLValidationError(Exception):
@@ -465,6 +476,68 @@ class LookMLGenerator(Generator):
             result["view_label"] = view_label
 
         return result
+
+    def _generate_date_selector_parameter(
+        self,
+        time_dims: list[TimeDimensionInfo],
+    ) -> dict[str, Any]:
+        """Generate LookML parameter for date field selection.
+
+        Creates a parameter that lets users dynamically choose which
+        date column to use for calendar analysis in Looker.
+
+        Args:
+            time_dims: List of time dimensions to include as options
+
+        Returns:
+            LookML parameter dict ready for serialization
+
+        Example:
+            Given time_dims with created_at, starts_at, ends_at:
+
+            ```
+            {
+                "name": "calendar_date",
+                "type": "unquoted",
+                "label": "Calendar Date",
+                "description": "Select which date field to use for calendar analysis",
+                "allowed_value": [
+                    {"label": "Created", "value": "rental_created_at_utc"},
+                    {"label": "Starts", "value": "rental_starts_at_utc"},
+                    {"label": "Ends", "value": "rental_ends_at_utc"}
+                ],
+                "default_value": "rental_created_at_utc"
+            }
+            ```
+
+        Note:
+            - Default is based on is_default flag (matches agg_time_dimension)
+            - Falls back to first option if no default specified
+        """
+        # Build allowed_value list
+        allowed_values = []
+        default_value = None
+
+        for td in time_dims:
+            allowed_values.append({
+                "label": td.label,
+                "value": td.column,
+            })
+            if td.is_default:
+                default_value = td.column
+
+        # Fallback default to first option if none marked
+        if default_value is None and allowed_values:
+            default_value = allowed_values[0]["value"]
+
+        return {
+            "name": "calendar_date",
+            "type": "unquoted",
+            "label": "Calendar Date",
+            "description": "Select which date field to use for calendar analysis",
+            "allowed_value": allowed_values,
+            "default_value": default_value,
+        }
 
     def _extract_base_column(self, variants: list["Dimension"]) -> str:
         """Extract base column name by removing variant suffix from expression.
