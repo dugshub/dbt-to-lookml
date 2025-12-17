@@ -51,6 +51,8 @@ class LookMLGenerator(Generator):
         fact_models: list[str] | None = None,
         time_dimension_group_label: str | None = None,
         include_children: bool = False,
+        date_selector: bool = False,
+        date_selector_mode: str = "auto",
     ) -> None:
         """Initialize the generator.
 
@@ -123,6 +125,17 @@ class LookMLGenerator(Generator):
                 automatically join to the "rentals" explore. Only dimensions are
                 exposed from child models by default (not measures) to prevent
                 aggregation fan-out. Default is False for backward compatibility.
+            date_selector: Whether to generate a calendar date parameter for fact
+                models to dynamically select which date field to use for analysis.
+                When enabled, a parameter is added to fact model explores allowing
+                users to choose between available time dimensions at query time.
+                Default is False.
+            date_selector_mode: Date selector detection mode for determining which
+                time dimensions to include in the selector.
+                - "auto": Include all time dimensions by default, exclude those with
+                  config.meta.date_selector: false
+                - "explicit": Only include dimensions with config.meta.date_selector: true
+                Default is "auto".
 
         Example:
             Enable group_item_label globally:
@@ -178,6 +191,8 @@ class LookMLGenerator(Generator):
         self.fact_models = fact_models
         self.time_dimension_group_label = time_dimension_group_label
         self.include_children = include_children
+        self.date_selector = date_selector
+        self.date_selector_mode = date_selector_mode
 
         # Backward compatibility attribute
         class MapperCompat:

@@ -370,6 +370,24 @@ def wizard_generate(execute: bool, wizard_tui: bool) -> None:
     ),
 )
 @click.option(
+    "--date-selector",
+    is_flag=True,
+    help=(
+        "Generate a calendar date parameter for fact models to dynamically select "
+        "which date field to use for analysis"
+    ),
+)
+@click.option(
+    "--date-selector-mode",
+    type=click.Choice(["auto", "explicit"], case_sensitive=False),
+    default="auto",
+    help=(
+        "Date selector detection mode: 'auto' includes all time dimensions "
+        "(exclude with meta.date_selector: false), 'explicit' only includes "
+        "dimensions with meta.date_selector: true (default: auto)"
+    ),
+)
+@click.option(
     "--yes",
     "-y",
     is_flag=True,
@@ -402,6 +420,8 @@ def generate(
     no_group_item_label: bool,
     fact_models: str | None,
     include_children: bool,
+    date_selector: bool,
+    date_selector_mode: str,
     yes: bool,
     preview: bool,
 ) -> None:
@@ -746,6 +766,8 @@ def generate(
             fact_models=fact_model_names,
             time_dimension_group_label=time_dim_group_label_value,
             include_children=include_children,
+            date_selector=date_selector,
+            date_selector_mode=date_selector_mode,
         )
 
         # Generate files
