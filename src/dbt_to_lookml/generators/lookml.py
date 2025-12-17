@@ -865,6 +865,90 @@ class LookMLGenerator(Generator):
 
         return ordered_view_dict
 
+    def _should_include_in_date_selector(
+        self,
+        dim: "Dimension",  # from semantic_layer schema
+        mode: str,
+    ) -> bool:
+        """Determine if dimension should be included in date selector.
+
+        Args:
+            dim: Dimension to check
+            mode: Detection mode ('auto' or 'explicit')
+
+        Returns:
+            True if dimension should be included in date selector
+        """
+        date_selector_flag = None
+        if dim.config and dim.config.meta:
+            date_selector_flag = dim.config.meta.date_selector
+
+        if mode == "auto":
+            # Auto: include unless explicitly excluded
+            return date_selector_flag is not False
+        else:  # explicit
+            # Explicit: only include if explicitly included
+            return date_selector_flag is True
+
+    def _get_date_selector_dimensions(
+        self,
+        model: SemanticModel,
+    ) -> list[TimeDimensionInfo]:
+        """Get time dimensions for date selector parameter.
+
+        Filters dimensions based on:
+        - Must be type TIME
+        - Must pass mode-based filtering (auto vs explicit)
+
+        Args:
+            model: Semantic model to extract time dimensions from
+
+        Returns:
+            List of TimeDimensionInfo for each qualifying time dimension
+        """
+        from dbt_to_lookml.schemas.semantic_layer import _smart_title
+
+        time_dims: list[TimeDimensionInfo] = []
+
+        # Get agg_time_dimension for default selection
+        default_dim_name = None
+        if model.defaults and model.defaults.agg_time_dimension:
+            default_dim_name = model.defaults.agg_time_dimension
+
+        for dim in model.dimensions:
+            # Only process time dimensions
+            if dim.type != DimensionType.TIME:
+                continue
+
+            # Check if should include based on mode
+            if not self._should_include_in_date_selector(dim, self.date_selector_mode):
+                continue
+
+            # Extract info
+            label = dim.label if dim.label else _smart_title(dim.name)
+            column = dim.expr if dim.expr else dim.name
+            is_default = dim.name == default_dim_name
+
+            time_dims.append(
+                TimeDimensionInfo(
+                    name=dim.name,
+                    label=label,
+                    column=column,
+                    is_default=is_default,
+                )
+            )
+
+        # If no default found, mark first one as default
+        if time_dims and not any(td.is_default for td in time_dims):
+            time_dims[0] = TimeDimensionInfo(
+                name=time_dims[0].name,
+                label=time_dims[0].label,
+                column=time_dims[0].column,
+                is_default=True,
+            )
+
+        return time_dims
+
     def _generate_pop_dimensions(
         self,
         pop_config: "PopConfig",
