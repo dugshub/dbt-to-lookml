@@ -1066,6 +1066,69 @@ class LookMLGenerator(Generator):
             current_measure["value_format_name"] = format_name
 
         return [current_measure]
+
+    def _generate_calendar_dimension_group(self) -> dict[str, Any]:
+        """Generate LookML dimension_group for dynamic calendar selection.
+
+        Creates a dimension_group that uses Liquid templating to reference
+        the calendar_date parameter, allowing the date column to be selected
+        dynamically at query time.
+
+        Returns:
+            LookML dimension_group dict ready for serialization
+        """
+        return {
+            "name": "calendar",
+            "type": "time",
+            "timeframes": ["date", "week", "month", "quarter", "year"],
+            "sql": "${TABLE}.{% parameter calendar_date %}::timestamp",
+            "label": "Calendar",
+            "description": "Dynamic calendar based on selected date field",
+            "convert_tz": "no",
+        }
+
+    def _generate_date_selector_fields(
+        self, model: SemanticModel
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Generate date selector parameter and dimension_group for a model.
+
+        Only generates if:
+        1. date_selector is enabled on the generator
+        2. Model is a fact model (in self.fact_models list)
+        3. Model has qualifying time dimensions
+
+        Args:
+            model: Semantic model to generate date selector for
+
+        Returns:
+            Tuple of (parameters_list, dimension_groups_list)
+        """
+        parameters: list[dict[str, Any]] = []
+        dimension_groups: list[dict[str, Any]] = []
+
+        # Check if date selector is enabled
+        if not self.date_selector:
+            return parameters, dimension_groups
+
+        # Check if this is a fact model
+        if self.fact_models and model.name not in self.fact_models:
+            return parameters, dimension_groups
+
+        # Get time dimensions (requires DTL-049 implementation)
+        # TODO(DTL-049): Uncomment when _get_date_selector_dimensions is implemented
+        # time_dims = self._get_date_selector_dimensions(model)
+        time_dims: list[TimeDimensionInfo] = []
+
+        # Skip if no qualifying time dimensions
+        if not time_dims:
+            return parameters, dimension_groups
+
+        # Generate parameter and dimension_group
+        parameters.append(self._generate_date_selector_parameter(time_dims))
+        dimension_groups.append(self._generate_calendar_dimension_group())
+
+        return parameters, dimension_groups
+
     def generate_view(
         self,
         model: SemanticModel,
