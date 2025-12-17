@@ -129,6 +129,7 @@ class Entity(BaseModel):
         type: Entity type - "primary", "foreign", or "unique".
         expr: Optional SQL expression (defaults to entity name).
         description: Optional description for LookML output.
+        label: Optional display label (used for group_label of related dimensions).
         config: Optional configuration for metadata including join_cardinality.
     """
 
@@ -136,6 +137,7 @@ class Entity(BaseModel):
     type: str
     expr: str | None = None
     description: str | None = None
+    label: str | None = None
     config: Config | None = None
 
     def _qualify_sql_expression(self, expr: str | None, field_name: str) -> str:
@@ -807,6 +809,16 @@ class SemanticModel(BaseModel):
         if not entity_view_label:
             entity_view_label = _smart_title(self.name)
 
+        # Find primary entity for filter dimension fallback group_label
+        # Use entity label if set, otherwise title-case the entity name
+        primary_entity_label: str | None = None
+        for entity in self.entities:
+            if entity.type == "primary":
+                primary_entity_label = (
+                    entity.label if entity.label else _smart_title(entity.name)
+                )
+                break
+
         # Convert entities to dimensions
         for entity in self.entities:
             dimensions.append(
@@ -837,9 +849,9 @@ class SemanticModel(BaseModel):
                 # Check if this time dim should be demoted to filter dimension
                 if filter_time_dimensions and dim.name in filter_time_dimensions:
                     # Generate as plain date dimension (no timeframes)
-                    # Use model subject as fallback group_label
+                    # Use primary entity label as fallback group_label
                     dim_dict = dim._to_filter_dimension_dict(
-                        fallback_group_label=entity_view_label
+                        fallback_group_label=primary_entity_label
                     )
                     dimensions.append(dim_dict)
                 else:
