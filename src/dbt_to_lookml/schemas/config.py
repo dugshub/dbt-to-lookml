@@ -237,6 +237,7 @@ class ConfigMeta(BaseModel):
     date_selector: bool | None = None
     short_label: str | None = None
     pop: PopConfig | None = None
+    primary_entity: str | None = None
 
 
 class Config(BaseModel):

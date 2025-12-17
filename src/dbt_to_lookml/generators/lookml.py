@@ -2132,10 +2132,14 @@ class LookMLGenerator(Generator):
             from dbt_to_lookml.parsers.dbt_metrics import extract_measure_dependencies
 
             for metric in metrics:
-                # Check if metric has bi_field: true (in meta dict)
+                # Check if metric has bi_field: true (in meta dict or config.meta)
                 has_bi_field = (
-                    metric.meta
-                    and metric.meta.get("bi_field") is True
+                    (metric.meta and metric.meta.get("bi_field") is True)
+                    or (
+                        metric.config
+                        and metric.config.meta
+                        and metric.config.meta.bi_field is True
+                    )
                 )
                 if not has_bi_field:
                     continue
@@ -2184,7 +2188,12 @@ class LookMLGenerator(Generator):
                     # Skip metrics without bi_field when filtering is enabled
                     if self.use_bi_field_filter:
                         has_bi_field = (
-                            metric.meta and metric.meta.get("bi_field") is True
+                            (metric.meta and metric.meta.get("bi_field") is True)
+                            or (
+                                metric.config
+                                and metric.config.meta
+                                and metric.config.meta.bi_field is True
+                            )
                         )
                         if not has_bi_field:
                             continue

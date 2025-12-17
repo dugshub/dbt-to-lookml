@@ -1119,6 +1119,8 @@ class Metric(BaseModel):
         The primary entity determines which semantic model/view owns this
         metric and serves as the base for the calculation.
 
+        Checks both top-level meta and config.meta (dbt semantic layer format).
+
         Returns:
             Primary entity name if specified in meta, None otherwise.
 
@@ -1136,8 +1138,12 @@ class Metric(BaseModel):
             assert metric.primary_entity == "search"
             ```
         """
-        if self.meta:
+        # Check top-level meta first (dict)
+        if self.meta and self.meta.get("primary_entity"):
             return self.meta.get("primary_entity")
+        # Fall back to config.meta (dbt semantic layer format - typed ConfigMeta)
+        if self.config and self.config.meta and self.config.meta.primary_entity:
+            return self.config.meta.primary_entity
         return None
 
     def get_required_measures(self) -> list[str]:

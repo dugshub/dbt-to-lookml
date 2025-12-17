@@ -16,6 +16,7 @@ help:
 	@echo "Generation:"
 	@echo "  lookml-preview    Dry-run generation with summary (INPUT_DIR, OUTPUT_DIR)"
 	@echo "  lookml-generate   Generate LookML files (INPUT_DIR, OUTPUT_DIR)"
+	@echo "  lookml-gold       Generate Gold Layer LookML (SpotHero production)"
 	@echo "  lookml-validate   Validate semantic models (-v)"
 	@echo "  lookml-validate-strict  Validate in strict mode (-v, --strict)"
 	@echo "  lookml-demo       Preview using default sample folder 'semantic_models/'"
@@ -221,6 +222,26 @@ lookml-preview:
 lookml-generate:
 	@echo "🧩 Generating LookML files from $(INPUT_DIR) -> $(OUTPUT_DIR)"
 	@uv run python -m dbt_to_lookml generate -i $(INPUT_DIR) -o $(OUTPUT_DIR)
+
+# Gold Layer generation (SpotHero production)
+lookml-gold:
+	@echo "🥇 Generating Gold Layer LookML"
+	@d2l generate \
+		-i /Users/doug/Work/data-modelling/official-models/redshift_gold/models/3_semantic/models \
+		-md /Users/doug/Work/data-modelling/official-models/redshift_gold/models/3_semantic/metrics \
+		-o /Users/doug/Work/data-modelling/analytics_lookML/GoldLayer \
+		--view-prefix gold_ \
+		--explore-prefix gold_ \
+		--model-name gold_semantic_models \
+		--no-convert-tz \
+		--bi-field-only \
+		--schema gold_sandbox \
+		--fact-models rentals \
+		--include-children \
+		--use-group-item-label \
+		--date-selector \
+		--show-summary \
+		--yes
 
 lookml-validate:
 	@echo "🔎 Validating semantic models in $(INPUT_DIR)"
