@@ -226,7 +226,7 @@ class TestDateSelectorParameterGeneration:
 
         result = generator._generate_date_selector_parameter(time_dims)
 
-        assert result["name"] == "calendar_date"
+        assert result["name"] == "calendar_date_param"
         assert result["type"] == "unquoted"
         assert result["label"] == "Calendar Date"
         assert len(result["allowed_value"]) == 2
@@ -259,7 +259,7 @@ class TestCalendarDimensionGroupGeneration:
 
         assert result["name"] == "calendar"
         assert result["type"] == "time"
-        assert "{% parameter calendar_date %}" in result["sql"]
+        assert "{% parameter calendar_date_param %}" in result["sql"]
         assert result["convert_tz"] == "no"
         assert "date" in result["timeframes"]
         assert "month" in result["timeframes"]
@@ -322,7 +322,7 @@ class TestDateSelectorFieldsIntegration:
         params, dim_groups = generator._generate_date_selector_fields(model)
 
         assert len(params) == 1
-        assert params[0]["name"] == "calendar_date"
+        assert params[0]["name"] == "calendar_date_param"
         assert len(dim_groups) == 1
         assert dim_groups[0]["name"] == "calendar"
 

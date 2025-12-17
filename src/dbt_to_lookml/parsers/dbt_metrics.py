@@ -388,12 +388,24 @@ class DbtMetricParser(Parser):
             # Extract filter (list of filter expressions)
             metric_filter = metric_data.get("filter")
 
-            # Parse PoP config from meta if present
+            # Parse config from meta if present (PoP, short_label, etc.)
             metric_config = None
-            if meta and isinstance(meta, dict) and "pop" in meta:
-                pop_config = self._parse_metric_pop_config(meta["pop"], metric_type)
-                if pop_config:
-                    metric_config = Config(meta=ConfigMeta(pop=pop_config))
+            if meta and isinstance(meta, dict):
+                config_meta_kwargs: dict[str, Any] = {}
+
+                # Parse short_label
+                if "short_label" in meta:
+                    config_meta_kwargs["short_label"] = meta["short_label"]
+
+                # Parse PoP config
+                if "pop" in meta:
+                    pop_config = self._parse_metric_pop_config(meta["pop"], metric_type)
+                    if pop_config:
+                        config_meta_kwargs["pop"] = pop_config
+
+                # Only create Config if we have something to configure
+                if config_meta_kwargs:
+                    metric_config = Config(meta=ConfigMeta(**config_meta_kwargs))
 
             # Construct metric object
             return Metric(

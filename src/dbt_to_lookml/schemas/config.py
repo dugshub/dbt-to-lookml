@@ -70,27 +70,34 @@ class PopConfig(BaseModel):
     Enables automatic generation of MTD/YTD and prior period/year
     comparison measures from a single measure definition.
 
+    Date Dimension Logic:
+        - If --date-selector is enabled on the view: uses `calendar_date` (dynamic)
+        - Otherwise: uses model's `agg_time_dimension` (static)
+
     Attributes:
         enabled: Whether to generate PoP variants for this measure.
         short_label: Short label for PoP measure names (e.g., "GOV" instead of
             "Gross Order Value (GOV)"). If not provided, uses the metric's label.
+            Note: Prefer setting short_label at meta level, not inside pop config.
         grains: Which period grains to generate (default: MTD, YTD).
         comparisons: Which comparison periods to generate (default: PP, PY).
         windows: What "Prior Period" can mean (default: month).
         format: LookML value_format_name for generated measures.
-        date_dimension: Override date dimension reference in SQL.
+        date_dimension: DEPRECATED - ignored. Date dimension is now automatic.
         date_filter: Override filter field for {% date_start/end %}.
 
     Example:
         ```yaml
-        measures:
-          - name: revenue
-            agg: sum
+        metrics:
+          - name: total_revenue
+            type: simple
+            type_params:
+              measure: revenue
             config:
               meta:
+                short_label: "Revenue"  # Used for PoP labels
                 pop:
                   enabled: true
-                  short_label: "Revenue"  # PoP labels: "Revenue PP", "Revenue PY Δ%"
                   comparisons: [pp, py]
                   format: usd
         ```
@@ -236,6 +243,10 @@ class ConfigMeta(BaseModel):
             - False: Exclude this time dimension from the calendar date selector
             - None: Use mode default (auto=include, explicit=exclude)
             Only applicable to time dimensions when --date-selector is enabled.
+        short_label: Abbreviated label for use in PoP measure names and other
+            contexts where brevity is preferred. For example, "GOV" instead of
+            "Gross Order Value (GOV)". Used by PoP generation for cleaner labels
+            like "GOV (Prior Year)" instead of "Gross Order Value (GOV) (Prior Year)".
 
     Example:
         Dimension with timezone override and hierarchy labels:
@@ -281,6 +292,7 @@ class ConfigMeta(BaseModel):
     timezone_variant: TimezoneVariant | None = None
     join_cardinality: Literal["one_to_one", "many_to_one"] | None = None
     date_selector: bool | None = None
+    short_label: str | None = None
     pop: PopConfig | None = None
 
 

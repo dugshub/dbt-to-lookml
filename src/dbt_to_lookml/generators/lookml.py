@@ -13,6 +13,7 @@ from dbt_to_lookml.constants import (
     GROUP_LABEL_DATE_DIMENSIONS,
     SUFFIX_PERFORMANCE,
     SUFFIX_POP,
+    VIEW_LABEL_DATE_DIMENSIONS,
     VIEW_LABEL_METRICS_POP,
 )
 from dbt_to_lookml.interfaces.generator import Generator
@@ -497,7 +498,7 @@ class LookMLGenerator(Generator):
 
             ```
             {
-                "name": "calendar_date",
+                "name": "calendar_date_param",
                 "type": "unquoted",
                 "label": "Calendar Date",
                 "description": "Select which date field to use for calendar analysis",
@@ -531,10 +532,11 @@ class LookMLGenerator(Generator):
             default_value = allowed_values[0]["value"]
 
         return {
-            "name": "calendar_date",
+            "name": "calendar_date_param",
             "type": "unquoted",
             "label": "Calendar Date",
             "description": "Select which date field to use for calendar analysis",
+            "view_label": VIEW_LABEL_DATE_DIMENSIONS,
             "allowed_value": allowed_values,
             "default_value": default_value,
         }
@@ -1178,7 +1180,16 @@ class LookMLGenerator(Generator):
 
         measures: list[dict[str, Any]] = []
         base_name = metric.name
-        base_label = metric.label or _smart_title(base_name)
+        full_label = metric.label or _smart_title(base_name)
+
+        # Resolve short_label: meta.short_label > pop_config.short_label > full label
+        short_label = None
+        if metric.config and metric.config.meta and metric.config.meta.short_label:
+            short_label = metric.config.meta.short_label
+        elif pop_config.short_label:
+            short_label = pop_config.short_label
+        base_label = short_label or full_label
+
         format_name = pop_config.format
 
         # Map config to native PoP periods with labels
@@ -1263,9 +1274,10 @@ class LookMLGenerator(Generator):
             "name": "calendar",
             "type": "time",
             "timeframes": ["date", "week", "month", "quarter", "year"],
-            "sql": "${TABLE}.{% parameter calendar_date %}::timestamp",
+            "sql": "${TABLE}.{% parameter calendar_date_param %}::timestamp",
             "label": "Calendar",
             "description": "Dynamic calendar based on selected date field",
+            "view_label": VIEW_LABEL_DATE_DIMENSIONS,
             "convert_tz": "no",
         }
 
@@ -2121,11 +2133,18 @@ class LookMLGenerator(Generator):
             ):
                 return None  # Signal to skip this metric
 
+            # Determine view_label from meta.subject or default to "Metrics"
+            # 2 spaces prefix for top sort order in Looker field picker
+            metric_subject = (
+                metric.meta.get("subject") if metric.meta else None
+            ) or "Metrics"
+            metric_view_label = f"  {metric_subject.lstrip()}"
+
             # Generate as aggregate measure (NOT type: number)
             measure_dict: dict[str, Any] = {
                 "name": metric.name,
                 "type": LOOKML_TYPE_MAP.get(source_measure.agg, "number"),
-                "view_label": "  Metrics",  # 2 spaces prefix for top sort order
+                "view_label": metric_view_label,
             }
 
             # Parse metric filter if present
@@ -2170,11 +2189,18 @@ class LookMLGenerator(Generator):
                 metric, primary_model, all_models
             )
 
+            # Determine view_label from meta.subject or default to "Metrics"
+            # (same logic as simple metrics above)
+            complex_metric_subject = (
+                metric.meta.get("subject") if metric.meta else None
+            ) or "Metrics"
+            complex_metric_view_label = f"  {complex_metric_subject.lstrip()}"
+
             measure_dict: dict[str, Any] = {
                 "name": metric.name,
                 "type": "number",
                 "sql": sql,
-                "view_label": "  Metrics",  # 2 spaces prefix for top sort order
+                "view_label": complex_metric_view_label,
             }
 
             if required_fields:
@@ -2762,10 +2788,25 @@ class LookMLGenerator(Generator):
                 ]
 
                 if pop_metrics:
-                    # Get date_dimension from first PoP metric or model defaults
+                    # Determine date dimension for PoP based_on_time
+                    # Priority: date_selector enabled → calendar_date (dynamic)
+                    #           Otherwise → agg_time_dimension (static)
                     first_pop = pop_metrics[0].config.meta.pop
-                    date_dim = first_pop.date_dimension
-                    if not date_dim and model.defaults:
+                    date_dim = None
+
+                    # Check if date_selector is enabled for this fact model
+                    is_date_selector_model = False
+                    if self.date_selector and self.fact_models:
+                        unprefixed_name = model.name
+                        if self.view_prefix and model.name.startswith(self.view_prefix):
+                            unprefixed_name = model.name[len(self.view_prefix):]
+                        is_date_selector_model = unprefixed_name in self.fact_models
+
+                    if is_date_selector_model:
+                        # Use calendar dimension_group (generates based_on_time: calendar_date)
+                        date_dim = "calendar"
+                    elif model.defaults:
+                        # Fall back to agg_time_dimension
                         date_dim = model.defaults.get("agg_time_dimension")
 
                     if date_dim:
