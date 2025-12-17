@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 
 from dbt_to_lookml.constants import (
     GROUP_LABEL_JOIN_KEYS,
-    GROUP_LABEL_TIME_DIMENSIONS_LOCAL,
     SUFFIX_PERFORMANCE,
     VIEW_LABEL_METRICS,
 )
@@ -475,20 +474,13 @@ class Dimension(BaseModel):
         if group_label:
             result["group_label"] = group_label
 
-        # Determine time_dimension_group_label with three-tier precedence:
-        # 1. Dimension-level meta.time_dimension_group_label (highest priority)
+        # Time dimension group_label precedence:
+        # 1. Dimension-level config.meta.time_dimension_group_label (highest)
         # 2. default_time_dimension_group_label parameter (from generator/CLI)
-        # 3. Hardcoded default: " Time Dimensions" (lowest priority)
+        # 3. None - use hierarchy/subject metadata (default behavior)
         #
-        # IMPORTANT: time_dimension_group_label OVERRIDES hierarchy group_label
-        # for time dimensions. This ensures consistent organization of all time
-        # dimensions under a common grouping, even when hierarchy metadata exists
-        # (which may be used for other semantic layer purposes).
         # Empty string explicitly disables group_label (backward compatible).
-        # None means "use next level in precedence chain".
-        # Leading space in default ensures time dimensions sort to top of field picker.
-        # Default time dimension group label (space prefix added when applied)
-        time_group_label = GROUP_LABEL_TIME_DIMENSIONS_LOCAL
+        time_group_label = None
         if default_time_dimension_group_label is not None:
             time_group_label = default_time_dimension_group_label
         if (
@@ -498,8 +490,7 @@ class Dimension(BaseModel):
         ):
             time_group_label = self.config.meta.time_dimension_group_label
 
-        # Apply time dimension group_label if not explicitly disabled
-        # and no hierarchy group_label exists (hierarchy takes precedence)
+        # Apply time dimension group_label if explicitly set
         # Prefix with 1 space for sort order (after Metrics with 2 spaces)
         if time_group_label and "group_label" not in result:
             result["group_label"] = f" {time_group_label.lstrip()}"  # 1 space prefix

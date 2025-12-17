@@ -553,7 +553,7 @@ class TestDimensionTimeDimensionGroupLabel:
         assert result["group_label"] == " Date Dimensions - Local Time"
 
     def test_dimension_group_default_time_group_label(self) -> None:
-        """Test that time dimensions get default time dimension group_label."""
+        """Test that time dimensions have no default group_label (use hierarchy/subject)."""
         # Arrange
         dim = Dimension(
             name="created_at",
@@ -564,8 +564,8 @@ class TestDimensionTimeDimensionGroupLabel:
         # Act - no parameters provided
         result = dim.to_lookml_dict()
 
-        # Assert
-        assert result.get("group_label") == " Date Dimensions - Local Time"
+        # Assert - no default group_label, use hierarchy/subject metadata instead
+        assert result.get("group_label") is None
 
     def test_dimension_group_hierarchy_group_label_overrides_time_group_label(
         self,
@@ -699,8 +699,8 @@ class TestDimensionTimeDimensionGroupLabel:
         # Assert
         assert "group_label" not in result
 
-    def test_dimension_group_none_uses_default_time_group_label(self) -> None:
-        """Test that None in metadata falls through to default."""
+    def test_dimension_group_none_uses_no_group_label(self) -> None:
+        """Test that None in metadata means no group_label (use hierarchy/subject)."""
         # Arrange
         dim = Dimension(
             name="created_at",
@@ -712,11 +712,11 @@ class TestDimensionTimeDimensionGroupLabel:
         # Act - no generator parameter
         result = dim.to_lookml_dict()
 
-        # Assert - should use hardcoded default
-        assert result.get("group_label") == " Date Dimensions - Local Time"
+        # Assert - no group_label, hierarchy/subject metadata takes over
+        assert result.get("group_label") is None
 
     def test_dimension_group_time_label_precedence_chain(self) -> None:
-        """Test full precedence chain: metadata > generator > default."""
+        """Test full precedence chain: metadata > generator > None."""
         # Case 1: Metadata wins
         dim1 = Dimension(
             name="created_at",
@@ -740,13 +740,13 @@ class TestDimensionTimeDimensionGroupLabel:
             == " Gen"  # 1 space prefix
         )
 
-        # Case 3: Default wins (neither metadata nor generator)
+        # Case 3: No group_label when neither metadata nor generator specified
         dim3 = Dimension(
             name="deleted_at",
             type=DimensionType.TIME,
             type_params={"time_granularity": "day"},
         )
-        assert dim3.to_lookml_dict()["group_label"] == " Date Dimensions - Local Time"
+        assert dim3.to_lookml_dict().get("group_label") is None
 
     def test_dimension_group_time_label_with_convert_tz(self) -> None:
         """Test that time group_label works alongside convert_tz."""

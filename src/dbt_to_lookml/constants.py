@@ -29,7 +29,6 @@ VIEW_LABEL_DATE_DIMENSIONS = " Date Dimensions"
 GROUP_LABEL_JOIN_KEYS = "Join Keys"  # Primary key entities in fact tables
 
 # Time dimension grouping
-GROUP_LABEL_TIME_DIMENSIONS_LOCAL = "Date Dimensions - Local Time"  # Default for time dims
 GROUP_LABEL_DATE_DIMENSIONS = " Date Dimensions"  # Timezone selector (1 space prefix)
 GROUP_LABEL_TIME_DIMENSIONS = "Time Dimensions"  # Generic time dimensions
 
