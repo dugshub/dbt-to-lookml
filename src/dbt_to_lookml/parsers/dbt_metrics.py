@@ -43,6 +43,14 @@ from typing import Any
 from pydantic import ValidationError
 
 from dbt_to_lookml.interfaces.parser import Parser
+from dbt_to_lookml.schemas.config import (
+    Config,
+    ConfigMeta,
+    PopComparison,
+    PopConfig,
+    PopGrain,
+    PopWindow,
+)
 from dbt_to_lookml.schemas.semantic_layer import (
     ConversionMetricParams,
     DerivedMetricParams,
@@ -297,6 +305,49 @@ class DbtMetricParser(Parser):
         valid_types = ["simple", "ratio", "derived", "conversion"]
         return metric.get("type") in valid_types
 
+    def _parse_metric_pop_config(
+        self,
+        pop_data: dict[str, Any],
+        metric_type: str,
+    ) -> PopConfig | None:
+        """Parse PoP configuration from metric meta.
+
+        For metrics, PoP is only supported on simple metrics since they
+        generate direct aggregate measures. Ratio and derived metrics
+        generate type: number measures which have PoP limitations.
+
+        Args:
+            pop_data: The pop config dict from metric meta.
+            metric_type: The type of metric (simple, ratio, derived, conversion).
+
+        Returns:
+            Parsed PopConfig or None if not enabled or not supported.
+        """
+        if not pop_data.get("enabled", False):
+            return None
+
+        # Only support PoP on simple metrics for now
+        if metric_type != "simple":
+            # Log warning but don't fail - user may be experimenting
+            return None
+
+        # Parse enum values with defaults
+        grains = [PopGrain(g) for g in pop_data.get("grains", ["mtd", "ytd"])]
+        comparisons = [
+            PopComparison(c) for c in pop_data.get("comparisons", ["pp", "py"])
+        ]
+        windows = [PopWindow(w) for w in pop_data.get("windows", ["month"])]
+
+        return PopConfig(
+            enabled=True,
+            grains=grains,
+            comparisons=comparisons,
+            windows=windows,
+            format=pop_data.get("format"),
+            date_dimension=pop_data.get("date_dimension"),
+            date_filter=pop_data.get("date_filter"),
+        )
+
     def _parse_metric(self, metric_data: dict[str, Any]) -> Metric:
         """Parse single metric from dictionary data.
 
@@ -337,6 +388,13 @@ class DbtMetricParser(Parser):
             # Extract filter (list of filter expressions)
             metric_filter = metric_data.get("filter")
 
+            # Parse PoP config from meta if present
+            metric_config = None
+            if meta and isinstance(meta, dict) and "pop" in meta:
+                pop_config = self._parse_metric_pop_config(meta["pop"], metric_type)
+                if pop_config:
+                    metric_config = Config(meta=ConfigMeta(pop=pop_config))
+
             # Construct metric object
             return Metric(
                 name=metric_data["name"],
@@ -346,6 +404,7 @@ class DbtMetricParser(Parser):
                 description=metric_data.get("description"),
                 filter=metric_filter,
                 meta=meta,
+                config=metric_config,
             )
 
         except Exception as e:

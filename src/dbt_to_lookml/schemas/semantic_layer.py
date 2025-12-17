@@ -1052,6 +1052,8 @@ class Metric(BaseModel):
             - primary_entity: Entity that owns this metric (determines which
               view file contains the generated measure).
             - category: Category for grouping related metrics.
+        config: Optional configuration for metric features like PoP (period-over-period).
+            Parsed from meta.pop during metric loading.
 
     Examples:
         Simple metric:
@@ -1117,6 +1119,7 @@ class Metric(BaseModel):
     description: str | None = None
     filter: list[str] | None = None
     meta: dict[str, Any] | None = None
+    config: Config | None = None
 
     @property
     def primary_entity(self) -> str | None:
