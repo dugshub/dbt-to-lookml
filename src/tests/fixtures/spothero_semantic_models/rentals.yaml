@@ -47,10 +47,6 @@ semantic_models:
             subject: "Date Dimensions"
             category: "Rental Created"
             bi_field: true
-            timezone_variant:
-              canonical_name: "created_at"
-              variant: "utc"
-              is_primary: true
 
       - name: starts_at
         label: "Rental Start"
@@ -64,10 +60,6 @@ semantic_models:
             subject: "Date Dimensions"
             category: "Rental Start"
             bi_field: true
-            timezone_variant:
-              canonical_name: "starts_at"
-              variant: "utc"
-              is_primary: true
 
       - name: ends_at
         label: "Rental End"
@@ -81,10 +73,6 @@ semantic_models:
             subject: "Date Dimensions"
             category: "Rental End"
             bi_field: true
-            timezone_variant:
-              canonical_name: "ends_at"
-              variant: "utc"
-              is_primary: true
 
       - name: updated_at
         label: "Rental Updated"
@@ -113,10 +101,6 @@ semantic_models:
             category: "Rental Created"
             bi_field: true
             note: "Local timezone for time-of-day analysis"
-            timezone_variant:
-              canonical_name: "created_at"
-              variant: "local"
-              is_primary: false
 
       - name: starts_at_local
         label: "Rental Start (Local)"
@@ -131,10 +115,6 @@ semantic_models:
             category: "Rental Start"
             bi_field: true
             note: "Local timezone for time-of-day analysis (commuter hours, evening events, etc.)"
-            timezone_variant:
-              canonical_name: "starts_at"
-              variant: "local"
-              is_primary: false
 
       - name: ends_at_local
         label: "Rental End (Local)"
@@ -149,10 +129,6 @@ semantic_models:
             category: "Rental End"
             bi_field: true
             note: "Local timezone for time-of-day analysis"
-            timezone_variant:
-              canonical_name: "ends_at"
-              variant: "local"
-              is_primary: false
 
       # ===== IDENTIFIERS =====
       - name: rental_id

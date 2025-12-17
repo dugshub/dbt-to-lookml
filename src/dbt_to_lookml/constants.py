@@ -16,7 +16,7 @@ Sort Order Convention:
 
 # Metrics view labels (2-space prefix for top sorting)
 VIEW_LABEL_METRICS_POP = "  Metrics (PoP)"  # Period-over-Period metrics
-VIEW_LABEL_METRICS = "  Metrics"  # Standard metrics (2-space prefix for top sorting)
+VIEW_LABEL_METRICS = "Metrics"  # Standard metrics (space prefix added when applied)
 
 # Date dimensions view label (1-space prefix, sorts after Metrics)
 VIEW_LABEL_DATE_DIMENSIONS = " Date Dimensions"

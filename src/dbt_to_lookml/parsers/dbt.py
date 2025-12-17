@@ -345,47 +345,6 @@ class DbtParser(Parser):
                                     subcategory=meta_data.get("subcategory"),
                                 )
 
-                            # Parse timezone_variant if present
-                            timezone_variant = None
-                            if "timezone_variant" in meta_data:
-                                from dbt_to_lookml.schemas.config import TimezoneVariant
-                                tz_var_data = meta_data["timezone_variant"]
-
-                                # Validate required fields exist
-                                required_fields = ["canonical_name", "variant", "is_primary"]
-                                missing_fields = [f for f in required_fields if f not in tz_var_data]
-
-                                if missing_fields:
-                                    dim_name = dim_data.get("name", "unknown")
-                                    error_msg = (
-                                        f"Dimension '{dim_name}' has malformed timezone_variant config. "
-                                        f"Missing required fields: {', '.join(missing_fields)}. "
-                                        f"Required fields are: {', '.join(required_fields)}"
-                                    )
-                                    if self.strict_mode:
-                                        raise ValueError(error_msg)
-                                    else:
-                                        import warnings
-                                        warnings.warn(error_msg)
-                                    # Skip this timezone_variant config and continue
-                                    timezone_variant = None
-                                else:
-                                    try:
-                                        timezone_variant = TimezoneVariant(
-                                            canonical_name=tz_var_data["canonical_name"],
-                                            variant=tz_var_data["variant"],
-                                            is_primary=tz_var_data["is_primary"],
-                                        )
-                                    except Exception as e:
-                                        dim_name = dim_data.get("name", "unknown")
-                                        error_msg = f"Dimension '{dim_name}' has invalid timezone_variant config: {e}"
-                                        if self.strict_mode:
-                                            raise ValueError(error_msg) from e
-                                        else:
-                                            import warnings
-                                            warnings.warn(error_msg)
-                                        timezone_variant = None
-
                             config_meta = ConfigMeta(
                                 domain=meta_data.get("domain"),
                                 owner=meta_data.get("owner"),
@@ -402,7 +361,6 @@ class DbtParser(Parser):
                                 time_dimension_group_label=meta_data.get(
                                     "time_dimension_group_label"
                                 ),
-                                timezone_variant=timezone_variant,
                             )
                         dim_config = Config(meta=config_meta)
 

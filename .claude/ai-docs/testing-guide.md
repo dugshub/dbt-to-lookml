@@ -70,7 +70,7 @@ make test-coverage  # → htmlcov/index.html
 | Schemas | `test_schemas.py` |
 | Hidden fields | `test_hidden_parameter.py` |
 | BI field filter | `test_bi_field_filter.py` |
-| Timezone variants | `test_timezone_variant.py` |
+| Date selector | `test_date_selector.py` |
 | Wizard detection | `test_wizard_detection.py` |
 | Wizard prompts | `test_generate_wizard.py` |
 
