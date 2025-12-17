@@ -72,6 +72,8 @@ class PopConfig(BaseModel):
 
     Attributes:
         enabled: Whether to generate PoP variants for this measure.
+        short_label: Short label for PoP measure names (e.g., "GOV" instead of
+            "Gross Order Value (GOV)"). If not provided, uses the metric's label.
         grains: Which period grains to generate (default: MTD, YTD).
         comparisons: Which comparison periods to generate (default: PP, PY).
         windows: What "Prior Period" can mean (default: month).
@@ -88,13 +90,14 @@ class PopConfig(BaseModel):
               meta:
                 pop:
                   enabled: true
-                  grains: [mtd, ytd]
+                  short_label: "Revenue"  # PoP labels: "Revenue PP", "Revenue PY Δ%"
                   comparisons: [pp, py]
                   format: usd
         ```
     """
 
     enabled: bool
+    short_label: str | None = None
     grains: list[PopGrain] = [PopGrain.MTD, PopGrain.YTD]
     comparisons: list[PopComparison] = [PopComparison.PP, PopComparison.PY]
     windows: list[PopWindow] = [PopWindow.MONTH]
@@ -228,6 +231,11 @@ class ConfigMeta(BaseModel):
             This is useful when a foreign key relationship is semantically one-to-one
             (e.g., every rental has exactly one review) but the target model has a
             different primary key (e.g., review_id instead of rental_id).
+        date_selector: Control inclusion in date selector parameter for fact views.
+            - True: Include this time dimension in the calendar date selector
+            - False: Exclude this time dimension from the calendar date selector
+            - None: Use mode default (auto=include, explicit=exclude)
+            Only applicable to time dimensions when --date-selector is enabled.
 
     Example:
         Dimension with timezone override and hierarchy labels:
@@ -272,6 +280,7 @@ class ConfigMeta(BaseModel):
     time_dimension_group_label: str | None = None
     timezone_variant: TimezoneVariant | None = None
     join_cardinality: Literal["one_to_one", "many_to_one"] | None = None
+    date_selector: bool | None = None
     pop: PopConfig | None = None
 
 
