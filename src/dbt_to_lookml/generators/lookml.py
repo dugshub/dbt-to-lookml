@@ -912,8 +912,8 @@ class LookMLGenerator(Generator):
 
         # Get agg_time_dimension for default selection
         default_dim_name = None
-        if model.defaults and model.defaults.agg_time_dimension:
-            default_dim_name = model.defaults.agg_time_dimension
+        if model.defaults:
+            default_dim_name = model.defaults.get("agg_time_dimension")
 
         for dim in model.dimensions:
             # Only process time dimensions
@@ -1198,10 +1198,8 @@ class LookMLGenerator(Generator):
         if self.fact_models and model.name not in self.fact_models:
             return parameters, dimension_groups
 
-        # Get time dimensions (requires DTL-049 implementation)
-        # TODO(DTL-049): Uncomment when _get_date_selector_dimensions is implemented
-        # time_dims = self._get_date_selector_dimensions(model)
-        time_dims: list[TimeDimensionInfo] = []
+        # Get time dimensions
+        time_dims = self._get_date_selector_dimensions(model)
 
         # Skip if no qualifying time dimensions
         if not time_dims:
@@ -1319,6 +1317,20 @@ class LookMLGenerator(Generator):
             # Add parameter to view with proper ordering
             if parameter_dict:
                 view_dict = self._add_parameter_to_view(view_dict, parameter_dict)
+
+        # Date selector processing - add parameter and calendar dimension_group
+        date_selector_params, date_selector_dim_groups = self._generate_date_selector_fields(model)
+
+        if date_selector_params:
+            existing_params = view_dict.get("parameter", [])
+            if not isinstance(existing_params, list):
+                existing_params = [existing_params] if existing_params else []
+            view_dict["parameter"] = date_selector_params + existing_params
+
+        if date_selector_dim_groups:
+            if "dimension_groups" not in view_dict:
+                view_dict["dimension_groups"] = []
+            view_dict["dimension_groups"].extend(date_selector_dim_groups)
 
         # PoP processing - check for pop-enabled measures
         pop_measures = [
