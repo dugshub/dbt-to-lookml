@@ -1,0 +1,389 @@
+epic:
+  title: "Epic: Dynamic Date Selector for Fact Views"
+  description: |
+    ## Problem Statement
+    Currently, Looker users must manually choose which time dimension to use for analysis
+    (e.g., rental created date, start date, or end date). This requires understanding the
+    data model and manually switching between dimension groups. A dynamic date selector
+    allows users to pivot their analysis across different date dimensions from a single
+    control, improving usability and reducing cognitive load.
+
+    ## Solution Approach
+    Implement a date selector feature for Fact views that:
+    1. Auto-infers available date choices from time dimensions in the semantic model
+    2. Generates a LookML `parameter` for date selection
+    3. Generates a dynamic `dimension_group: calendar` that uses the selected parameter
+    4. Is opt-in via `--date-selector` CLI flag (applied to fact models only)
+    5. Supports explicit dimension control via `meta.date_selector: true/false`
+
+    ## Detection Modes
+    Two modes controlled by `--date-selector-mode`:
+
+    ### Auto Mode (default): `--date-selector-mode auto`
+    - Includes ALL time dimensions automatically
+    - Use `meta.date_selector: false` to EXCLUDE specific dimensions
+    - Example: exclude `updated_at` from calendar options
+
+    ### Explicit Mode: `--date-selector-mode explicit`
+    - Includes ONLY dimensions with `meta.date_selector: true`
+    - More control over exactly which dimensions appear
+    - Useful when you want a curated subset
+
+    ## Semantic Model Configuration
+    ```yaml
+    dimensions:
+      - name: created_at
+        type: time
+        label: "Rental Created"
+        expr: rental_created_at_utc
+        config:
+          meta:
+            date_selector: true  # Explicit include (required in explicit mode)
+
+      - name: updated_at
+        type: time
+        label: "Rental Updated"
+        expr: rental_updated_at_utc
+        config:
+          meta:
+            date_selector: false  # Exclude from calendar (works in auto mode)
+    ```
+
+    ## Expected LookML Output
+    ```lookml
+    parameter: calendar_date {
+      type: unquoted
+      label: "Calendar Date"
+      description: "Select which date field to use for calendar analysis"
+      allowed_value: { label: "Created" value: "rental_created_at_utc" }
+      allowed_value: { label: "Starts" value: "rental_starts_at_utc" }
+      allowed_value: { label: "Ends" value: "rental_ends_at_utc" }
+      default_value: "rental_created_at_utc"
+    }
+
+    dimension_group: calendar {
+      type: time
+      timeframes: [date, week, month, quarter, year]
+      sql: ${TABLE}.{% parameter calendar_date %}::timestamp ;;
+      label: "Calendar"
+      description: "Dynamic calendar based on selected date field"
+      convert_tz: no
+    }
+    ```
+
+    ## Success Criteria
+    - [ ] CLI flag `--date-selector` enables the feature for fact models
+    - [ ] CLI flag `--date-selector-mode auto|explicit` controls detection mode
+    - [ ] Meta flag `date_selector: true/false` on dimensions for explicit control
+    - [ ] Auto mode: includes all time dims, respects `date_selector: false` exclusions
+    - [ ] Explicit mode: only includes dims with `date_selector: true`
+    - [ ] Parameter uses dimension labels for user-friendly display
+    - [ ] Default value uses the model's `agg_time_dimension` or first time dimension
+    - [ ] Calendar dimension group respects timezone_selector if present
+    - [ ] Unit tests cover both modes and edge cases
+
+    ## Sub-Issues
+    1. Add --date-selector CLI flag and generator configuration
+    2. Add date_selector meta field to schema
+    3. Implement time dimension detection logic (both modes)
+    4. Generate calendar_date parameter LookML
+    5. Generate dynamic calendar dimension_group
+    6. Integration with existing timezone_selector
+    7. Unit tests for date selector generation
+
+  labels:
+    - stack:backend
+    - type:epic
+    - priority:medium
+  status: Refinement
+  children:
+    - title: "Add --date-selector CLI flags and LookMLGenerator configuration"
+      description: |
+        Add the CLI flags to enable and configure dynamic date selection for fact views.
+
+        ## Implementation Details
+        - Add `--date-selector` flag to `__main__.py` Click command (enables feature)
+        - Add `--date-selector-mode` flag with choices `auto` (default) and `explicit`
+        - Add parameters to `LookMLGenerator.__init__()`:
+          - `date_selector: bool = False`
+          - `date_selector_mode: Literal["auto", "explicit"] = "auto"`
+        - Store configuration in generator instance for use during view generation
+        - Only applies to fact models (models specified via `--fact-models`)
+
+        ## CLI Usage
+        ```bash
+        # Enable with auto-detection (default mode)
+        dbt-to-lookml generate -i models/ -o build/ --fact-models rentals --date-selector
+
+        # Enable with explicit mode (only dims with meta.date_selector: true)
+        dbt-to-lookml generate -i models/ -o build/ --fact-models rentals \
+          --date-selector --date-selector-mode explicit
+        ```
+
+        ## Files to Modify
+        - `src/dbt_to_lookml/__main__.py` - Add CLI flags
+        - `src/dbt_to_lookml/generators/lookml.py` - Add constructor parameters
+
+        ## Testing
+        - Unit test: flags parsed correctly
+        - Unit test: generator stores configuration
+        - Unit test: mode defaults to "auto"
+        - Integration: flags flow through to generator
+
+        Parent: Epic - Dynamic Date Selector for Fact Views
+      labels:
+        - stack:backend
+        - type:feature
+        - layer:atoms
+      status: Refinement
+
+    - title: "Add date_selector meta field to ConfigMeta schema"
+      description: |
+        Add the `date_selector` field to the ConfigMeta schema for dimension-level control.
+
+        ## Implementation Details
+        - Add `date_selector: bool | None = None` to `ConfigMeta` in `schemas/config.py`
+        - Field is optional (None means "use mode default")
+        - When `True`: explicitly include dimension in date selector
+        - When `False`: explicitly exclude dimension from date selector
+        - When `None`: follow mode rules (auto=include, explicit=exclude)
+
+        ## Schema Update
+        ```python
+        class ConfigMeta(BaseModel):
+            # ... existing fields ...
+            date_selector: bool | None = None  # Control date selector inclusion
+        ```
+
+        ## Semantic Model YAML Usage
+        ```yaml
+        dimensions:
+          - name: created_at
+            type: time
+            config:
+              meta:
+                date_selector: true   # Always include
+
+          - name: updated_at
+            type: time
+            config:
+              meta:
+                date_selector: false  # Never include (e.g., internal timestamp)
+        ```
+
+        ## Files to Modify
+        - `src/dbt_to_lookml/schemas/config.py` - Add field to ConfigMeta
+
+        Parent: Epic - Dynamic Date Selector for Fact Views
+      labels:
+        - stack:backend
+        - type:feature
+        - layer:atoms
+      status: Refinement
+
+    - title: "Implement time dimension detection for date selector"
+      description: |
+        Create logic to detect time dimensions from semantic models based on mode settings.
+
+        ## Implementation Details
+        - Add `_get_date_selector_dimensions(model: SemanticModel)` method to generator
+        - Filter dimensions where `type == DimensionType.TIME`
+        - Apply mode-based filtering:
+          - **Auto mode**: Include all time dims EXCEPT those with `date_selector: false`
+          - **Explicit mode**: Include ONLY dims with `date_selector: true`
+        - Extract: name, label, expr (SQL column), and whether it's the default
+        - Use `defaults.agg_time_dimension` to determine default selection
+        - Return list of time dimension info suitable for parameter generation
+
+        ## Mode Logic
+        ```python
+        def _should_include_in_date_selector(
+            self, dim: Dimension, mode: str
+        ) -> bool:
+            """Determine if dimension should be in date selector."""
+            date_selector_flag = None
+            if dim.config and dim.config.meta:
+                date_selector_flag = dim.config.meta.date_selector
+
+            if mode == "auto":
+                # Auto: include unless explicitly excluded
+                return date_selector_flag is not False
+            else:  # explicit
+                # Explicit: only include if explicitly included
+                return date_selector_flag is True
+        ```
+
+        ## Data Structure
+        ```python
+        @dataclass
+        class TimeDimensionInfo:
+            name: str           # e.g., "created_at"
+            label: str          # e.g., "Rental Created"
+            expr: str           # e.g., "rental_created_at_utc"
+            is_default: bool    # True if matches agg_time_dimension
+        ```
+
+        ## Edge Cases
+        - No time dimensions after filtering: skip date selector generation
+        - Single time dimension: still generate (user can see available option)
+        - Missing label: use smart_title(name)
+        - Missing expr: use name as column
+        - All dims excluded: skip date selector (log warning)
+
+        Parent: Epic - Dynamic Date Selector for Fact Views
+      labels:
+        - stack:backend
+        - type:feature
+        - layer:features
+      status: Refinement
+
+    - title: "Generate calendar_date parameter in LookML"
+      description: |
+        Generate the LookML `parameter` block for date selection.
+
+        ## Implementation Details
+        - Add `_generate_date_selector_parameter(time_dims: list[TimeDimensionInfo])` method
+        - Generate `parameter` dict with:
+          - `name: "calendar_date"`
+          - `type: "unquoted"`
+          - `label: "Calendar Date"`
+          - `description: "Select which date field to use for calendar analysis"`
+          - `allowed_value` entries for each time dimension
+          - `default_value` from the default time dimension
+        - Insert parameter into view dict when date_selector is enabled
+
+        ## LookML Structure
+        ```python
+        {
+            "name": "calendar_date",
+            "type": "unquoted",
+            "label": "Calendar Date",
+            "allowed_values": [
+                {"label": "Created", "value": "rental_created_at_utc"},
+                {"label": "Starts", "value": "rental_starts_at_utc"},
+            ],
+            "default_value": "rental_created_at_utc"
+        }
+        ```
+
+        ## lkml Library Compatibility
+        - Verify lkml can serialize `parameter` blocks correctly
+        - Test with multiple allowed_values
+
+        Parent: Epic - Dynamic Date Selector for Fact Views
+      labels:
+        - stack:backend
+        - type:feature
+        - layer:features
+      status: Refinement
+
+    - title: "Generate dynamic calendar dimension_group"
+      description: |
+        Generate the LookML `dimension_group` that uses the calendar_date parameter.
+
+        ## Implementation Details
+        - Add `_generate_calendar_dimension_group()` method
+        - Generate dimension_group dict with:
+          - `name: "calendar"`
+          - `type: "time"`
+          - `timeframes: [date, week, month, quarter, year]`
+          - `sql: "${TABLE}.{% parameter calendar_date %}::timestamp"`
+          - `label: "Calendar"`
+          - `convert_tz: "no"` (timestamps already in desired timezone)
+        - Insert dimension_group after date selector parameter
+
+        ## SQL Generation
+        The SQL uses Liquid templating to reference the parameter:
+        ```sql
+        ${TABLE}.{% parameter calendar_date %}::timestamp
+        ```
+        This allows the selected date column to be used dynamically.
+
+        ## Timeframes
+        Use standard timeframes: date, week, month, quarter, year
+        (No hour/time granularity to keep calendar analysis clean)
+
+        Parent: Epic - Dynamic Date Selector for Fact Views
+      labels:
+        - stack:backend
+        - type:feature
+        - layer:features
+      status: Refinement
+
+    - title: "Integrate date selector with timezone_selector"
+      description: |
+        Ensure the calendar dimension_group works correctly with the existing
+        timezone_selector parameter if present.
+
+        ## Implementation Details
+        - Detect if model has timezone variants (existing `_has_timezone_variants` method)
+        - If timezone variants exist, modify calendar SQL to respect timezone:
+          ```sql
+          {% if timezone_selector._parameter_value == '_local' %}
+          ${TABLE}.{% parameter calendar_date %}_local::timestamp
+          {% elsif timezone_selector._parameter_value == '_utc' %}
+          ${TABLE}.{% parameter calendar_date %}_utc::timestamp
+          {% endif %}
+          ```
+        - This requires time dimensions to follow naming convention:
+          `{base_name}_local` and `{base_name}_utc`
+
+        ## Alternative Approach (Simpler)
+        For V1, keep it simple - use the `_utc` suffix by default:
+        ```sql
+        ${TABLE}.{% parameter calendar_date %}::timestamp
+        ```
+        Users select from UTC columns (e.g., rental_created_at_utc).
+        Timezone integration can be a follow-up enhancement.
+
+        Parent: Epic - Dynamic Date Selector for Fact Views
+      labels:
+        - stack:backend
+        - type:feature
+        - layer:features
+      status: Refinement
+
+    - title: "Unit tests for date selector generation"
+      description: |
+        Comprehensive unit tests for the date selector feature covering both modes.
+
+        ## Test Cases - Core Functionality
+        1. **Basic generation**: Fact model with multiple time dimensions generates
+           parameter and calendar dimension_group
+        2. **No time dimensions**: Model without time dims skips date selector
+        3. **Single time dimension**: Still generates with one allowed_value
+        4. **Default selection**: Uses agg_time_dimension as default
+        5. **Missing default**: Falls back to first time dimension
+        6. **Label extraction**: Uses dimension label when available
+        7. **Feature disabled**: No date selector when flag is False
+        8. **Non-fact models**: Dimension-only models don't get date selector
+
+        ## Test Cases - Auto Mode
+        9. **Auto includes all**: All time dimensions included by default
+        10. **Auto respects exclusion**: `date_selector: false` excludes dimension
+        11. **Auto ignores explicit true**: `date_selector: true` has no effect (already included)
+        12. **Auto all excluded**: If all dims have `false`, skip date selector
+
+        ## Test Cases - Explicit Mode
+        13. **Explicit requires flag**: Only dims with `date_selector: true` included
+        14. **Explicit none flagged**: No dims flagged = skip date selector
+        15. **Explicit ignores false**: `date_selector: false` same as missing
+        16. **Explicit subset**: Mix of true/false/none only includes true
+
+        ## Test Files
+        - Create `test_date_selector.py` for isolated unit tests
+        - Add integration tests to existing test files
+
+        ## Fixtures
+        - Semantic model with multiple time dimensions (no meta flags)
+        - Semantic model with mixed date_selector flags
+        - Semantic model with all date_selector: false
+        - Semantic model with explicit mode flags
+
+        Parent: Epic - Dynamic Date Selector for Fact Views
+      labels:
+        - stack:backend
+        - type:feature
+        - layer:features
+        - tdd:true
+      status: Refinement
