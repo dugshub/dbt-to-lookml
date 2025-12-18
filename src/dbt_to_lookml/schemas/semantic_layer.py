@@ -693,7 +693,7 @@ class Measure(BaseModel):
         }
 
         # Only add sql for non-count types
-        # type: count in LookML doesn't take a sql parameter - it counts all rows
+        # LookML count type doesn't take a sql parameter - it counts all rows
         if self.agg != AggregationType.COUNT:
             base_sql = self.expr or f"${{TABLE}}.{self.name}"
             # Auto-cast for aggregations that truncate integers (e.g., AVG on int)

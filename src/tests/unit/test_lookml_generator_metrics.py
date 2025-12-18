@@ -4,6 +4,7 @@ import pytest
 
 from dbt_to_lookml.constants import SUFFIX_PERFORMANCE, VIEW_LABEL_METRICS
 from dbt_to_lookml.generators.lookml import LookMLGenerator
+from dbt_to_lookml.schemas.config import Config, ConfigMeta
 from dbt_to_lookml.schemas.semantic_layer import (
     DerivedMetricParams,
     Entity,
@@ -846,6 +847,106 @@ class TestInferenceMethods:
         format_name = generator._infer_value_format(metric)
         # Explicit override should win over heuristic
         assert format_name == "decimal_0"
+
+    def test_infer_value_format_meta_format_field(
+        self, generator: LookMLGenerator
+    ) -> None:
+        """Test that meta.format sets value format."""
+        metric = Metric(
+            name="total_gmv",
+            type="simple",
+            type_params=SimpleMetricParams(measure="gmv"),
+            meta={"primary_entity": "rental", "format": "usd"},
+        )
+        format_name = generator._infer_value_format(metric)
+        assert format_name == "usd"
+
+    def test_infer_value_format_meta_format_decimal_0(
+        self, generator: LookMLGenerator
+    ) -> None:
+        """Test that meta.format with decimal_0 works for count-like metrics."""
+        metric = Metric(
+            name="rental_count",
+            type="simple",
+            type_params=SimpleMetricParams(measure="rental_id"),
+            meta={"primary_entity": "rental", "format": "decimal_0"},
+        )
+        format_name = generator._infer_value_format(metric)
+        assert format_name == "decimal_0"
+
+    def test_infer_value_format_meta_format_decimal_1(
+        self, generator: LookMLGenerator
+    ) -> None:
+        """Test that meta.format with decimal_1 works."""
+        metric = Metric(
+            name="rental_hours",
+            type="simple",
+            type_params=SimpleMetricParams(measure="hours"),
+            meta={"primary_entity": "rental", "format": "decimal_1"},
+        )
+        format_name = generator._infer_value_format(metric)
+        assert format_name == "decimal_1"
+
+    def test_infer_value_format_meta_format_trumps_heuristics(
+        self, generator: LookMLGenerator
+    ) -> None:
+        """Test that meta.format overrides name-based heuristics."""
+        # This metric has 'revenue' in the name, which would normally infer 'usd'
+        metric = Metric(
+            name="monthly_revenue",
+            type="simple",
+            type_params=SimpleMetricParams(measure="revenue"),
+            meta={"primary_entity": "order", "format": "decimal_2"},
+        )
+        format_name = generator._infer_value_format(metric)
+        # Explicit format should win over heuristic
+        assert format_name == "decimal_2"
+
+    def test_infer_value_format_meta_format_trumps_value_format_name(
+        self, generator: LookMLGenerator
+    ) -> None:
+        """Test that meta.format takes priority over meta.value_format_name."""
+        metric = Metric(
+            name="avg_rating",
+            type="simple",
+            type_params=SimpleMetricParams(measure="rating"),
+            meta={
+                "primary_entity": "review",
+                "format": "decimal_1",
+                "value_format_name": "decimal_2",  # Legacy field should be ignored
+            },
+        )
+        format_name = generator._infer_value_format(metric)
+        # format should win over value_format_name
+        assert format_name == "decimal_1"
+
+    def test_infer_value_format_config_meta_format(
+        self, generator: LookMLGenerator
+    ) -> None:
+        """Test that config.meta.format sets value format (typed ConfigMeta)."""
+        metric = Metric(
+            name="total_gmv",
+            type="simple",
+            type_params=SimpleMetricParams(measure="gmv"),
+            config=Config(meta=ConfigMeta(primary_entity="rental", format="usd")),
+        )
+        format_name = generator._infer_value_format(metric)
+        assert format_name == "usd"
+
+    def test_infer_value_format_meta_format_trumps_config_meta_format(
+        self, generator: LookMLGenerator
+    ) -> None:
+        """Test that meta.format takes priority over config.meta.format."""
+        metric = Metric(
+            name="total_revenue",
+            type="simple",
+            type_params=SimpleMetricParams(measure="revenue"),
+            meta={"primary_entity": "order", "format": "decimal_2"},
+            config=Config(meta=ConfigMeta(format="usd")),
+        )
+        format_name = generator._infer_value_format(metric)
+        # Top-level meta.format should win
+        assert format_name == "decimal_2"
 
     def test_infer_group_label_with_meta(
         self, generator: LookMLGenerator, primary_model: SemanticModel
