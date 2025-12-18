@@ -191,6 +191,10 @@ class ConfigMeta(BaseModel):
             contexts where brevity is preferred. For example, "GOV" instead of
             "Gross Order Value (GOV)". Used by PoP generation for cleaner labels
             like "GOV (Prior Year)" instead of "Gross Order Value (GOV) (Prior Year)".
+        format: LookML value_format_name for the generated measure. Supports
+            standard LookML format names like "usd", "decimal_0", "decimal_1",
+            "decimal_2", "percent_1", "percent_2". Takes highest priority when
+            determining measure formatting, overriding name-based inference.
 
     Example:
         Dimension with timezone override and hierarchy labels:
@@ -236,6 +240,7 @@ class ConfigMeta(BaseModel):
     join_cardinality: Literal["one_to_one", "many_to_one"] | None = None
     date_selector: bool | None = None
     short_label: str | None = None
+    format: str | None = None
     pop: PopConfig | None = None
     primary_entity: str | None = None
 

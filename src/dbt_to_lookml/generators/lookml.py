@@ -1449,11 +1449,13 @@ class LookMLGenerator(Generator):
         """Infer LookML value_format_name from metric type and name.
 
         Priority:
-        1. meta.value_format_name (explicit override)
-        2. Ratio metrics → "percent_2"
-        3. Names with "revenue" or "price" → "usd"
-        4. Names with "count" → "decimal_0"
-        5. Default → None (Looker default)
+        1. meta.format (explicit format in meta - e.g., "usd", "decimal_0")
+        2. config.meta.format (typed ConfigMeta format)
+        3. meta.value_format_name (legacy explicit override)
+        4. Ratio metrics → "percent_2"
+        5. Names with "revenue" or "price" → "usd"
+        6. Names with "count" → "decimal_0"
+        7. Default → None (Looker default)
 
         Args:
             metric: The metric to infer format for.
@@ -1463,7 +1465,15 @@ class LookMLGenerator(Generator):
         """
         from dbt_to_lookml.schemas import RatioMetricParams
 
-        # Check explicit override first
+        # Check meta.format first (highest priority)
+        if metric.meta and metric.meta.get("format"):
+            return metric.meta["format"]
+
+        # Check config.meta.format (typed ConfigMeta)
+        if metric.config and metric.config.meta and metric.config.meta.format:
+            return metric.config.meta.format
+
+        # Legacy: meta.value_format_name
         if metric.meta and "value_format_name" in metric.meta:
             return metric.meta["value_format_name"]
 

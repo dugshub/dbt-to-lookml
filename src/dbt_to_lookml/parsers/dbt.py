@@ -276,6 +276,7 @@ class DbtParser(Parser):
                         type=entity_data["type"],
                         expr=entity_data.get("expr"),
                         description=entity_data.get("description"),
+                        label=entity_data.get("label"),
                         config=entity_config,
                     )
                     entities.append(entity)
