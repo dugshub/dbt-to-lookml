@@ -1467,7 +1467,7 @@ class LookMLGenerator(Generator):
 
         # Check meta.format first (highest priority)
         if metric.meta and metric.meta.get("format"):
-            return metric.meta["format"]
+            return str(metric.meta["format"])
 
         # Check config.meta.format (typed ConfigMeta)
         if metric.config and metric.config.meta and metric.config.meta.format:
@@ -1475,7 +1475,7 @@ class LookMLGenerator(Generator):
 
         # Legacy: meta.value_format_name
         if metric.meta and "value_format_name" in metric.meta:
-            return metric.meta["value_format_name"]
+            return str(metric.meta["value_format_name"])
 
         if isinstance(metric.type_params, RatioMetricParams):
             return "percent_2"
