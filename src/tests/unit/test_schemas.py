@@ -459,7 +459,7 @@ class TestDimensionConvertTz:
         assert result["name"] == "created_at"
         assert result["type"] == "time"
         assert "time" in result["timeframes"]
-        assert result["sql"] == "created_timestamp"
+        assert result["sql"] == "${TABLE}.created_timestamp"
         assert result["description"] == "When the event was created"
         assert result["label"] == "Created Date"
         # Time dimensions get 1-space prefix on view_label for sort order
@@ -1107,7 +1107,8 @@ class TestMeasure:
         )
         result = measure.to_lookml_dict()
         # Always cast for average to avoid integer truncation
-        assert result["sql"] == "(rating_value)::FLOAT"
+        # Simple column reference gets ${TABLE}. prefix for join safety
+        assert result["sql"] == "(${TABLE}.rating_value)::FLOAT"
 
     def test_sum_measure_does_not_auto_cast(self) -> None:
         """Test that sum measures don't auto-cast (preserve integer behavior)."""

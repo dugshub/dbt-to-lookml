@@ -27,6 +27,7 @@ from dbt_to_lookml.types import (
     LOOKML_TYPE_MAP,
     AggregationType,
     DimensionType,
+    qualify_sql_expression,
 )
 
 
@@ -140,43 +141,6 @@ class Entity(BaseModel):
     label: str | None = None
     config: Config | None = None
 
-    def _qualify_sql_expression(self, expr: str | None, field_name: str) -> str:
-        """Ensure SQL expressions use ${TABLE} to avoid ambiguous column references.
-
-        This prevents ambiguous column errors in joins by ensuring all column references
-        are qualified with ${TABLE}.
-
-        Args:
-            expr: Custom SQL expression or None
-            field_name: Name of the field (used as default)
-
-        Returns:
-            Qualified SQL expression
-        """
-        if expr is None:
-            # Default case: use ${TABLE}.field_name
-            return f"${{TABLE}}.{field_name}"
-
-        # Check if expression already contains table qualifiers
-        if "${TABLE}" in expr or "${" in expr:
-            # Already contains LookML references, use as-is
-            return expr
-
-        # Numeric literals (e.g., "1" for count-as-sum) - don't qualify
-        # These are not column references
-        if expr.strip().lstrip("-").replace(".", "", 1).isdigit():
-            return expr
-
-        # Check if it's a simple column reference (alphanumeric + underscore only)
-        # This handles cases like "id" or "facility_sk"
-        if expr.replace("_", "").replace(" ", "").isalnum() and " " not in expr.strip():
-            # Simple column name - qualify it with ${TABLE}
-            return f"${{TABLE}}.{expr}"
-
-        # Complex expression (functions, operators, etc.)
-        # Use as-is but user should ensure proper qualification
-        return expr
-
     def to_lookml_dict(
         self, view_label: str | None = None, is_fact_table: bool = False
     ) -> dict[str, Any]:
@@ -189,7 +153,7 @@ class Entity(BaseModel):
         result: dict[str, Any] = {
             "name": self.name,
             "type": "string",
-            "sql": self._qualify_sql_expression(self.expr, self.name),
+            "sql": qualify_sql_expression(self.expr, self.name),
         }
 
         if self.type == "primary":
@@ -309,7 +273,7 @@ class Dimension(BaseModel):
         result: dict[str, Any] = {
             "name": self.name,
             "type": "string",  # Most categorical dims are strings
-            "sql": self.expr or f"${{TABLE}}.{self.name}",
+            "sql": qualify_sql_expression(self.expr, self.name),
         }
 
         if self.description:
@@ -358,7 +322,7 @@ class Dimension(BaseModel):
         result: dict[str, Any] = {
             "name": self.name,
             "type": dim_type,
-            "sql": self.expr or f"${{TABLE}}.{self.name}",
+            "sql": qualify_sql_expression(self.expr, self.name),
         }
 
         if self.description:
@@ -508,7 +472,7 @@ class Dimension(BaseModel):
             "name": self.name,
             "type": "time",
             "timeframes": timeframes,
-            "sql": self.expr or f"${{TABLE}}.{self.name}",
+            "sql": qualify_sql_expression(self.expr, self.name),
         }
 
         if self.description:
@@ -695,7 +659,7 @@ class Measure(BaseModel):
         # Only add sql for non-count types
         # LookML count type doesn't take a sql parameter - it counts all rows
         if self.agg != AggregationType.COUNT:
-            base_sql = self.expr or f"${{TABLE}}.{self.name}"
+            base_sql = qualify_sql_expression(self.expr, self.name)
             # Auto-cast for aggregations that truncate integers (e.g., AVG on int)
             # Always cast for average/median/percentile to avoid Redshift integer truncation
             if self.agg in FLOAT_CAST_AGGREGATIONS:

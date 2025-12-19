@@ -78,7 +78,7 @@ class TestHierarchyLabeling:
         assert lookml_dict["view_label"] == "Facility"
         assert lookml_dict["group_label"] == "Facility"
         assert lookml_dict["name"] == "parking_type"
-        assert lookml_dict["sql"] == "facility_type"
+        assert lookml_dict["sql"] == "${TABLE}.facility_type"
 
     def test_measure_lookml_with_hierarchy(self) -> None:
         """Test measure LookML output includes hierarchy labels."""
