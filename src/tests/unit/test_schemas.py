@@ -157,7 +157,8 @@ class TestEntity:
         )
         lookml_dict = entity.to_lookml_dict(is_fact_table=True, view_label="Orders")
 
-        assert lookml_dict["sql"] == "CONCAT(user_id, '_', order_id)"
+        # Column refs inside CONCAT are qualified with ${TABLE}
+        assert lookml_dict["sql"] == "CONCAT(${TABLE}.user_id, '_', ${TABLE}.order_id)"
         assert lookml_dict["hidden"] == "yes"
         assert lookml_dict["primary_key"] == "yes"
 
@@ -191,31 +192,33 @@ class TestEntity:
         assert lookml_dict["sql"] == "${TABLE}.user_id"
 
     def test_entity_expr_qualification_complex_expression(self) -> None:
-        """Test that complex expressions are left as-is."""
-        # Expression with functions
+        """Test that complex expressions have column refs qualified."""
+        # Expression with functions - column refs inside are qualified
         entity = Entity(
             name="full_name", type="unique", expr="CONCAT(first_name, ' ', last_name)"
         )
         lookml_dict = entity.to_lookml_dict()
-        # Complex expressions with spaces and functions are not auto-qualified
-        assert lookml_dict["sql"] == "CONCAT(first_name, ' ', last_name)"
+        # sqlglot parses and qualifies column refs inside functions
+        assert lookml_dict["sql"] == "CONCAT(${TABLE}.first_name, ' ', ${TABLE}.last_name)"
 
-        # Expression with CASE statement
+        # Expression with CASE statement - column refs are qualified
         entity2 = Entity(
             name="status_code",
             type="primary",
             expr="CASE WHEN active THEN 1 ELSE 0 END",
         )
         lookml_dict2 = entity2.to_lookml_dict()
-        assert lookml_dict2["sql"] == "CASE WHEN active THEN 1 ELSE 0 END"
+        # sqlglot normalizes boolean literals to uppercase
+        assert lookml_dict2["sql"] == "CASE WHEN ${TABLE}.active THEN 1 ELSE 0 END"
 
     def test_entity_expr_qualification_with_cast(self) -> None:
-        """Test expressions with CAST are left as-is."""
+        """Test expressions with CAST have column refs qualified."""
         entity = Entity(
             name="user_id_str", type="primary", expr="CAST(user_id AS VARCHAR)"
         )
         lookml_dict = entity.to_lookml_dict()
-        assert lookml_dict["sql"] == "CAST(user_id AS VARCHAR)"
+        # Column ref inside CAST is qualified
+        assert lookml_dict["sql"] == "CAST(${TABLE}.user_id AS VARCHAR)"
 
     def test_entity_expr_qualification_numeric_literals(self) -> None:
         """Test that numeric literals are not qualified with ${TABLE}."""

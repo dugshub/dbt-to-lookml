@@ -236,7 +236,7 @@ lookml-gold:
 		--no-convert-tz \
 		--bi-field-only \
 		--schema gold_sandbox \
-		--fact-models rentals \
+		--fact-models "rentals, facility_monthly_status" \
 		--include-children \
 		--use-group-item-label \
 		--date-selector \

@@ -73,7 +73,8 @@ def qualify_sql_expression(expr: str | None, field_name: str) -> str:
     """Ensure SQL expressions use ${TABLE} to avoid ambiguous column references.
 
     This prevents ambiguous column errors in joins by ensuring all column references
-    are qualified with ${TABLE}.
+    are qualified with ${TABLE}. Uses sqlglot to parse complex SQL expressions and
+    identify bare column references while preserving SQL keywords, functions, and literals.
 
     Args:
         expr: Custom SQL expression or None
@@ -92,7 +93,9 @@ def qualify_sql_expression(expr: str | None, field_name: str) -> str:
         >>> qualify_sql_expression("1", "count_field")
         '1'
         >>> qualify_sql_expression("COALESCE(amount, 0)", "revenue")
-        'COALESCE(amount, 0)'
+        'COALESCE(${TABLE}.amount, 0)'
+        >>> qualify_sql_expression("CASE WHEN status = 'active' THEN 1 END", "flag")
+        "CASE WHEN ${TABLE}.status = 'active' THEN 1 END"
     """
     if expr is None:
         # Default case: use ${TABLE}.field_name
@@ -114,6 +117,37 @@ def qualify_sql_expression(expr: str | None, field_name: str) -> str:
         # Simple column name - qualify it with ${TABLE}
         return f"${{TABLE}}.{expr}"
 
-    # Complex expression (functions, operators, etc.)
-    # Use as-is but user should ensure proper qualification
-    return expr
+    # Complex expression - use sqlglot to parse and qualify column references
+    return _qualify_with_sqlglot(expr)
+
+
+def _qualify_with_sqlglot(expr: str) -> str:
+    """Parse a complex SQL expression with sqlglot and qualify bare column references.
+
+    Uses sqlglot's AST to identify Column nodes without table qualifiers and adds
+    ${TABLE}. prefix to them.
+    """
+    from sqlglot import exp, parse_one
+    from sqlglot.errors import ParseError
+
+    try:
+        tree = parse_one(expr)
+    except ParseError:
+        # If sqlglot can't parse it, return as-is (might be dialect-specific)
+        return expr
+
+    # Find all column references and add table qualifier if missing
+    for column in tree.find_all(exp.Column):
+        if not column.table:
+            # Column has no table qualifier - add ${TABLE}
+            column.set("table", exp.to_identifier("${TABLE}"))
+
+    # Convert back to SQL string
+    # Use identify=False to prevent quoting of identifiers
+    result = tree.sql(identify=False)
+
+    # sqlglot may quote ${TABLE} - remove the quotes
+    result = result.replace('"${TABLE}"', "${TABLE}")
+    result = result.replace("'${TABLE}'", "${TABLE}")
+
+    return result
