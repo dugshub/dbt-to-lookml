@@ -721,17 +721,17 @@ class TestQualifyMeasureSql:
         result = generator._qualify_measure_sql(" 1 ", "padded")
         assert result == " 1 "
 
-    def test_qualify_complex_expressions_unchanged(self) -> None:
-        """Test that complex expressions are left as-is."""
+    def test_qualify_complex_expressions_with_sqlglot(self) -> None:
+        """Test that complex expressions are qualified using sqlglot."""
         generator = LookMLGenerator()
 
-        # Expression with operators
+        # Expression with operators - sqlglot qualifies column references
         result = generator._qualify_measure_sql("revenue * 0.1", "tax")
-        assert result == "revenue * 0.1"
+        assert result == "${TABLE}.revenue * 0.1"
 
-        # Expression with functions
+        # Expression with functions - sqlglot qualifies column references inside
         result = generator._qualify_measure_sql("COALESCE(amount, 0)", "safe_amount")
-        assert result == "COALESCE(amount, 0)"
+        assert result == "COALESCE(${TABLE}.amount, 0)"
 
 
 # Tests for low coverage code paths

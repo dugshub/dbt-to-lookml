@@ -98,8 +98,8 @@ class TestGoldenFiles:
         users_file = semantic_models_dir / "sem_users.yml"
         semantic_models = parser.parse_file(users_file)
 
-        # Generate with prefixes
-        generator = LookMLGenerator(view_prefix="v_", explore_prefix="e_")
+        # Generate with prefixes (need fact_models to generate explores)
+        generator = LookMLGenerator(view_prefix="v_", explore_prefix="e_", fact_models=["users"])
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -488,10 +488,13 @@ class TestGoldenFiles:
     def test_golden_files_edge_case_handling(self, semantic_models_dir: Path) -> None:
         """Test that edge cases in semantic models are handled correctly in golden output."""
         parser = DbtParser()
-        generator = LookMLGenerator()
 
         # Test with all semantic models to catch edge cases
         all_models = parser.parse_directory(semantic_models_dir)
+
+        # Need to specify fact_models to generate explores
+        model_names = [m.name for m in all_models]
+        generator = LookMLGenerator(fact_models=model_names)
 
         with TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)

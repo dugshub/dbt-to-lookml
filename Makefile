@@ -227,9 +227,9 @@ lookml-generate:
 lookml-gold:
 	@echo "🥇 Generating Gold Layer LookML"
 	@d2l generate \
-		-i /Users/doug/Work/data-modelling/official-models/redshift_gold/models/3_semantic/models \
-		-md /Users/doug/Work/data-modelling/official-models/redshift_gold/models/3_semantic/metrics \
-		-o /Users/doug/Work/data-modelling/analytics_lookML/GoldLayer \
+		-i /Users/dug/Work/repos/spothero-dbt-silver/redshift_gold/models/3_semantic/models \
+		-md /Users/dug/Work/repos/spothero-dbt-silver/redshift_gold/models/3_semantic/metrics \
+		-o /Users/dug/Work/repos/analytics_lookML/GoldLayer \
 		--view-prefix gold_ \
 		--explore-prefix gold_ \
 		--model-name gold_semantic_models \

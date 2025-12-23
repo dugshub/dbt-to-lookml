@@ -239,7 +239,8 @@ class LookMLGenerator(Generator):
         """Ensure SQL expressions use ${TABLE} to avoid ambiguous column references.
 
         This prevents ambiguous column errors in joins by ensuring all column
-        references are qualified with ${TABLE}.
+        references are qualified with ${TABLE}. Uses sqlglot to parse complex
+        SQL expressions and identify bare column references.
 
         Args:
             expr: Custom SQL expression or None
@@ -248,24 +249,8 @@ class LookMLGenerator(Generator):
         Returns:
             Qualified SQL expression
         """
-        if expr is None:
-            return f"${{TABLE}}.{field_name}"
-
-        # Already contains LookML references, use as-is
-        if "${TABLE}" in expr or "${" in expr:
-            return expr
-
-        # Numeric literals (e.g., "1" for count-as-sum) - don't qualify
-        # These are not column references
-        if expr.strip().lstrip("-").replace(".", "", 1).isdigit():
-            return expr
-
-        # Simple column name (alphanumeric + underscore only) - qualify it
-        if expr.replace("_", "").isalnum():
-            return f"${{TABLE}}.{expr}"
-
-        # Complex expression - use as-is
-        return expr
+        from dbt_to_lookml.types import qualify_sql_expression
+        return qualify_sql_expression(expr, field_name)
 
     def _generate_date_selector_parameter(
         self,
@@ -839,8 +824,13 @@ class LookMLGenerator(Generator):
             filter_time_dimensions=filter_time_dimensions,
         )
 
-        # Apply smart measure filtering if usage_map provided
-        if usage_map and "views" in base_view_dict and base_view_dict["views"]:
+        # Apply smart measure filtering if usage_map provided AND has metric analysis
+        # Only filter when there are actually metrics that reference measures
+        has_metric_analysis = usage_map and any(
+            v["simple_metric"] is not None or v["used_by_complex"]
+            for v in usage_map.values()
+        )
+        if has_metric_analysis and "views" in base_view_dict and base_view_dict["views"]:
             view_dict = base_view_dict["views"][0]
             if "measures" in view_dict:
                 filtered_measures = []
@@ -1604,7 +1594,9 @@ class LookMLGenerator(Generator):
             if metric.filter:
                 from dbt_to_lookml.parsers.metric_filter import MetricFilterParser
                 filter_parser = MetricFilterParser(all_models)
-                filter_sql = filter_parser.parse_filters(metric.filter)
+                raw_filter = filter_parser.parse_filters(metric.filter)
+                # Qualify filter SQL to add ${TABLE} prefix to column references
+                filter_sql = self._qualify_measure_sql(raw_filter, "filter")
 
             # Add SQL (same logic as Measure.to_lookml_dict)
             if source_measure.agg != AggregationType.COUNT:
