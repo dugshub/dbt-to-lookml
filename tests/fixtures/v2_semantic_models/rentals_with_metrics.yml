@@ -1,0 +1,147 @@
+# Test fixture: Rental semantic model with metrics and PoP config
+# This represents the target state we want to parse and generate from
+
+version: 2
+
+semantic_models:
+  - name: rentals
+    description: Core rental fact semantic model for v2 testing.
+    model: ref('fct_rental')
+    defaults:
+      agg_time_dimension: created_date
+
+    entities:
+      - name: rental
+        type: primary
+        expr: unique_rental_sk
+      - name: facility
+        type: foreign
+        expr: facility_sk
+
+    dimensions:
+      - name: created_date
+        description: Date the rental was created.
+        type: time
+        type_params:
+          time_granularity: day
+        expr: rental_created_at_utc
+        config:
+          meta:
+            date_selector: true  # Include in date selector parameter
+
+      - name: starts_at
+        description: When the parking period begins.
+        type: time
+        type_params:
+          time_granularity: day
+        expr: rental_starts_at_utc
+        config:
+          meta:
+            date_selector: true
+
+      - name: rental_event_type
+        description: Order fulfillment status (completed, cancelled, refunded, etc.)
+        type: categorical
+        expr: rental_event_type
+
+      - name: rental_segment
+        description: Primary rental segment (Monthly, Event, Airport, Transient).
+        type: categorical
+        expr: rental_segment_rollup
+
+    measures:
+      - name: total_gov
+        description: Sum of checkout amounts including SpotHero fees.
+        agg: sum
+        expr: rental_checkout_amount_local
+
+      - name: total_gmv
+        description: Sum of checkout amounts excluding SpotHero fees.
+        agg: sum
+        expr: rental_checkout_amount_local - COALESCE(total_spothero_fee_amount, 0)
+
+      - name: rental_count
+        description: Distinct count of completed rentals.
+        agg: count_distinct
+        expr: "CASE WHEN rental_event_type = 'completed' THEN unique_rental_sk END"
+
+      - name: facility_count
+        description: Distinct count of facilities with rentals.
+        agg: count_distinct
+        expr: "CASE WHEN rental_event_type = 'completed' THEN facility_id END"
+
+metrics:
+  # Simple metric with PoP
+  - name: gov
+    type: simple
+    type_params:
+      measure: total_gov
+    label: "Gross Order Value (GOV)"
+    description: "Total revenue including SpotHero fees from completed rentals."
+    meta:
+      primary_entity: rental
+      value_format: usd
+      pop:
+        enabled: true
+        comparisons: [py, pm]  # prior year, prior month
+        outputs: [previous, change, pct_change]
+
+  # Simple metric with PoP
+  - name: gmv
+    type: simple
+    type_params:
+      measure: total_gmv
+    label: "Gross Merchandise Value (GMV)"
+    description: "Total revenue excluding SpotHero fees."
+    meta:
+      primary_entity: rental
+      value_format: usd
+      pop:
+        enabled: true
+        comparisons: [py, pm]
+        outputs: [previous, change, pct_change]
+
+  # Simple metric with PoP
+  - name: rental_count
+    type: simple
+    type_params:
+      measure: rental_count
+    label: "Rental Count"
+    description: "Count of completed rental transactions."
+    meta:
+      primary_entity: rental
+      value_format: decimal_0
+      pop:
+        enabled: true
+        comparisons: [py, pm]
+        outputs: [previous, change, pct_change]
+
+  # Derived metric (should also get PoP since parents are same-model simple)
+  - name: gmv_per_facility
+    type: derived
+    type_params:
+      expr: "gmv / NULLIF(facility_count, 0)"
+      metrics:
+        - name: gmv
+        - name: facility_count
+          offset_window: null
+    label: "GMV per Facility"
+    description: "Average GMV per transacting facility."
+    meta:
+      primary_entity: rental
+      value_format: usd
+      pop:
+        enabled: true
+        comparisons: [py, pm]
+        outputs: [previous, change, pct_change]
+
+  # Simple metric for denominator (no PoP - just used in derived)
+  - name: facility_count
+    type: simple
+    type_params:
+      measure: facility_count
+    label: "Transacting Facility Count"
+    description: "Distinct count of facilities with completed rentals."
+    meta:
+      primary_entity: rental
+      value_format: decimal_0
