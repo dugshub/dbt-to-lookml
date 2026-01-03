@@ -13,9 +13,9 @@ from dbt_to_lookml_v2.domain import (
     VariantKind,
 )
 from dbt_to_lookml_v2.adapters.dialect import Dialect
-from dbt_to_lookml_v2.adapters.lookml.dimension_renderer import DimensionRenderer
-from dbt_to_lookml_v2.adapters.lookml.measure_renderer import MeasureRenderer
-from dbt_to_lookml_v2.adapters.lookml.pop_renderer import PopRenderer, PopStrategy
+from dbt_to_lookml_v2.adapters.lookml.renderers.dimension import DimensionRenderer
+from dbt_to_lookml_v2.adapters.lookml.renderers.measure import MeasureRenderer
+from dbt_to_lookml_v2.adapters.lookml.renderers.pop import PopRenderer, PopStrategy
 
 
 class ViewRenderer:

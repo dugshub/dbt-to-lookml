@@ -7,8 +7,8 @@ import lkml
 
 from dbt_to_lookml_v2.domain import ProcessedModel
 from dbt_to_lookml_v2.adapters.dialect import Dialect, get_default_dialect
-from dbt_to_lookml_v2.adapters.lookml.view_renderer import ViewRenderer
-from dbt_to_lookml_v2.adapters.lookml.pop_renderer import PopStrategy
+from dbt_to_lookml_v2.adapters.lookml.renderers.view import ViewRenderer
+from dbt_to_lookml_v2.adapters.lookml.renderers.pop import PopStrategy
 
 
 class LookMLGenerator:
