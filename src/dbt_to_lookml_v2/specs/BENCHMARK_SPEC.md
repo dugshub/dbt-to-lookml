@@ -598,18 +598,326 @@ metrics:
 4. **Generator updates:**
    - New file: `{model}.benchmarks.view.lkml` (refinement)
 
-### PDT Alternative
+---
 
-For large dimension groups or performance-critical scenarios, can combine with PDT approach:
+## Materialization Strategies
 
-1. Generate dbt CUBE model from dimension groups
-2. Generate join with dynamic `sql_on` instead of subqueries
-3. Benchmark measures become simple references to PDT columns
+The subquery approach (shown above) runs a correlated subquery for every benchmark measure. This works but can be slow at scale. For better performance, we support pre-computed materialization.
+
+### Strategy Comparison
+
+| Strategy | Refresh | Speed | Infrastructure | Best For |
+|----------|---------|-------|----------------|----------|
+| `subquery` | Real-time | Slow (correlated query per row) | None | Small datasets, prototyping |
+| `view` | Real-time | Slow (CUBE runs every query) | None | When real-time is critical |
+| `dbt_table` | dbt run | Fast | dbt job | Most production use cases |
+| `dbt_incremental` | dbt run (append) | Fast | dbt job | Large tables, frequent refresh |
+| `materialized_view` | DB-managed | Fast | DB feature | When dbt isn't available |
+| `looker_pdt` | Looker-managed | Fast | Looker persistence | Looker-only shops |
+
+### Recommended: dbt Table/Incremental
+
+For Option C, the recommended approach is:
 
 ```yaml
 benchmark_config:
-  strategy: pdt  # or 'subquery' (default)
-  pdt_model: rental_benchmarks
+  enabled: true
+  strategy: dbt_table          # or 'dbt_incremental'
+  refresh: hourly              # for scheduling (dbt Cloud / Airflow)
+  model_name: rental_benchmarks
+  correlatable_groups: [geography, segment]
+```
+
+### What Gets Generated
+
+**1. dbt CUBE Model (one per semantic model with benchmarks)**
+
+```sql
+-- models/benchmarks/rental_benchmarks.sql
+{{ config(
+    materialized='incremental',
+    unique_key=['date_day', 'reporting_market', 'reporting_region',
+                'reporting_neighborhood', 'rental_segment_rollup',
+                'rental_segment', 'temporal_segment'],
+    incremental_strategy='merge'
+) }}
+
+SELECT
+    date_day,
+
+    -- Geography group: COALESCE with sentinel for rollups
+    COALESCE(reporting_market, '__ALL__') as reporting_market,
+    COALESCE(reporting_region, '__ALL__') as reporting_region,
+    COALESCE(reporting_neighborhood, '__ALL__') as reporting_neighborhood,
+
+    -- Segment group
+    COALESCE(rental_segment_rollup, '__ALL__') as rental_segment_rollup,
+    COALESCE(rental_segment, '__ALL__') as rental_segment,
+    COALESCE(temporal_segment, '__ALL__') as temporal_segment,
+
+    -- Pre-aggregated measures
+    SUM(rental_checkout_amount_local) as benchmark_gmv,
+    SUM(driver_payout) as benchmark_gov,
+    COUNT(DISTINCT unique_rental_sk) as benchmark_rental_count
+
+FROM {{ ref('rentals') }}
+WHERE rental_event_type = 'completed'
+
+{% if is_incremental() %}
+    AND date_day >= (SELECT MAX(date_day) - INTERVAL '3 days' FROM {{ this }})
+{% endif %}
+
+GROUP BY CUBE(
+    reporting_market, reporting_region, reporting_neighborhood,
+    rental_segment_rollup, rental_segment, temporal_segment
+), date_day
+```
+
+**Row Count Estimation:**
+- 2^6 = 64 combinations per date
+- 730 days (2 years) = ~47K rows
+- Fast to build, fast to query
+
+**2. LookML View for Benchmark Table (trivial)**
+
+```lookml
+# rental_benchmarks.view.lkml
+view: rental_benchmarks {
+  sql_table_name: ${ref('rental_benchmarks')} ;;
+
+  dimension: date_day { type: date }
+  dimension: reporting_market { type: string }
+  dimension: reporting_region { type: string }
+  # ... all dims ...
+
+  # Pre-aggregated measures - just SUM the pre-computed values
+  measure: benchmark_gmv {
+    type: sum
+    sql: ${TABLE}.benchmark_gmv ;;
+  }
+
+  measure: benchmark_rental_count {
+    type: sum
+    sql: ${TABLE}.benchmark_rental_count ;;
+  }
+}
+```
+
+**3. Dynamic Join (correlation logic defined ONCE)**
+
+```lookml
+# rentals.explore.lkml
+explore: rentals {
+  extends: [_benchmark_utils]  # Inherits toggle parameters
+
+  join: rental_benchmarks {
+    type: left_outer
+    relationship: many_to_one
+
+    sql_on:
+      ${rentals.date_day} = ${rental_benchmarks.date_day}
+
+      -- Geography group: correlate when toggle is ON + dim is selected
+      AND ${rental_benchmarks.reporting_market} =
+        {% if correlate_geography._parameter_value == 'yes' %}
+          {% if rentals.reporting_market._is_selected %}
+            ${rentals.reporting_market}
+          {% else %}
+            '__ALL__'
+          {% endif %}
+        {% else %}
+          '__ALL__'
+        {% endif %}
+
+      AND ${rental_benchmarks.reporting_region} =
+        {% if correlate_geography._parameter_value == 'yes' %}
+          {% if rentals.reporting_region._is_selected %}
+            ${rentals.reporting_region}
+          {% else %}
+            '__ALL__'
+          {% endif %}
+        {% else %}
+          '__ALL__'
+        {% endif %}
+
+      AND ${rental_benchmarks.reporting_neighborhood} =
+        {% if correlate_geography._parameter_value == 'yes' %}
+          {% if rentals.reporting_neighborhood._is_selected %}
+            ${rentals.reporting_neighborhood}
+          {% else %}
+            '__ALL__'
+          {% endif %}
+        {% else %}
+          '__ALL__'
+        {% endif %}
+
+      -- Segment group
+      AND ${rental_benchmarks.rental_segment_rollup} =
+        {% if correlate_segment._parameter_value == 'yes' %}
+          {% if rentals.rental_segment_rollup._is_selected %}
+            ${rentals.rental_segment_rollup}
+          {% else %}
+            '__ALL__'
+          {% endif %}
+        {% else %}
+          '__ALL__'
+        {% endif %}
+
+      -- ... remaining segment dims ...
+    ;;
+  }
+}
+```
+
+**4. Benchmark Measures in View (dead simple)**
+
+```lookml
+# rentals.benchmarks.view.lkml (refinement)
+view: +rentals {
+  extends: [_benchmark_utils]  # Inherit toggle parameters
+
+  measure: gmv_benchmark {
+    label: "GMV (Benchmark)"
+    group_label: "Benchmarks"
+    description: "Company GMV total. Use correlation toggles to pin to geography/segment."
+    type: sum
+    sql: ${rental_benchmarks.benchmark_gmv} ;;
+    value_format_name: usd
+  }
+
+  measure: rental_count_benchmark {
+    label: "Rental Count (Benchmark)"
+    group_label: "Benchmarks"
+    type: sum
+    sql: ${rental_benchmarks.benchmark_rental_count} ;;
+  }
+
+  measure: gov_benchmark {
+    label: "GOV (Benchmark)"
+    group_label: "Benchmarks"
+    type: sum
+    sql: ${rental_benchmarks.benchmark_gov} ;;
+    value_format_name: usd
+  }
+}
+```
+
+**5. Shared Utils (generated once per project)**
+
+```lookml
+# _benchmark_utils.view.lkml
+view: _benchmark_utils {
+  extension: required
+
+  # Shared correlation toggles
+  parameter: correlate_geography {
+    label: "Correlate on Geography"
+    description: "When enabled, benchmark will match your selected geography"
+    type: yesno
+    default_value: "no"
+  }
+
+  parameter: correlate_segment {
+    label: "Correlate on Segment"
+    description: "When enabled, benchmark will match your selected segment"
+    type: yesno
+    default_value: "no"
+  }
+
+  # Shared date filter
+  filter: benchmark_date_filter {
+    type: date
+    label: "Benchmark Date Range"
+  }
+}
+```
+
+### Why PDT is Better
+
+| Subquery Approach | PDT + JOIN Approach |
+|-------------------|---------------------|
+| SQL in every measure | SQL defined once in join |
+| Repetitive Liquid blocks | Liquid only in sql_on |
+| Correlated subquery per row | Pre-computed join lookup |
+| Slow queries | Sub-second queries |
+| Real-time (but slow) | Refresh lag (but fast) |
+
+### DRYing Up the sql_on with LookML Macros
+
+The sql_on Liquid is still repetitive per dimension. We can DRY this up with a project-level macro:
+
+```lookml
+# _benchmark_macros.lkml (included in project manifest)
+
+# Macro: correlation_condition
+# Usage: {% include '_benchmark_macros' correlation_condition dim='reporting_market' group='geography' %}
+
+# Unfortunately LookML doesn't support true macros, but we can use a pattern:
+```
+
+**Alternative: Generator-side templating**
+
+Since LookML doesn't have real macros, we DRY up in the generator code itself:
+
+```python
+# In explore_generator.py
+
+def render_correlation_condition(dim: str, group: str, base_view: str, benchmark_view: str) -> str:
+    """Generate a single correlation condition for sql_on."""
+    return f"""
+      AND ${{{benchmark_view}.{dim}}} =
+        {{% if correlate_{group}._parameter_value == 'yes' %}}
+          {{% if {base_view}.{dim}._is_selected %}}
+            ${{{base_view}.{dim}}}
+          {{% else %}}
+            '__ALL__'
+          {{% endif %}}
+        {{% else %}}
+          '__ALL__'
+        {{% endif %}}"""
+
+def render_benchmark_join(config: BenchmarkConfig, base_view: str, benchmark_view: str) -> str:
+    """Generate complete sql_on clause."""
+    conditions = [f"${{{base_view}.date_day}} = ${{{benchmark_view}.date_day}}"]
+
+    for group_name, group_dims in config.dimension_groups.items():
+        if group_name in config.correlatable_groups:
+            for dim in group_dims:
+                conditions.append(
+                    render_correlation_condition(dim, group_name, base_view, benchmark_view)
+                )
+
+    return "\n".join(conditions)
+```
+
+**Generated output is verbose, generator code is DRY.**
+
+This is the right trade-off:
+- Users see explicit, readable LookML
+- Developers maintain simple generator code
+- No runtime macro overhead
+
+### Output File Structure
+
+```
+views/
+├── _benchmark_utils.view.lkml     # Shared toggles (once per project)
+├── rentals.view.lkml              # Base view (unchanged)
+├── rentals.metrics.view.lkml      # Metric measures (unchanged)
+├── rentals.benchmarks.view.lkml   # Benchmark measures (refinement)
+├── rental_benchmarks.view.lkml    # PDT view for pre-computed data
+├── facilities.view.lkml
+├── facilities.metrics.view.lkml
+└── facilities.benchmarks.view.lkml
+
+explores/
+├── rentals.explore.lkml           # Contains dynamic sql_on join
+
+dbt/
+├── models/
+│   └── benchmarks/
+│       ├── rental_benchmarks.sql  # CUBE model
+│       └── facilities_benchmarks.sql
 ```
 
 ---
