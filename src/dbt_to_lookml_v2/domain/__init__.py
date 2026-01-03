@@ -7,6 +7,14 @@ from dbt_to_lookml_v2.domain.dimension import (
     TimeGranularity,
     TimezoneVariant,
 )
+from dbt_to_lookml_v2.domain.explore import (
+    ExploreConfig,
+    ExposeLevel,
+    InferredJoin,
+    JoinOverride,
+    JoinRelationship,
+    JoinType,
+)
 from dbt_to_lookml_v2.domain.filter import Filter, FilterCondition, FilterOperator
 from dbt_to_lookml_v2.domain.measure import AggregationType, Measure
 from dbt_to_lookml_v2.domain.metric import (
@@ -31,6 +39,13 @@ __all__ = [
     "DimensionType",
     "TimeGranularity",
     "TimezoneVariant",
+    # Explore
+    "ExploreConfig",
+    "ExposeLevel",
+    "InferredJoin",
+    "JoinOverride",
+    "JoinRelationship",
+    "JoinType",
     # Filter
     "Filter",
     "FilterCondition",
