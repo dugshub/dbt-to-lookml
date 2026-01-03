@@ -161,6 +161,75 @@ Build `adapters/lookml/` to:
 
 ---
 
-## Session 3: TBD
+## Session 3: 2026-01-02 - LookML Adapter (Phase 3)
 
-_Continue from Phase 3..._
+### What We Built
+
+**Shared Adapter Components** (`adapters/`):
+- `dialect.py` - Dialect enum + SqlRenderer with sqlglot integration
+  - Supports: redshift, postgres, snowflake, bigquery, duckdb, starburst
+  - `D2L_DIALECT` env var for default (redshift)
+
+**LookML Adapter** (`adapters/lookml/`):
+- `dimension_renderer.py` - Categorical + time dimension_groups with timezone variants
+- `measure_renderer.py` - Measures + metrics (simple, derived, ratio)
+- `pop_renderer.py` - PoP with swappable strategy pattern (LookerNativePopStrategy)
+- `view_renderer.py` - Compose full views using child renderers
+- `generator.py` - Orchestrate file generation
+
+**Output Structure** (split files with refinements):
+```
+{model}.view.lkml           # Base: dims, entities, sql_table_name
+{model}.metrics.view.lkml   # Refinement: +{model} { metric measures }
+{model}.pop.view.lkml       # Refinement: +{model} { PoP measures }
+```
+
+### Key Decisions Made
+
+1. **Dialect at adapters level** - Shared across LookML, future Cube.js, etc.
+2. **Hierarchical renderers** - Generator → ViewRenderer → Dimension/Measure/Pop Renderers
+3. **Swappable PoP strategy** - Protocol pattern for future alternative implementations
+4. **Split files with refinements** - Clean organization, only generate what's needed
+
+### Package Structure
+
+```
+src/dbt_to_lookml_v2/
+├── adapters/
+│   ├── dialect.py              # Shared dialect + SqlRenderer
+│   └── lookml/
+│       ├── generator.py        # LookMLGenerator - orchestrator
+│       ├── view_renderer.py    # ViewRenderer - composes views
+│       ├── dimension_renderer.py
+│       ├── measure_renderer.py
+│       └── pop_renderer.py     # PopStrategy pattern
+```
+
+### Tests
+
+- `test_lookml_adapter.py` - 18 tests for adapter components
+- Total v2 tests: 55 passing
+
+### Commits
+
+```
+23f579c test(v2): add LookML adapter tests
+a8c4fc5 feat(v2): add LookML adapter with split file generation
+df01f7d feat(v2): add shared dialect module with sqlglot integration
+```
+
+### Phase 3 Complete ✅
+
+**Gate passed**: ProcessedModel → LookML files with dimensions, measures, metrics, and PoP
+
+### Deferred
+
+- Date selector (complex liquid logic)
+- Timezone variant toggle parameter
+- Explore generation (Phase 4)
+
+---
+
+## Session 4: TBD
+
+_Continue with explore generation or other features..._
