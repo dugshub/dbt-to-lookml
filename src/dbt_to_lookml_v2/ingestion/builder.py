@@ -40,6 +40,7 @@ class DomainBuilder:
         self._data_models: dict[str, DataModel] = {}
         self._semantic_models: list[dict[str, Any]] = []
         self._metrics: list[dict[str, Any]] = []
+        self._explores: list[dict[str, Any]] = []
 
     @classmethod
     def from_directory(cls, path: str | Path) -> list[ProcessedModel]:
@@ -65,7 +66,7 @@ class DomainBuilder:
         return builder.build()
 
     def _collect_from_document(self, doc: dict[str, Any]) -> None:
-        """Collect data models, semantic models, and metrics from a document."""
+        """Collect data models, semantic models, metrics, and explores from a document."""
         # Collect data models
         for dm in doc.get("data_models", []):
             data_model = self._build_data_model(dm)
@@ -76,6 +77,9 @@ class DomainBuilder:
 
         # Collect metrics
         self._metrics.extend(doc.get("metrics", []))
+
+        # Collect explores
+        self._explores.extend(doc.get("explores", []))
 
     def build(self) -> list[ProcessedModel]:
         """Build all ProcessedModel objects."""
