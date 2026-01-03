@@ -141,7 +141,7 @@ class ViewRenderer:
             dim: dict[str, Any] = {
                 "name": entity.name,
                 "type": "string",
-                "sql": f"${{TABLE}}.{entity.expr} ;;",
+                "sql": f"${{TABLE}}.{entity.expr}",
                 "hidden": "yes",
             }
 

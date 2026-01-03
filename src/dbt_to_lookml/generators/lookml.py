@@ -2674,3 +2674,162 @@ class LookMLGenerator(Generator):
             sanitized = f"view_{sanitized}"
 
         return sanitized.lower()
+
+
+def is_pop_eligible_metric(
+    metric: Metric,
+    all_metrics: list[Metric] | None = None,
+    all_models: list[SemanticModel] | None = None,
+    visited: set[str] | None = None,
+) -> tuple[bool, str | None]:
+    """Detect if a metric qualifies for PoP (Period-over-Period) generation.
+
+    A metric qualifies for PoP when it can be traced to a single semantic model:
+
+    - **Simple metrics**: Always qualify if they have a primary_entity
+    - **Ratio metrics**: Qualify if numerator and denominator measures are from
+      the same semantic model
+    - **Derived metrics**: Qualify if all parent metrics recursively resolve to
+      eligible metrics on the same semantic model
+
+    Args:
+        metric: The metric to check.
+        all_metrics: All metrics for recursive lookup (needed for derived metrics).
+        all_models: All semantic models (needed for ratio metrics to find measures).
+        visited: Set of visited metric names (for circular reference detection).
+
+    Returns:
+        Tuple of (qualifies, primary_entity).
+        - (True, "entity_name") if metric qualifies for PoP
+        - (False, None) if metric doesn't qualify
+
+    Examples:
+        >>> # Simple metric with primary_entity
+        >>> is_pop_eligible_metric(simple_metric, all_metrics, all_models)
+        (True, "order")
+
+        >>> # Ratio metric with same-model measures
+        >>> is_pop_eligible_metric(aov_metric, all_metrics, all_models)
+        (True, "rental")
+
+        >>> # Derived with all simple parents on same model
+        >>> is_pop_eligible_metric(net_change_metric, all_metrics, all_models)
+        (True, "facility")
+
+        >>> # Cross-model ratio or derived
+        >>> is_pop_eligible_metric(cross_model_metric, all_metrics, all_models)
+        (False, None)
+    """
+    from dbt_to_lookml.schemas.semantic_layer import (
+        DerivedMetricParams,
+        RatioMetricParams,
+        SimpleMetricParams,
+    )
+
+    # Simple metrics always qualify if they have a primary_entity
+    if metric.type == "simple":
+        entity = metric.primary_entity
+        return (True, entity) if entity else (False, None)
+
+    # Ratio metrics qualify if numerator and denominator are from same model
+    if metric.type == "ratio":
+        if not isinstance(metric.type_params, RatioMetricParams):
+            return (False, None)
+
+        # Need all_models to check measure locations
+        if all_models is None:
+            # Fall back to primary_entity if models not provided
+            entity = metric.primary_entity
+            return (True, entity) if entity else (False, None)
+
+        numerator = metric.type_params.numerator
+        denominator = metric.type_params.denominator
+
+        # Find which model contains each measure
+        num_model: SemanticModel | None = None
+        denom_model: SemanticModel | None = None
+
+        for model in all_models:
+            for measure in model.measures:
+                if measure.name == numerator:
+                    num_model = model
+                if measure.name == denominator:
+                    denom_model = model
+
+        if num_model is None or denom_model is None:
+            return (False, None)  # Couldn't find one of the measures
+
+        if num_model.name == denom_model.name:
+            # Same model - find primary entity
+            for entity_obj in num_model.entities:
+                if entity_obj.type == "primary":
+                    return (True, entity_obj.name)
+            return (False, None)  # No primary entity found
+        else:
+            return (False, None)  # Cross-model ratio
+
+    # Derived metrics - check all parents recursively
+    if metric.type == "derived":
+        if not isinstance(metric.type_params, DerivedMetricParams):
+            return (False, None)
+
+        # Initialize visited set for circular reference detection
+        if visited is None:
+            visited = set()
+
+        # Check for circular reference
+        if metric.name in visited:
+            return (False, None)
+
+        visited = visited | {metric.name}
+
+        # Need all_metrics for derived metric lookup
+        if all_metrics is None:
+            return (False, None)
+
+        # Build metrics lookup
+        metrics_by_name = {m.name: m for m in all_metrics}
+
+        # Collect all primary entities from parent metrics
+        primary_entities: set[str] = set()
+
+        for ref in metric.type_params.metrics:
+            parent_metric = metrics_by_name.get(ref.name)
+
+            if parent_metric is None:
+                return (False, None)  # Parent metric not found
+
+            # Recursively check if parent qualifies
+            qualifies, entity = is_pop_eligible_metric(
+                parent_metric, all_metrics, all_models, visited
+            )
+            if not qualifies or not entity:
+                return (False, None)  # Parent doesn't qualify
+            primary_entities.add(entity)
+
+        # Check if all primary entities are the same
+        if len(primary_entities) == 1:
+            return (True, primary_entities.pop())
+        else:
+            return (False, None)  # Multiple entities = cross-model
+
+    # Conversion or unknown type - doesn't qualify
+    return (False, None)
+
+
+# Backwards compatibility alias
+def is_same_model_derived_metric(
+    metric: Metric,
+    all_metrics: list[Metric],
+    visited: set[str] | None = None,
+) -> tuple[bool, str | None]:
+    """Deprecated: Use is_pop_eligible_metric instead.
+
+    This function is kept for backwards compatibility but only supports
+    derived metrics. Use is_pop_eligible_metric for full support of
+    simple, ratio, and derived metrics.
+    """
+    # For derived metrics only, delegate to new function
+    if metric.type != "derived":
+        return (False, None)
+    return is_pop_eligible_metric(metric, all_metrics, None, visited)

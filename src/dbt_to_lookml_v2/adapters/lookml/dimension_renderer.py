@@ -140,6 +140,4 @@ class DimensionRenderer:
 
     def _qualify_expr(self, expr: str) -> str:
         """Qualify column references in expression."""
-        qualified = self.sql_renderer.qualify_expression(expr)
-        # Ensure it ends with ;;
-        return f"{qualified} ;;"
+        return self.sql_renderer.qualify_expression(expr)

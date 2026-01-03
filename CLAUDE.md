@@ -131,6 +131,7 @@ Extended documentation is available in `.claude/ai-docs/`:
 
 | File | Content |
 |------|---------|
+| `architecture-vision.md` | **Working doc**: Layered architecture vision (processors, generators, multi-destination) |
 | `lookml-features.md` | Timezone conversion, field visibility, time dimension labels, timezone variants, join cardinality |
 | `wizard-system.md` | Interactive wizard architecture, detection, prompts, testing |
 | `conversion-rules.md` | Semantic model → LookML translation rules |

@@ -224,7 +224,7 @@ lookml-generate:
 	@uv run python -m dbt_to_lookml generate -i $(INPUT_DIR) -o $(OUTPUT_DIR)
 
 # Gold Layer generation (SpotHero production)
-lookml-gold:
+lookml-gold-sandbox:
 	@echo "🥇 Generating Gold Layer LookML"
 	@d2l generate \
 		-i /Users/dug/Work/repos/spothero-dbt-silver/redshift_gold/models/3_semantic/models \
@@ -236,13 +236,31 @@ lookml-gold:
 		--no-convert-tz \
 		--bi-field-only \
 		--schema gold_sandbox \
-		--fact-models "rentals, facility_monthly_status" \
+		--fact-models "rentals, facility_monthly_status, sfdc_cases" \
 		--include-children \
 		--use-group-item-label \
 		--date-selector \
 		--show-summary \
 		--yes
 
+lookml-gold:
+	@echo "🥇 Generating Gold Layer LookML"
+	@d2l generate \
+		-i /Users/doug/Work/data-modelling/official-models/redshift_gold/models/3_semantic/models \
+		-md /Users/doug/Work/data-modelling/official-models/redshift_gold/models/3_semantic/metrics \
+		-o /Users/doug/Work/data-modelling/analytics_lookML/GoldLayer \
+		--view-prefix gold_ \
+		--explore-prefix gold_ \
+		--model-name gold_semantic_models \
+		--no-convert-tz \
+		--bi-field-only \
+		--schema gold_production \
+		--fact-models "rentals, facility_monthly_status" \
+		--include-children \
+		--use-group-item-label \
+		--date-selector \
+		--show-summary \
+		--yes
 lookml-validate:
 	@echo "🔎 Validating semantic models in $(INPUT_DIR)"
 	@uv run python -m dbt_to_lookml validate -i $(INPUT_DIR) -v

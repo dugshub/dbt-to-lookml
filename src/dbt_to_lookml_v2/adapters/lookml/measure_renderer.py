@@ -106,7 +106,7 @@ class MeasureRenderer:
             result = {
                 "name": metric.name,
                 "type": "number",
-                "sql": f"${{TABLE}}.{metric.measure} ;;",
+                "sql": f"${{TABLE}}.{metric.measure}",
             }
 
         self._add_common_fields(result, metric)
@@ -122,7 +122,7 @@ class MeasureRenderer:
         result: dict[str, Any] = {
             "name": metric.name,
             "type": "number",
-            "sql": f"{sql_expr} ;;",
+            "sql": sql_expr,
         }
 
         self._add_common_fields(result, metric)
@@ -136,7 +136,7 @@ class MeasureRenderer:
         result: dict[str, Any] = {
             "name": metric.name,
             "type": "number",
-            "sql": f"${{{numerator}}} / NULLIF(${{{denominator}}}, 0) ;;",
+            "sql": f"${{{numerator}}} / NULLIF(${{{denominator}}}, 0)",
         }
 
         self._add_common_fields(result, metric)
@@ -158,5 +158,4 @@ class MeasureRenderer:
 
     def _qualify_expr(self, expr: str) -> str:
         """Qualify column references in expression."""
-        qualified = self.sql_renderer.qualify_expression(expr)
-        return f"{qualified} ;;"
+        return self.sql_renderer.qualify_expression(expr)
