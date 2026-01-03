@@ -132,6 +132,11 @@ entities:
   - name: facility
     type: foreign
     expr: facility_sk
+
+  - name: rental
+    type: foreign
+    expr: rental_sk
+    complete: true                # every row has a rental, metrics safe in joins
 ```
 
 | Field | Type | Required | Description |
@@ -140,6 +145,9 @@ entities:
 | `type` | enum | yes | `primary`, `foreign`, `unique` |
 | `expr` | string | yes | SQL expression (usually column name) |
 | `label` | string | no | Display label |
+| `complete` | bool | no | For foreign keys: true = every row has parent, metrics safe in joins. Default: false (dimensions only) |
+
+**Join Inference**: Foreign entities automatically create joins to models with matching primary entities. The `complete` flag controls whether metrics are exposed in those joins.
 
 ---
 
@@ -506,4 +514,47 @@ metrics:
       outputs: [previous, pct_change]
     format: usd
     group: Metrics.Revenue
+
+explores:
+  - name: rentals
+    fact_model: rentals
 ```
+
+---
+
+## Explores
+
+Top-level explore configuration. Designates fact models and generates explores with inferred joins.
+
+```yaml
+explores:
+  - name: rentals
+    fact_model: rentals
+    label: "Rental Analytics"        # optional
+    description: "Core rental explore"  # optional
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Explore name |
+| `fact_model` | string | yes | Reference to semantic model (designates it as a fact) |
+| `label` | string | no | Display label |
+| `description` | string | no | Explore description |
+
+### Join Inference
+
+Joins are **not** explicitly defined. They are inferred from entity relationships:
+- Fact model's foreign entities → join to dimension models (many_to_one)
+- Other models with foreign entities pointing to fact → join as children (one_to_many)
+
+### Model Types
+
+The presence of an explore config determines model type:
+
+| Model Type | Identified By | Explore Behavior |
+|------------|---------------|------------------|
+| **Fact** | Has `explore` with `fact_model: X` | Gets own explore + calendar |
+| **Child Fact** | Has `complete: true` on foreign entity | Joins into parent explore with metrics |
+| **Dimension** | Primary entity, no explore config | Joins into any explore (dims only unless many_to_one) |
+
+See PHASE4_SPEC.md for full join inference rules and PoP calendar resolution.
