@@ -2,13 +2,15 @@
 
 from typing import Any
 
-from dbt_to_lookml_v2.domain import Dimension, DimensionType, TimeGranularity
 from dbt_to_lookml_v2.adapters.dialect import Dialect, SqlRenderer
-
+from dbt_to_lookml_v2.adapters.lookml.renderers.labels import apply_group_labels
+from dbt_to_lookml_v2.domain import Dimension, DimensionType, TimeGranularity
 
 # Map TimeGranularity to LookML timeframes
 GRANULARITY_TIMEFRAMES: dict[TimeGranularity, list[str]] = {
-    TimeGranularity.HOUR: ["raw", "time", "hour", "date", "week", "month", "quarter", "year"],
+    TimeGranularity.HOUR: [
+        "raw", "time", "hour", "date", "week", "month", "quarter", "year"
+    ],
     TimeGranularity.DAY: ["raw", "date", "week", "month", "quarter", "year"],
     TimeGranularity.WEEK: ["raw", "week", "month", "quarter", "year"],
     TimeGranularity.MONTH: ["raw", "month", "quarter", "year"],
@@ -55,7 +57,7 @@ class DimensionRenderer:
             result["hidden"] = "yes"
 
         if dim.group:
-            result["group_label"] = dim.group_parts[0] if dim.group_parts else dim.group
+            apply_group_labels(result, dim.group_parts)
 
         return result
 
@@ -63,7 +65,7 @@ class DimensionRenderer:
         """
         Render a time dimension as dimension_group(s).
 
-        If dimension has variants (UTC/local), generates one dimension_group per variant.
+        If dimension has variants (UTC/local), generates one per variant.
         """
         if dim.has_variants and dim.variants:
             return self._render_time_with_variants(dim)
@@ -89,7 +91,7 @@ class DimensionRenderer:
             result["hidden"] = "yes"
 
         if dim.group:
-            result["group_label"] = dim.group_parts[0] if dim.group_parts else dim.group
+            apply_group_labels(result, dim.group_parts)
 
         return result
 
@@ -112,10 +114,14 @@ class DimensionRenderer:
 
             # Label includes variant
             if dim.label:
-                variant_label = variant_name.upper() if variant_name == "utc" else variant_name.title()
+                if variant_name == "utc":
+                    variant_label = variant_name.upper()
+                else:
+                    variant_label = variant_name.title()
                 result["label"] = f"{dim.label} ({variant_label})"
             else:
-                result["label"] = f"{dim.name.replace('_', ' ').title()} ({variant_name.upper()})"
+                name_title = dim.name.replace("_", " ").title()
+                result["label"] = f"{name_title} ({variant_name.upper()})"
 
             if dim.description:
                 result["description"] = dim.description
@@ -126,7 +132,7 @@ class DimensionRenderer:
                 pass  # For now, show all variants
 
             if dim.group:
-                result["group_label"] = dim.group_parts[0] if dim.group_parts else dim.group
+                apply_group_labels(result, dim.group_parts)
 
             results.append(result)
 

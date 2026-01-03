@@ -5,9 +5,9 @@ Current: Looker's native period_over_period measure type.
 Future: Could add custom SQL-based PoP, offset-based PoP, etc.
 """
 
-from abc import ABC, abstractmethod
 from typing import Any, Protocol
 
+from dbt_to_lookml_v2.adapters.lookml.renderers.labels import apply_group_labels
 from dbt_to_lookml_v2.domain import (
     Metric,
     MetricVariant,
@@ -16,7 +16,6 @@ from dbt_to_lookml_v2.domain import (
     PopParams,
     VariantKind,
 )
-
 
 # Map PopComparison to Looker's period_over_period comparison_period
 COMPARISON_TO_LOOKML: dict[PopComparison, str] = {
@@ -118,7 +117,7 @@ class LookerNativePopStrategy:
 
         # Group with base metric
         if metric.group:
-            result["group_label"] = metric.group_parts[0] if metric.group_parts else metric.group
+            apply_group_labels(result, metric.group_parts)
 
         return result
 

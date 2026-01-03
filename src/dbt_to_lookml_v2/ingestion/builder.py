@@ -43,11 +43,13 @@ class DomainBuilder:
         self._explores: list[dict[str, Any]] = []
 
     @classmethod
-    def from_directory(cls, path: str | Path) -> list[ProcessedModel]:
+    def from_directory(
+        cls, path: str | Path
+    ) -> tuple[list[ProcessedModel], list[ExploreConfig]]:
         """
         Load YAML files from directory and build domain models.
 
-        Returns list of ProcessedModel objects with variants expanded.
+        Returns tuple of (ProcessedModel list, ExploreConfig list).
         """
         builder = cls()
         loader = YamlLoader(path)
@@ -56,17 +58,19 @@ class DomainBuilder:
         for doc in documents:
             builder._collect_from_document(doc)
 
-        return builder.build()
+        return builder.build(), builder.build_explores()
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> list[ProcessedModel]:
+    def from_dict(
+        cls, data: dict[str, Any]
+    ) -> tuple[list[ProcessedModel], list[ExploreConfig]]:
         """Build domain models from a single dict (for testing)."""
         builder = cls()
         builder._collect_from_document(data)
-        return builder.build()
+        return builder.build(), builder.build_explores()
 
     def _collect_from_document(self, doc: dict[str, Any]) -> None:
-        """Collect data models, semantic models, metrics, and explores from a document."""
+        """Collect data models, semantic models, metrics, and explores."""
         # Collect data models
         for dm in doc.get("data_models", []):
             data_model = self._build_data_model(dm)
@@ -166,13 +170,17 @@ class DomainBuilder:
             type=data["type"],
             expr=data["expr"],
             label=data.get("label"),
+            complete=data.get("complete", False),
         )
 
     def _build_dimension(self, data: dict[str, Any]) -> Dimension:
         """Build Dimension from dict."""
         # Parse dimension type
         dim_type_str = data.get("type", "categorical")
-        dim_type = DimensionType.TIME if dim_type_str == "time" else DimensionType.CATEGORICAL
+        if dim_type_str == "time":
+            dim_type = DimensionType.TIME
+        else:
+            dim_type = DimensionType.CATEGORICAL
 
         # Parse granularity
         granularity = None
@@ -281,3 +289,38 @@ class DomainBuilder:
                 pass
 
         return PopConfig(comparisons=comparisons, outputs=outputs)
+
+    def build_explores(self) -> list[ExploreConfig]:
+        """Build all ExploreConfig objects."""
+        return [self._build_explore(e) for e in self._explores]
+
+    def _build_explore(self, data: dict[str, Any]) -> ExploreConfig:
+        """Build ExploreConfig from dict."""
+        # Parse join overrides
+        join_overrides = []
+        for jo in data.get("joins", []):
+            override = self._build_join_override(jo)
+            join_overrides.append(override)
+
+        return ExploreConfig(
+            name=data["name"],
+            fact_model=data["fact_model"],
+            label=data.get("label"),
+            description=data.get("description"),
+            join_overrides=join_overrides,
+        )
+
+    def _build_join_override(self, data: dict[str, Any]) -> JoinOverride:
+        """Build JoinOverride from dict."""
+        expose = None
+        expose_str = data.get("expose")
+        if expose_str:
+            try:
+                expose = ExposeLevel(expose_str)
+            except ValueError:
+                pass
+
+        return JoinOverride(
+            model=data["model"],
+            expose=expose,
+        )

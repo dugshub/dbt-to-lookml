@@ -74,4 +74,6 @@ class InferredJoin(BaseModel):
     def sql_on(self) -> str:
         """Generate sql_on clause (requires view names at render time)."""
         # This is a template - actual LookML refs are added during rendering
-        return f"${{FACT}}.{self.fact_entity_expr} = ${{{self.model}}}.{self.joined_entity_expr}"
+        fact_ref = f"${{FACT}}.{self.fact_entity_expr}"
+        join_ref = f"${{{self.model}}}.{self.joined_entity_expr}"
+        return f"{fact_ref} = {join_ref}"

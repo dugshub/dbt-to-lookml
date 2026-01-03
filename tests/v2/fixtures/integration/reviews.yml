@@ -1,0 +1,116 @@
+version: 2
+
+data_models:
+  - name: reviews
+    schema: gold_production
+    table: fct_review
+    connection: redshift
+
+semantic_models:
+  - name: reviews
+    description: |
+      Customer review fact model - ratings and feedback data.
+      Every review has exactly one rental (complete relationship).
+    model: reviews
+    time_dimension: created_at
+
+    entities:
+      - name: review
+        type: primary
+        expr: review_id
+
+      # Complete relationship - every review has a rental
+      # This allows metrics to be exposed in the rentals explore
+      - name: rental
+        type: foreign
+        expr: unique_rental_sk
+        complete: true
+
+      - name: facility
+        type: foreign
+        expr: facility_sk
+
+    dimensions:
+      - name: created_at
+        label: Review Created
+        type: time
+        granularity: day
+        expr: review_created_at
+        group: Dates
+
+      - name: star_rating
+        label: Star Rating
+        description: Customer rating 1-5 stars
+        type: categorical
+        expr: star_rating
+        group: Rating
+
+      - name: review_status
+        label: Review Status
+        type: categorical
+        expr: review_status
+        group: Status
+
+      - name: review_device_source
+        label: Device Source
+        type: categorical
+        expr: review_device_source
+        group: Device
+
+      # Sentiment flags
+      - name: has_positive_feedback
+        label: Has Positive Feedback
+        type: categorical
+        expr: has_positive_feedback
+        group: Sentiment
+
+      - name: has_negative_feedback
+        label: Has Negative Feedback
+        type: categorical
+        expr: has_negative_feedback
+        group: Sentiment
+
+      # Concern flags
+      - name: has_safety_concern
+        label: Has Safety Concern
+        type: categorical
+        expr: has_safety_concern
+        group: Concerns
+
+      - name: has_value_concern
+        label: Has Value Concern
+        type: categorical
+        expr: has_value_concern
+        group: Concerns
+
+    measures:
+      - name: review_count
+        label: Review Count
+        agg: count
+        expr: review_id
+        format: decimal_0
+        hidden: true
+
+      - name: avg_star_rating
+        label: Average Star Rating
+        agg: average
+        expr: star_rating
+        format: decimal_1
+        hidden: true
+
+metrics:
+  - name: review_count
+    label: Review Count
+    type: simple
+    measure: review_count
+    format: decimal_0
+    group: Reviews
+    entity: review
+
+  - name: avg_star_rating
+    label: Average Star Rating
+    type: simple
+    measure: avg_star_rating
+    format: decimal_1
+    group: Reviews
+    entity: review

@@ -1,0 +1,168 @@
+version: 2
+
+data_models:
+  - name: rentals
+    schema: gold_production
+    table: rentals
+    connection: redshift
+
+semantic_models:
+  - name: rentals
+    description: |
+      Core rental fact model - transaction-level data for rental analytics.
+      Combines revenue, counts, segmentation, and timing data.
+    model: rentals
+    time_dimension: created_at
+
+    date_selector:
+      dimensions: [created_at, starts_at]
+
+    entities:
+      - name: rental
+        type: primary
+        expr: unique_rental_sk
+        label: Reservation
+
+      - name: facility
+        type: foreign
+        expr: facility_sk
+
+    dimensions:
+      # Time with UTC/local variants
+      - name: created_at
+        label: Rental Created
+        description: When the rental was created
+        type: time
+        granularity: day
+        group: Dates
+        primary_variant: utc
+        variants:
+          utc: rental_created_at_utc
+          local: rental_created_at_local
+
+      - name: starts_at
+        label: Rental Start
+        description: When the parking period begins
+        type: time
+        granularity: hour
+        group: Dates
+        primary_variant: utc
+        variants:
+          utc: rental_starts_at_utc
+          local: rental_starts_at_local
+
+      # Categorical dimensions
+      - name: transaction_type
+        label: Order Status
+        description: Order fulfillment status (completed, cancelled, refunded)
+        type: categorical
+        expr: rental_event_type
+        group: Status
+
+      - name: rental_segment
+        label: Primary Segment
+        description: Hierarchical segment (Monthly > Event > Airport > Transient)
+        type: categorical
+        expr: rental_segment_rollup
+        group: Segment
+
+      - name: is_monthly_rental
+        label: Is Monthly
+        type: categorical
+        expr: is_monthly_rental
+        group: Segment
+
+      - name: payment_type
+        label: Payment Type
+        type: categorical
+        expr: payment_type_title
+        group: Payment
+
+    measures:
+      - name: checkout_amount
+        label: Checkout Amount
+        description: Sum of checkout amounts (what customer pays)
+        agg: sum
+        expr: rental_checkout_amount_local
+        format: usd
+        hidden: true
+
+      - name: display_amount
+        label: Display Amount
+        description: Sum of display prices (excludes SpotHero fees)
+        agg: sum
+        expr: rental_checkout_amount_local - coalesce(total_spothero_fee_amount, 0)
+        format: usd
+        hidden: true
+
+      - name: rental_count
+        label: Rental Count
+        agg: count_distinct
+        expr: unique_rental_sk
+        format: decimal_0
+        hidden: true
+
+      - name: renter_count
+        label: Renter Count
+        agg: count_distinct
+        expr: renter_id
+        format: decimal_0
+        hidden: true
+
+metrics:
+  - name: gov
+    label: Gross Order Value
+    description: Total checkout revenue from completed rentals
+    type: simple
+    measure: checkout_amount
+    filter:
+      transaction_type: completed
+    pop:
+      comparisons: [py, pm]
+      outputs: [previous, pct_change]
+    format: usd
+    group: Revenue
+    entity: rental
+
+  - name: gmv
+    label: Gross Merchandise Value
+    description: Total display revenue from completed rentals (excludes fees)
+    type: simple
+    measure: display_amount
+    filter:
+      transaction_type: completed
+    pop:
+      comparisons: [py, pm]
+      outputs: [previous, pct_change]
+    format: usd
+    group: Revenue
+    entity: rental
+
+  - name: rental_count
+    label: Rental Count
+    description: Count of completed rental transactions
+    type: simple
+    measure: rental_count
+    filter:
+      transaction_type: completed
+    pop:
+      comparisons: [py, pm]
+      outputs: [previous, pct_change]
+    format: decimal_0
+    group: Counts
+    entity: rental
+
+  - name: aov
+    label: Average Order Value
+    description: Average checkout amount per completed rental
+    type: derived
+    expr: gov / NULLIF(rental_count, 0)
+    metrics: [gov, rental_count]
+    format: usd
+    group: Revenue
+    entity: rental
+
+explores:
+  - name: rentals
+    fact_model: rentals
+    label: Rental Analytics

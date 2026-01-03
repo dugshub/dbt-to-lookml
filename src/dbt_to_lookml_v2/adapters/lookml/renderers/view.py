@@ -5,17 +5,14 @@ Composes dimensions, measures, and metrics into complete view structures.
 
 from typing import Any
 
-from dbt_to_lookml_v2.domain import (
-    Entity,
-    Measure,
-    Metric,
-    ProcessedModel,
-    VariantKind,
-)
 from dbt_to_lookml_v2.adapters.dialect import Dialect
 from dbt_to_lookml_v2.adapters.lookml.renderers.dimension import DimensionRenderer
 from dbt_to_lookml_v2.adapters.lookml.renderers.measure import MeasureRenderer
 from dbt_to_lookml_v2.adapters.lookml.renderers.pop import PopRenderer, PopStrategy
+from dbt_to_lookml_v2.domain import (
+    Entity,
+    ProcessedModel,
+)
 
 
 class ViewRenderer:
@@ -77,6 +74,11 @@ class ViewRenderer:
 
         if measures:
             view["measures"] = measures
+
+        # Generate dimensions_only set for join field restriction
+        dim_set = self._render_dimensions_only_set(model)
+        if dim_set:
+            view["sets"] = [dim_set]
 
         return view
 
@@ -154,3 +156,35 @@ class ViewRenderer:
             results.append(dim)
 
         return results
+
+    def _render_dimensions_only_set(
+        self, model: ProcessedModel
+    ) -> dict[str, Any] | None:
+        """
+        Generate dimensions_only set for join field restriction.
+
+        Includes all dimensions and entity dimensions.
+        Used in explores: fields: [view.dimensions_only*]
+        """
+        fields: list[str] = []
+
+        # Add entity names
+        for entity in model.entities:
+            fields.append(entity.name)
+
+        # Add dimension names (accounting for variants)
+        for dim in model.dimensions:
+            if dim.has_variants and dim.variants:
+                # Time dims with variants generate multiple fields
+                for variant_name in dim.variants.keys():
+                    fields.append(f"{dim.name}_{variant_name}")
+            else:
+                fields.append(dim.name)
+
+        if not fields:
+            return None
+
+        return {
+            "name": "dimensions_only",
+            "fields": fields,
+        }

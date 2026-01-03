@@ -17,7 +17,8 @@ class Entity(BaseModel):
     type: str  # primary, foreign, unique
     expr: str
     label: str | None = None
-    complete: bool = False  # For foreign keys: True = all rows have valid FK, metrics safe
+    # For foreign keys: True = all rows have valid FK, safe for metrics
+    complete: bool = False
 
     model_config = {"frozen": True}
 

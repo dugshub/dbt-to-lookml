@@ -1,0 +1,129 @@
+version: 2
+
+data_models:
+  - name: facilities
+    schema: gold_production
+    table: facilities
+    connection: redshift
+
+semantic_models:
+  - name: facilities
+    description: |
+      Facility dimension model - parking location attributes.
+      Includes geography, operator hierarchy, and status.
+    model: facilities
+    time_dimension: created_at
+
+    entities:
+      - name: facility
+        type: primary
+        expr: facility_sk
+
+    dimensions:
+      # Time dimensions
+      - name: created_at
+        label: Facility Created
+        type: time
+        granularity: day
+        expr: facility_created_at
+        hidden: true
+
+      - name: first_rental_date
+        label: First Rental Date
+        description: Date of facility's first rental
+        type: time
+        granularity: day
+        expr: first_rental_date
+        group: Milestones
+
+      # Identifiers
+      - name: facility_id
+        label: Facility ID
+        type: categorical
+        expr: facility_id
+        group: Identifiers
+
+      - name: canonical_facility_id
+        label: Location ID
+        type: categorical
+        expr: canonical_facility_id
+        group: Identifiers
+
+      # Core attributes
+      - name: facility_title
+        label: Facility Title
+        description: Customer-facing facility name
+        type: categorical
+        expr: facility_title
+        group: Facility
+
+      - name: facility_type
+        label: Facility Type
+        description: garage, lot, personal_spot, valet_stand
+        type: categorical
+        expr: facility_type
+        group: Facility
+
+      - name: facility_status
+        label: Facility Status
+        description: on_sales_allowed, off, archived
+        type: categorical
+        expr: facility_status
+        group: Facility
+
+      # Geography
+      - name: canonical_city
+        label: City
+        type: categorical
+        expr: canonical_city
+        group: Geography
+
+      - name: canonical_state
+        label: State
+        type: categorical
+        expr: canonical_state
+        group: Geography
+
+      - name: reporting_market
+        label: Market
+        description: Salesforce reporting market
+        type: categorical
+        expr: reporting_market
+        group: Geography
+
+      - name: reporting_region
+        label: Region
+        description: Central, Northeast, West, etc.
+        type: categorical
+        expr: reporting_region
+        group: Geography
+
+      # Operator hierarchy
+      - name: sfdc_account_name
+        label: Operator
+        description: Regional operator (e.g., SP+ - Chicago)
+        type: categorical
+        expr: sfdc_account_name
+        group: Operator
+
+      - name: sfdc_parent_account_name
+        label: Parent Operator
+        description: Operator brand (e.g., SP+, LAZ Parking)
+        type: categorical
+        expr: sfdc_parent_account_name
+        group: Operator
+
+      # Status flags
+      - name: is_active
+        label: Is Active
+        type: categorical
+        expr: is_active
+        group: Status
+
+    measures:
+      - name: facility_count
+        label: Facility Count
+        agg: count_distinct
+        expr: facility_id
+        format: decimal_0
+        hidden: true

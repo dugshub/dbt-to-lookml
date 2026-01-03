@@ -230,6 +230,228 @@ df01f7d feat(v2): add shared dialect module with sqlglot integration
 
 ---
 
-## Session 4: TBD
+## Session 4: 2026-01-02 - Explore Generation (Phase 4)
 
-_Continue with explore generation or other features..._
+### What We Built
+
+**Domain Types** (`domain/`):
+- `explore.py` - ExploreConfig, InferredJoin, JoinRelationship, ExposeLevel enums
+- Updated `model.py` - Added `complete: bool` field to Entity for FK completeness
+
+**Explore Adapter** (`adapters/lookml/`):
+- `renderers/calendar.py` - CalendarRenderer + DateOption
+  - Collects date selector dimensions from all explore participants
+  - Generates unified parameter + CASE-based dimension_group
+- `renderers/explore.py` - ExploreRenderer
+  - Infers joins from entity relationships (foreign → primary matching)
+  - Determines expose level (dimensions only vs all) based on `complete` flag
+  - Supports join overrides from config
+- `explore_generator.py` - ExploreGenerator orchestrator
+  - Generates `{explore}.explore.lkml` files
+  - Generates `{explore}_explore_calendar.view.lkml` if has date selectors
+
+**Ingestion Updates** (`ingestion/`):
+- `builder.py` - Updated to parse `explores:` config and `complete:` on entities
+- Returns tuple: `(List[ProcessedModel], List[ExploreConfig])`
+
+### Key Features
+
+1. **Join Inference from Entities**
+   - Matches foreign entities to primary entities across models
+   - `many_to_one` for FK → PK joins
+   - `one_to_many` for child fact detection
+
+2. **Expose Level Safety**
+   - `complete: true` on FK → expose dimensions + metrics
+   - `complete: false` (default) → expose dimensions only (safe default)
+   - Override via `join_overrides` in explore config
+
+3. **Unified Calendar View**
+   - One `{explore}_explore_calendar.view.lkml` per explore
+   - Single `date_field` parameter with all date options
+   - CASE-based `calendar` dimension_group for dynamic switching
+
+### Package Structure
+
+```
+src/dbt_to_lookml_v2/
+├── domain/
+│   ├── explore.py             # NEW: ExploreConfig, InferredJoin, enums
+│   └── model.py               # Updated: Entity.complete field
+├── ingestion/
+│   └── builder.py             # Updated: parse explores + complete
+└── adapters/
+    └── lookml/
+        ├── explore_generator.py         # NEW: orchestrator
+        └── renderers/
+            ├── calendar.py              # NEW: CalendarRenderer
+            └── explore.py               # NEW: ExploreRenderer
+```
+
+### Tests
+
+- `test_explore_adapter.py` - 27 tests for explore components
+- Total v2 tests: 82 passing
+
+### Phase 4 Complete ✅
+
+**Gate passed**: ExploreConfig → explore files with inferred joins and unified calendar
+
+### Output Example
+
+```lookml
+# rentals.explore.lkml
+explore: rentals {
+  label: "Rentals"
+
+  join: facilities {
+    type: left_outer
+    relationship: many_to_one
+    sql_on: ${rentals.facility_sk} = ${facilities.facility_sk} ;;
+  }
+
+  join: reviews {
+    type: left_outer
+    relationship: one_to_many
+    sql_on: ${rentals.rental_sk} = ${reviews.rental_sk} ;;
+    # complete: true → all fields exposed
+  }
+
+  join: rentals_explore_calendar {
+    relationship: one_to_one
+    sql:  ;;
+  }
+}
+
+# rentals_explore_calendar.view.lkml
+view: rentals_explore_calendar {
+  parameter: date_field {
+    type: unquoted
+    label: "Analysis Date"
+    view_label: " Calendar"
+    default_value: "rentals__created_at"
+    allowed_values: [
+      { label: "Rental Created" value: "rentals__created_at" }
+      { label: "Facility Opened" value: "facilities__opened_at" }
+    ]
+  }
+
+  dimension_group: calendar {
+    type: time
+    view_label: " Calendar"
+    timeframes: [date, week, month, quarter, year]
+    convert_tz: no
+    sql:
+      CASE {% parameter date_field %}
+        WHEN 'rentals__created_at' THEN ${rentals.created_at_raw}
+        WHEN 'facilities__opened_at' THEN ${facilities.opened_at_raw}
+      END
+    ;;
+  }
+}
+```
+
+---
+
+## Session 5: 2026-01-03 - Integration Testing & LookML Parity
+
+### What We Built
+
+**Integration Test Fixtures** (`tests/v2/fixtures/integration/`):
+- `rentals.yml` - Fact model with date selector, time variants, PoP metrics, filters
+- `facilities.yml` - Dimension model with geography, operator hierarchy
+- `reviews.yml` - Child fact with `complete: true` (1:1 with rental)
+
+**Integration Tests** (`tests/v2/test_integration.py`):
+- 14 end-to-end tests verifying full pipeline
+- Loads real-world style YAML → domain models → LookML output
+- Validates generated LookML is parseable
+
+### Comparison with Existing LookML
+
+Analyzed production LookML at `analytics_lookML/GoldLayer/` and fixed gaps:
+
+| Issue | Solution | Files |
+|-------|----------|-------|
+| **Dot notation group** | `group: "Metrics.Revenue"` → `view_label` + `group_label` | `labels.py` (new) |
+| **Filter in SQL** | `CASE WHEN filter THEN expr END` embedded in measure | `filter.py` (new), `measure.py` |
+| **dimensions_only set** | Generate `set: dimensions_only { fields: [...] }` | `view.py` |
+| **Explore from:** | Add `from:` when explore name differs from view | `explore.py` |
+| **view_label sorting** | Space prefix `"  Metrics"` for Looker field picker | `labels.py` |
+
+### New Renderers
+
+```
+adapters/lookml/renderers/
+├── labels.py     # NEW: parse_group_labels(), apply_group_labels()
+├── filter.py     # NEW: FilterRenderer.render_case_when()
+├── calendar.py   # CalendarRenderer + DateOption
+└── explore.py    # ExploreRenderer
+```
+
+### Generated Output Now Matches Production Pattern
+
+```lookml
+# rentals.view.lkml
+view: rentals {
+  sql_table_name: gold_production.rentals ;;
+
+  set: dimensions_only {
+    fields: [rental, facility, created_at_utc, created_at_local, ...]
+  }
+
+  dimension: transaction_type { ... }
+}
+
+# rentals.metrics.view.lkml
+view: +rentals {
+  measure: gov {
+    type: sum
+    sql: CASE WHEN "${TABLE}".transaction_type = 'completed'
+         THEN "${TABLE}".rental_checkout_amount_local END ;;
+    view_label: "  Metrics"
+    group_label: "Revenue"
+    value_format_name: usd
+  }
+}
+
+# rentals.explore.lkml
+explore: rentals {
+  label: "Rental Analytics"
+
+  join: facilities {
+    relationship: many_to_one
+    fields: [facilities.dimensions_only*]
+    sql_on: ${rentals.facility_sk} = ${facilities.facility_sk} ;;
+  }
+
+  join: reviews {
+    relationship: one_to_many
+    # complete: true → no field restriction
+    sql_on: ${rentals.unique_rental_sk} = ${reviews.unique_rental_sk} ;;
+  }
+}
+```
+
+### Tests
+
+- `test_integration.py` - 14 integration tests
+- `test_explore_adapter.py` - 27 explore tests
+- **Total v2 tests: 96 passing**
+
+### Key Insights from LookML Comparison
+
+1. **Calendar architecture** - Single calendar view per explore is correct; avoids duplicate "Calendar" sections when multiple views extend a base
+2. **Filter embedding** - Baking filters into measure SQL is safer than relying on query-time filters
+3. **Set for field restriction** - Explicit `dimensions_only` set gives more control than `dimensions*`
+4. **view_label hierarchy** - Two-level grouping (view_label + group_label) essential for Looker UX
+
+### Phase 4+ Complete ✅
+
+**Gate passed**: Integration tests verify parity with production LookML patterns
+
+---
+
+## Session 6: TBD
+
+_Continue with CLI integration, benchmarks, or additional features..._

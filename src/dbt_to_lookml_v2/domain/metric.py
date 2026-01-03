@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field, computed_field
 
 from dbt_to_lookml_v2.domain.filter import Filter
 
-
 # =============================================================================
 # Types
 # =============================================================================
@@ -63,7 +62,7 @@ class PopConfig(BaseModel):
     comparisons: list[PopComparison] = Field(default_factory=list)
     outputs: list[PopOutput] = Field(default_factory=list)
 
-    def expand_variants(self, value_format: str | None = None) -> list["MetricVariant"]:
+    def expand_variants(self, value_format: str | None = None) -> list[MetricVariant]:
         """Expand this config into concrete MetricVariant objects."""
         variants = []
         for comparison in self.comparisons:
@@ -142,12 +141,12 @@ class MetricVariant(BaseModel):
             return self.params.suffix
         return ""
 
-    def resolve_name(self, parent: "Metric") -> str:
+    def resolve_name(self, parent: Metric) -> str:
         """Variant name is ALWAYS parent.name + suffix."""
         return f"{parent.name}{self.suffix}"
 
     @classmethod
-    def base(cls) -> "MetricVariant":
+    def base(cls) -> MetricVariant:
         return cls(kind=VariantKind.BASE)
 
     @classmethod
@@ -156,7 +155,7 @@ class MetricVariant(BaseModel):
         comparison: PopComparison,
         output: PopOutput,
         value_format: str | None = None,
-    ) -> "MetricVariant":
+    ) -> MetricVariant:
         return cls(
             kind=VariantKind.POP,
             params=PopParams(comparison=comparison, output=output),
@@ -166,7 +165,7 @@ class MetricVariant(BaseModel):
     @classmethod
     def benchmark(
         cls, slice: str, label: str | None = None, value_format: str | None = None
-    ) -> "MetricVariant":
+    ) -> MetricVariant:
         return cls(
             kind=VariantKind.BENCHMARK,
             params=BenchmarkParams(slice=slice, label=label),

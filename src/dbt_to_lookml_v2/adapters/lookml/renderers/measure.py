@@ -2,14 +2,15 @@
 
 from typing import Any
 
+from dbt_to_lookml_v2.adapters.dialect import Dialect, SqlRenderer
+from dbt_to_lookml_v2.adapters.lookml.renderers.filter import FilterRenderer
+from dbt_to_lookml_v2.adapters.lookml.renderers.labels import apply_group_labels
 from dbt_to_lookml_v2.domain import (
     AggregationType,
     Measure,
     Metric,
     MetricType,
 )
-from dbt_to_lookml_v2.adapters.dialect import Dialect, SqlRenderer
-
 
 # Map AggregationType to LookML measure type
 AGG_TO_LOOKML: dict[AggregationType, str] = {
@@ -39,6 +40,7 @@ class MeasureRenderer:
 
     def __init__(self, dialect: Dialect | None = None) -> None:
         self.sql_renderer = SqlRenderer(dialect)
+        self.filter_renderer = FilterRenderer(dialect)
 
     def render_measure(self, measure: Measure) -> dict[str, Any]:
         """Render a raw measure to LookML."""
@@ -61,7 +63,7 @@ class MeasureRenderer:
             result["value_format_name"] = FORMAT_TO_LOOKML[measure.format]
 
         if measure.group:
-            result["group_label"] = measure.group_parts[0] if measure.group_parts else measure.group
+            apply_group_labels(result, measure.group_parts)
 
         return result
 
@@ -95,11 +97,21 @@ class MeasureRenderer:
         measure = measures.get(metric.measure or "") if metric.measure else None
 
         if measure:
-            # Use measure's aggregation type and expression
+            # Qualify the expression
+            qualified_expr = self._qualify_expr(measure.expr)
+
+            # Wrap with filter if metric has one
+            if metric.filter and metric.filter.conditions:
+                sql_expr = self.filter_renderer.render_case_when(
+                    qualified_expr, metric.filter
+                )
+            else:
+                sql_expr = qualified_expr
+
             result: dict[str, Any] = {
                 "name": metric.name,
                 "type": AGG_TO_LOOKML.get(measure.agg, "sum"),
-                "sql": self._qualify_expr(measure.expr),
+                "sql": sql_expr,
             }
         else:
             # Fallback: reference measure by name
@@ -154,7 +166,7 @@ class MeasureRenderer:
             result["value_format_name"] = FORMAT_TO_LOOKML[metric.format]
 
         if metric.group:
-            result["group_label"] = metric.group_parts[0] if metric.group_parts else metric.group
+            apply_group_labels(result, metric.group_parts)
 
     def _qualify_expr(self, expr: str) -> str:
         """Qualify column references in expression."""
