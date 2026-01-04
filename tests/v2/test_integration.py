@@ -17,21 +17,25 @@ class TestIntegrationWithFixtures:
 
     def test_load_fixtures_directory(self):
         """Test that fixtures load without errors."""
-        models, explores = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
 
         # Should load 3 models: rentals, facilities, reviews
         assert len(models) == 3
         model_names = {m.name for m in models}
         assert model_names == {"rentals", "facilities", "reviews"}
 
-        # Should load 1 explore: rentals
+    def test_explore_configs_from_fact_models(self):
+        """Test creating explore configs from fact model names."""
+        # Explore configuration is now owned by the adapter, not ingestion
+        explores = ExploreGenerator.configs_from_fact_models(["rentals"])
+
         assert len(explores) == 1
         assert explores[0].name == "rentals"
         assert explores[0].fact_model == "rentals"
 
     def test_rentals_model_structure(self):
         """Test rentals fact model is parsed correctly."""
-        models, _ = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
         rentals = next(m for m in models if m.name == "rentals")
 
         # Check entities
@@ -68,7 +72,7 @@ class TestIntegrationWithFixtures:
 
     def test_reviews_model_has_complete_entity(self):
         """Test reviews model has complete: true on rental entity."""
-        models, _ = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
         reviews = next(m for m in models if m.name == "reviews")
 
         # Find the rental foreign entity
@@ -81,7 +85,7 @@ class TestIntegrationWithFixtures:
 
     def test_generate_view_files(self):
         """Test LookML view generation for all models."""
-        models, _ = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
 
         generator = LookMLGenerator()
         files = generator.generate(models)
@@ -100,7 +104,7 @@ class TestIntegrationWithFixtures:
 
     def test_rentals_view_content(self):
         """Test rentals view has expected content."""
-        models, _ = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
         generator = LookMLGenerator()
         files = generator.generate(models)
 
@@ -120,10 +124,13 @@ class TestIntegrationWithFixtures:
 
     def test_generate_explore_files(self):
         """Test explore generation with joins."""
-        models, explores = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
 
         # Build model lookup
         model_dict = {m.name: m for m in models}
+
+        # Create explore configs from fact model names (adapter owns this)
+        explores = ExploreGenerator.configs_from_fact_models(["rentals"])
 
         generator = ExploreGenerator()
         files = generator.generate(explores, model_dict)
@@ -140,9 +147,10 @@ class TestIntegrationWithFixtures:
 
     def test_explore_has_inferred_joins(self):
         """Test that explores have joins inferred from entities."""
-        models, explores = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
         model_dict = {m.name: m for m in models}
 
+        explores = ExploreGenerator.configs_from_fact_models(["rentals"])
         generator = ExploreGenerator()
         files = generator.generate(explores, model_dict)
 
@@ -171,9 +179,10 @@ class TestIntegrationWithFixtures:
 
     def test_explore_calendar_generated(self):
         """Test that calendar view is generated for explores with date selector."""
-        models, explores = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
         model_dict = {m.name: m for m in models}
 
+        explores = ExploreGenerator.configs_from_fact_models(["rentals"])
         generator = ExploreGenerator()
         files = generator.generate(explores, model_dict)
 
@@ -199,7 +208,7 @@ class TestIntegrationWithFixtures:
 
     def test_pop_variants_generated(self):
         """Test that PoP variants are generated for metrics with pop config."""
-        models, _ = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
         rentals = next(m for m in models if m.name == "rentals")
 
         # Find GOV metric which has PoP config
@@ -219,11 +228,14 @@ class TestIntegrationWithFixtures:
 
     def test_full_generation_output(self):
         """Test full generation and print summary."""
-        models, explores = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
         model_dict = {m.name: m for m in models}
 
         view_generator = LookMLGenerator()
         explore_generator = ExploreGenerator()
+
+        # Create explores from fact model names (adapter owns this config)
+        explores = ExploreGenerator.configs_from_fact_models(["rentals"])
 
         view_files = view_generator.generate(models)
         explore_files = explore_generator.generate(explores, model_dict)
@@ -251,11 +263,14 @@ class TestGeneratedLookMLContent:
     @pytest.fixture
     def generated_files(self):
         """Generate all files from fixtures."""
-        models, explores = DomainBuilder.from_directory(FIXTURES_DIR)
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
         model_dict = {m.name: m for m in models}
 
         view_generator = LookMLGenerator()
         explore_generator = ExploreGenerator()
+
+        # Create explores from fact model names (adapter owns this config)
+        explores = ExploreGenerator.configs_from_fact_models(["rentals"])
 
         view_files = view_generator.generate(models)
         explore_files = explore_generator.generate(explores, model_dict)

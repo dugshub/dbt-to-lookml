@@ -1,4 +1,12 @@
-"""Domain layer - semantic primitives and types."""
+"""Domain layer - semantic primitives and types.
+
+This layer contains output-agnostic semantic concepts:
+- Models, entities, dimensions, measures, metrics
+- Filters, time granularity, aggregation types
+
+LookML-specific concepts (explores, joins, field exposure) belong in
+adapters/lookml/types.py, not here.
+"""
 
 from dbt_to_lookml_v2.domain.data_model import ConnectionType, DataModel
 from dbt_to_lookml_v2.domain.dimension import (
@@ -6,14 +14,6 @@ from dbt_to_lookml_v2.domain.dimension import (
     DimensionType,
     TimeGranularity,
     TimezoneVariant,
-)
-from dbt_to_lookml_v2.domain.explore import (
-    ExploreConfig,
-    ExposeLevel,
-    InferredJoin,
-    JoinOverride,
-    JoinRelationship,
-    JoinType,
 )
 from dbt_to_lookml_v2.domain.filter import Filter, FilterCondition, FilterOperator
 from dbt_to_lookml_v2.domain.measure import AggregationType, Measure
@@ -39,13 +39,6 @@ __all__ = [
     "DimensionType",
     "TimeGranularity",
     "TimezoneVariant",
-    # Explore
-    "ExploreConfig",
-    "ExposeLevel",
-    "InferredJoin",
-    "JoinOverride",
-    "JoinRelationship",
-    "JoinType",
     # Filter
     "Filter",
     "FilterCondition",

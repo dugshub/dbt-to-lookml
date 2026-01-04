@@ -1,8 +1,13 @@
-"""Explore domain types for LookML explore generation."""
+"""LookML-specific types for explore generation.
+
+These types represent LookML concepts (joins, explores, field exposure)
+and belong in the adapter layer, not the domain.
+"""
 
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -40,7 +45,7 @@ class JoinOverride(BaseModel):
 
 
 class ExploreConfig(BaseModel):
-    """Explore configuration from YAML."""
+    """Explore configuration - LookML-specific authoring config."""
 
     name: str
     fact_model: str
@@ -77,3 +82,35 @@ class InferredJoin(BaseModel):
         fact_ref = f"${{FACT}}.{self.fact_entity_expr}"
         join_ref = f"${{{self.model}}}.{self.joined_entity_expr}"
         return f"{fact_ref} = {join_ref}"
+
+
+def build_explore_config(data: dict[str, Any]) -> ExploreConfig:
+    """Build ExploreConfig from dict (YAML parsing helper)."""
+    join_overrides = []
+    for jo in data.get("joins", []):
+        override = _build_join_override(jo)
+        join_overrides.append(override)
+
+    return ExploreConfig(
+        name=data["name"],
+        fact_model=data["fact_model"],
+        label=data.get("label"),
+        description=data.get("description"),
+        join_overrides=join_overrides,
+    )
+
+
+def _build_join_override(data: dict[str, Any]) -> JoinOverride:
+    """Build JoinOverride from dict."""
+    expose = None
+    expose_str = data.get("expose")
+    if expose_str:
+        try:
+            expose = ExposeLevel(expose_str)
+        except ValueError:
+            pass
+
+    return JoinOverride(
+        model=data["model"],
+        expose=expose,
+    )

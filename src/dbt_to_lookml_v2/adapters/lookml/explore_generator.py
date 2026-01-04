@@ -10,7 +10,8 @@ import lkml
 from dbt_to_lookml_v2.adapters.dialect import Dialect, get_default_dialect
 from dbt_to_lookml_v2.adapters.lookml.renderers.calendar import CalendarRenderer
 from dbt_to_lookml_v2.adapters.lookml.renderers.explore import ExploreRenderer
-from dbt_to_lookml_v2.domain import ExploreConfig, ProcessedModel
+from dbt_to_lookml_v2.adapters.lookml.types import ExploreConfig, build_explore_config
+from dbt_to_lookml_v2.domain import ProcessedModel
 
 
 class ExploreGenerator:
@@ -162,3 +163,38 @@ class ExploreGenerator:
         """Serialize view dict to LookML string."""
         lookml_dict = {"views": [view]}
         return lkml.dump(lookml_dict)
+
+    @staticmethod
+    def configs_from_fact_models(fact_models: list[str]) -> list[ExploreConfig]:
+        """
+        Create simple ExploreConfigs from a list of fact model names.
+
+        This is the simplest way to generate explores - just specify which
+        models are facts and the system infers joins from entity relationships.
+
+        Args:
+            fact_models: List of model names to use as explore facts
+
+        Returns:
+            List of ExploreConfig with name=fact_model, no overrides
+        """
+        return [
+            ExploreConfig(name=name, fact_model=name)
+            for name in fact_models
+        ]
+
+    @staticmethod
+    def configs_from_yaml(explore_dicts: list[dict[str, Any]]) -> list[ExploreConfig]:
+        """
+        Parse ExploreConfigs from YAML data.
+
+        Use this when you have explore configuration in YAML format
+        with labels, descriptions, or join overrides.
+
+        Args:
+            explore_dicts: List of explore config dicts from YAML
+
+        Returns:
+            List of ExploreConfig
+        """
+        return [build_explore_config(e) for e in explore_dicts]

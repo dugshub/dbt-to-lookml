@@ -4,19 +4,14 @@ import pytest
 import lkml
 
 from dbt_to_lookml_v2.domain import (
+    AggregationType,
     ConnectionType,
     DataModel,
     DateSelectorConfig,
     Dimension,
     DimensionType,
     Entity,
-    ExploreConfig,
-    ExposeLevel,
-    InferredJoin,
-    JoinOverride,
-    JoinRelationship,
     Measure,
-    AggregationType,
     ProcessedModel,
     TimeGranularity,
 )
@@ -25,6 +20,13 @@ from dbt_to_lookml_v2.adapters.lookml import (
     DateOption,
     ExploreGenerator,
     ExploreRenderer,
+)
+from dbt_to_lookml_v2.adapters.lookml.types import (
+    ExploreConfig,
+    ExposeLevel,
+    InferredJoin,
+    JoinOverride,
+    JoinRelationship,
 )
 
 

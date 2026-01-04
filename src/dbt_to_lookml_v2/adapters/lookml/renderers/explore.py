@@ -10,13 +10,13 @@ from typing import Any
 from dbt_to_lookml_v2.adapters.lookml.renderers.calendar import (
     CalendarRenderer,
 )
-from dbt_to_lookml_v2.domain import (
+from dbt_to_lookml_v2.adapters.lookml.types import (
     ExploreConfig,
     ExposeLevel,
     InferredJoin,
     JoinRelationship,
-    ProcessedModel,
 )
+from dbt_to_lookml_v2.domain import ProcessedModel
 
 
 def _smart_title(name: str) -> str:

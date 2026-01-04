@@ -13,10 +13,7 @@ from dbt_to_lookml_v2.domain import (
     Dimension,
     DimensionType,
     Entity,
-    ExploreConfig,
-    ExposeLevel,
     Filter,
-    JoinOverride,
     Measure,
     Metric,
     MetricType,
@@ -40,16 +37,14 @@ class DomainBuilder:
         self._data_models: dict[str, DataModel] = {}
         self._semantic_models: list[dict[str, Any]] = []
         self._metrics: list[dict[str, Any]] = []
-        self._explores: list[dict[str, Any]] = []
 
     @classmethod
-    def from_directory(
-        cls, path: str | Path
-    ) -> tuple[list[ProcessedModel], list[ExploreConfig]]:
+    def from_directory(cls, path: str | Path) -> list[ProcessedModel]:
         """
         Load YAML files from directory and build domain models.
 
-        Returns tuple of (ProcessedModel list, ExploreConfig list).
+        Returns list of ProcessedModel (semantic layer domain objects).
+        Explore configuration is LookML-specific and handled by the adapter.
         """
         builder = cls()
         loader = YamlLoader(path)
@@ -58,19 +53,17 @@ class DomainBuilder:
         for doc in documents:
             builder._collect_from_document(doc)
 
-        return builder.build(), builder.build_explores()
+        return builder.build()
 
     @classmethod
-    def from_dict(
-        cls, data: dict[str, Any]
-    ) -> tuple[list[ProcessedModel], list[ExploreConfig]]:
+    def from_dict(cls, data: dict[str, Any]) -> list[ProcessedModel]:
         """Build domain models from a single dict (for testing)."""
         builder = cls()
         builder._collect_from_document(data)
-        return builder.build(), builder.build_explores()
+        return builder.build()
 
     def _collect_from_document(self, doc: dict[str, Any]) -> None:
-        """Collect data models, semantic models, metrics, and explores."""
+        """Collect data models, semantic models, and metrics from YAML."""
         # Collect data models
         for dm in doc.get("data_models", []):
             data_model = self._build_data_model(dm)
@@ -81,9 +74,7 @@ class DomainBuilder:
 
         # Collect metrics
         self._metrics.extend(doc.get("metrics", []))
-
-        # Collect explores
-        self._explores.extend(doc.get("explores", []))
+        # Note: 'explores' in YAML is LookML-specific config, parsed by adapter
 
     def build(self) -> list[ProcessedModel]:
         """Build all ProcessedModel objects."""
@@ -289,38 +280,3 @@ class DomainBuilder:
                 pass
 
         return PopConfig(comparisons=comparisons, outputs=outputs)
-
-    def build_explores(self) -> list[ExploreConfig]:
-        """Build all ExploreConfig objects."""
-        return [self._build_explore(e) for e in self._explores]
-
-    def _build_explore(self, data: dict[str, Any]) -> ExploreConfig:
-        """Build ExploreConfig from dict."""
-        # Parse join overrides
-        join_overrides = []
-        for jo in data.get("joins", []):
-            override = self._build_join_override(jo)
-            join_overrides.append(override)
-
-        return ExploreConfig(
-            name=data["name"],
-            fact_model=data["fact_model"],
-            label=data.get("label"),
-            description=data.get("description"),
-            join_overrides=join_overrides,
-        )
-
-    def _build_join_override(self, data: dict[str, Any]) -> JoinOverride:
-        """Build JoinOverride from dict."""
-        expose = None
-        expose_str = data.get("expose")
-        if expose_str:
-            try:
-                expose = ExposeLevel(expose_str)
-            except ValueError:
-                pass
-
-        return JoinOverride(
-            model=data["model"],
-            expose=expose,
-        )
