@@ -119,8 +119,8 @@ class DomainBuilder:
         # Build measures
         measures = [self._build_measure(m) for m in data.get("measures", [])]
 
-        # Build metrics (filter to those belonging to this model)
-        model_metrics = self._get_metrics_for_model(name)
+        # Build metrics (filter to those belonging to this model by entity)
+        model_metrics = self._get_metrics_for_model(name, entities)
         metrics = [self._build_metric(m) for m in model_metrics]
 
         # Expand variants for all metrics
@@ -148,11 +148,21 @@ class DomainBuilder:
             meta=data.get("meta", {}),
         )
 
-    def _get_metrics_for_model(self, model_name: str) -> list[dict[str, Any]]:
-        """Get metrics that belong to a model (by entity or explicit reference)."""
-        # For now, return all metrics - in future, filter by entity/model reference
-        # This works for unified files where metrics are co-located with their model
-        return self._metrics
+    def _get_metrics_for_model(
+        self, model_name: str, entities: list[Entity]
+    ) -> list[dict[str, Any]]:
+        """Get metrics that belong to a model (by primary entity reference)."""
+        # Get PRIMARY entity names only - metrics belong to their primary model
+        primary_entity_names = {e.name for e in entities if e.type == "primary"}
+
+        # Filter metrics by entity field matching the model's primary entity
+        matching_metrics = []
+        for metric in self._metrics:
+            metric_entity = metric.get("entity")
+            if metric_entity and metric_entity in primary_entity_names:
+                matching_metrics.append(metric)
+
+        return matching_metrics
 
     def _build_entity(self, data: dict[str, Any]) -> Entity:
         """Build Entity from dict."""
