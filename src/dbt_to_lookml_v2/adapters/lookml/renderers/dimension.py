@@ -79,6 +79,7 @@ class DimensionRenderer:
             "type": "time",
             "sql": self._qualify_expr(dim.effective_expr),
             "timeframes": self._get_timeframes(dim.granularity),
+            "convert_tz": "no",  # Data is UTC, don't convert
         }
 
         if dim.label:
@@ -110,6 +111,7 @@ class DimensionRenderer:
                 "type": "time",
                 "sql": self._qualify_expr(expr),
                 "timeframes": self._get_timeframes(dim.granularity),
+                "convert_tz": "no",  # Data is UTC, don't convert
             }
 
             # Label includes variant
