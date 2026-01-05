@@ -1,0 +1,368 @@
+# Semantic-patterns format: SpotHero Facility Dimension
+# Converted from dbt Semantic Layer format
+
+semantic_models:
+  - name: facility_dimension
+    description: |
+      Consolidated facility dimension semantic model sourced from wide entity table.
+
+      Provides comprehensive facility attributes including:
+      - Core facility attributes (title, type, status, spaces)
+      - Canonical facility details (address, coordinates)
+      - SFDC geography (reporting_market, reporting_region, reporting_neighborhood)
+      - SFDC account hierarchy (operator, parent operator) - source of truth for ownership
+      - Team attribution (account owner, closed by, operations associate)
+
+      Use `sfdc_parent_account_name` as the primary operator dimension for rollups.
+      Use `sfdc_account_name` for regional operator analysis.
+
+    defaults:
+      agg_time_dimension: created_at
+
+    entities:
+      - name: facility
+        type: primary
+        expr: facility_sk
+      - name: canonical_facility
+        type: foreign
+        expr: canonical_facility_sk
+
+    dimensions:
+      # ===== TIME DIMENSIONS =====
+      - name: created_at
+        label: Facility Created
+        description: Timestamp when the facility was first created in the system (primary time dimension for aggregations).
+        type: time
+        granularity: day
+        expr: facility_created_at
+        group: Dates.Facility Created
+        hidden: true
+
+      - name: canonical_facility_created_at
+        label: Canonical Facility Created
+        description: Timestamp when the canonical facility record was first created in the system.
+        type: time
+        granularity: day
+        expr: canonical_facility_created_at
+        group: Dates.Canonical Facility Created
+        hidden: true
+
+      # ===== MILESTONE DATES =====
+      - name: first_rental_date
+        label: First Rental Date
+        description: Date of facility's first rental. Use with New Store filter for same-store analysis.
+        type: time
+        granularity: day
+        expr: first_rental_date
+        group: Milestone Dates.First Activity
+
+      - name: first_on_date
+        label: First On Date
+        description: Date facility first achieved ON status.
+        type: time
+        granularity: day
+        expr: first_on_date
+        group: Milestone Dates.First Activity
+
+      - name: canonical_first_rental_date
+        label: Location First Rental Date
+        description: Earliest first rental across all facilities at this location. Use for location-level new store analysis.
+        type: time
+        granularity: day
+        expr: canonical_first_rental_date
+        group: Milestone Dates.First Activity
+
+      - name: canonical_first_on_date
+        label: Location First On Date
+        description: Earliest first ON date across all facilities at this location.
+        type: time
+        granularity: day
+        expr: canonical_first_on_date
+        group: Milestone Dates.First Activity
+
+      # ===== IDENTIFIERS =====
+      - name: facility_id
+        label: Facility ID
+        description: Natural key identifier for the parking facility.
+        type: categorical
+        expr: facility_id
+        group: Identifiers.Facility
+
+      - name: canonical_facility_id
+        label: Canonical Facility ID
+        description: Canonical identifier grouping related facilities (same physical location with different configurations).
+        type: categorical
+        expr: canonical_facility_id
+        group: Identifiers.Facility
+
+      - name: operator_id
+        label: Operator ID
+        description: Identifier for the facility operator/partner.
+        type: categorical
+        expr: operator_id
+        group: Identifiers.Partner
+
+      - name: facility_external_id
+        label: Facility External ID
+        description: External system identifier for the canonical facility.
+        type: categorical
+        expr: facility_external_id
+        group: Identifiers.Facility
+        hidden: true
+
+      - name: facility_salesforce_id
+        label: Facility Salesforce ID
+        description: Salesforce identifier for the canonical facility.
+        type: categorical
+        expr: facility_salesforce_id
+        group: Identifiers.Facility
+        hidden: true
+
+      # ===== CORE ATTRIBUTES =====
+      - name: facility_title
+        label: Facility Title
+        description: Customer-facing name of the parking facility as displayed in search results and reservations.
+        type: categorical
+        expr: facility_title
+        group: Facility.Identity
+
+      - name: canonical_facility_name
+        label: Canonical Facility Name
+        description: Standardized name for the canonical facility, used for grouping and reporting across related facilities.
+        type: categorical
+        expr: canonical_facility_name
+        group: Facility.Identity
+
+      - name: base_title
+        label: Base Title
+        description: Standardized/canonical name for the facility, used for deduplication and facility grouping.
+        type: categorical
+        expr: facility_title
+        group: Facility.Identity
+        hidden: true
+
+      - name: facility_type
+        label: Facility Type
+        description: Classification of the parking facility (garage, lot, personal_spot, under_el, valet_stand).
+        type: categorical
+        expr: facility_type
+        group: Facility.Type
+
+      - name: facility_status
+        label: Facility Status
+        description: Current operational status of the facility (on_sales_allowed, on_sales_not_allowed, off, archived).
+        type: categorical
+        expr: facility_status
+        group: Facility.Status
+
+      # ===== LOCATION DIMENSIONS =====
+      - name: canonical_street_address
+        label: Street Address
+        description: Canonical street address of the parking facility.
+        type: categorical
+        expr: canonical_street_address
+        group: Geography.Canonical Address
+
+      - name: canonical_city
+        label: City
+        description: City where the parking facility is located.
+        type: categorical
+        expr: canonical_city
+        group: Geography.Canonical Address
+
+      - name: canonical_state
+        label: State
+        description: State/province where the parking facility is located.
+        type: categorical
+        expr: canonical_state
+        group: Geography.Canonical Address
+
+      - name: canonical_zipcode
+        label: Zipcode
+        description: Postal/ZIP code for the parking facility location.
+        type: categorical
+        expr: canonical_zipcode
+        group: Geography.Canonical Address
+
+      - name: location_lat
+        label: Latitude
+        description: Geographic latitude coordinate of the facility location.
+        type: categorical
+        expr: location_lat
+        group: Geography.Coordinates
+
+      - name: location_lon
+        label: Longitude
+        description: Geographic longitude coordinate of the facility location.
+        type: categorical
+        expr: location_lon
+        group: Geography.Coordinates
+
+      # ===== MARKET DIMENSIONS =====
+      - name: spothero_metro_area
+        label: SpotHero Metro Area
+        description: |
+          SpotHero metropolitan area designation for the facility. Represents the broader
+          metro area (e.g., "Chicago", "New York") used for in-app search categorization.
+        type: categorical
+        expr: spothero_metro_area
+        group: Geography.SpotHero Geography
+
+      # ===== SFDC GEOGRAPHY =====
+      - name: reporting_market
+        label: Reporting Market
+        description: Salesforce reporting market for the facility. Primary geographic grouping for business reporting and territory assignment.
+        type: categorical
+        expr: reporting_market
+        group: Geography.Reporting Geography
+
+      - name: reporting_region
+        label: Reporting Region
+        description: Salesforce reporting region (e.g., 'Central', 'Northeast', 'West'). Higher-level geographic grouping above market.
+        type: categorical
+        expr: reporting_region
+        group: Geography.Reporting Geography
+
+      - name: reporting_neighborhood
+        label: Reporting Neighborhood
+        description: Salesforce reporting neighborhood. Sub-market geographic grouping for granular territory analysis.
+        type: categorical
+        expr: reporting_neighborhood
+        group: Geography.Reporting Geography
+
+      # ===== SFDC ACCOUNT HIERARCHY (Source of Truth for Ownership) =====
+      - name: sfdc_account_name
+        label: Operator
+        description: Salesforce account name representing the regional operator (e.g., 'SP+ - Chicago', 'LAZ Parking - NYC'). Use for regional/market-level operator analysis.
+        type: categorical
+        expr: sfdc_account_name
+        group: Operator.Account Hierarchy
+
+      - name: sfdc_parent_account_name
+        label: Parent Operator
+        description: Salesforce parent account name representing the operator brand/company (e.g., 'SP+', 'LAZ Parking'). Primary dimension for operator-level rollups and reporting.
+        type: categorical
+        expr: sfdc_parent_account_name
+        group: Operator.Account Hierarchy
+
+      - name: sfdc_account_type
+        label: Account Type
+        description: Salesforce account type classification (Partnership, Parking Operator Company, Municipality, Direct Business Sales, etc.).
+        type: categorical
+        expr: sfdc_account_type
+        group: Operator.Account Classification
+
+      - name: sfdc_business_type
+        label: Business Type
+        description: Salesforce business type classification (Property Manager, Hospitality, Parking Company, Municipality, etc.).
+        type: categorical
+        expr: sfdc_business_type
+        group: Operator.Account Classification
+
+      # ===== TEAM ATTRIBUTION =====
+      - name: owner_full_name
+        label: Account Owner
+        description: Full name of the Salesforce account owner (Account Executive). Primary owner responsible for the operator relationship.
+        type: categorical
+        expr: owner_full_name
+        group: Team.Account Ownership
+
+      - name: owner_sub_team
+        label: Owner Sub-Team
+        description: "Sub-team of the account owner (e.g., 'National Sales', 'Enterprise'). Note: 'Airport' is remapped to 'National Sales'."
+        type: categorical
+        expr: owner_sub_team
+        group: Team.Account Ownership
+
+      - name: closed_by_full_name
+        label: Closed By
+        description: Full name of the user who closed the Salesforce opportunity for this facility.
+        type: categorical
+        expr: closed_by_full_name
+        group: Team.Deal Attribution
+
+      - name: closed_by_sub_team
+        label: Closed By Sub-Team
+        description: Sub-team of the user who closed the opportunity.
+        type: categorical
+        expr: closed_by_sub_team
+        group: Team.Deal Attribution
+        hidden: true
+
+      - name: assisted_by_full_name
+        label: Assisted By
+        description: Full name of the user who assisted in closing the opportunity. May represent Account Manager (AM) role.
+        type: categorical
+        expr: assisted_by_full_name
+        group: Team.Deal Attribution
+
+      - name: assisted_by_sub_team
+        label: Assisted By Sub-Team
+        description: Sub-team of the user who assisted in closing.
+        type: categorical
+        expr: assisted_by_sub_team
+        group: Team.Deal Attribution
+        hidden: true
+
+      - name: operations_associate_full_name
+        label: Operations Associate
+        description: Full name of the operations associate assigned to support this facility.
+        type: categorical
+        expr: operations_associate_full_name
+        group: Team.Operations
+
+      - name: operations_associate_sub_team
+        label: Ops Associate Sub-Team
+        description: Sub-team of the operations associate.
+        type: categorical
+        expr: operations_associate_sub_team
+        group: Team.Operations
+        hidden: true
+
+      # ===== OPERATIONAL ATTRIBUTES =====
+      - name: is_active
+        label: Is Active
+        description: Flag indicating if the facility is currently accepting reservations (TRUE when status is on_sales_allowed or on_direct_link_only).
+        type: categorical
+        expr: is_active
+        group: Facility.Status
+
+      - name: is_new_store
+        label: Is New Store
+        description: Flag indicating if this is a newly added facility (within the last 90 days of initial setup).
+        type: categorical
+        expr: case when facility_created_at >= dateadd(day, -90, current_date) then true else false end
+        group: Facility.Status
+
+      - name: timezone
+        label: Facility Timezone
+        description: IANA timezone identifier for the facility location (e.g., 'America/Chicago').
+        type: categorical
+        expr: timezone
+        group: Facility.Attributes
+
+      - name: currency_type
+        label: Currency Type
+        description: Currency code for pricing at this facility (e.g., 'USD', 'CAD').
+        type: categorical
+        expr: currency_type
+        group: Facility.Attributes
+
+    measures:
+      - name: parking_spot_count
+        label: Parking Spot Count
+        description: Distinct count of unique parking facilities (by facility_id). Represents the total number of individual parking locations in the network.
+        agg: count_distinct
+        expr: facility_id
+        group: Metrics.Counts
+        hidden: true
+
+metrics:
+  - name: total_parking_spot_count
+    label: Total Parking Spot Count
+    description: Distinct count of all parking facilities (by facility_id) in the network, regardless of activity. For facilities with rentals, use parking_spot_count.
+    type: simple
+    measure: parking_spot_count
+    format: decimal_0
+    group: Facilities.Counts
+    entity: facility

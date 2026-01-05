@@ -1,0 +1,42 @@
+# Semantic-patterns format: SpotHero Time Spine
+# Converted from dbt Semantic Layer format
+
+semantic_models:
+  - name: time_spine
+    description: |
+      Daily time spine for date-based analysis and SCD2 point-in-time joins.
+
+      Use this as the base for explores that need flexible date granularity
+      with point-in-time state from SCD2 dimension tables (e.g., facility_lifecycle).
+
+      Grain: One row per calendar day
+
+      Join Patterns:
+      - SCD2 point-in-time: JOIN dim ON date_day >= valid_from AND (date_day < valid_to OR valid_to IS NULL)
+      - Use with facility_lifecycle for "facility count on each day"
+
+    defaults:
+      agg_time_dimension: date_day
+
+    entities:
+      - name: day_key
+        type: primary
+        expr: date_day
+
+    dimensions:
+      - name: date_day
+        label: Date
+        description: Calendar date for time-based analysis. Use any granularity (day/week/month/quarter/year).
+        type: time
+        granularity: day
+        expr: date_day
+        group: Calendar.Date
+
+    measures:
+      - name: day_count
+        label: Day Count
+        description: Count of days in selection. Useful for averages.
+        agg: count
+        expr: date_day
+        group: Calendar.Counts
+        hidden: true

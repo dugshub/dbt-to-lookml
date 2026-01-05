@@ -1,0 +1,217 @@
+# Semantic-patterns format: SpotHero SFDC Cases
+# Converted from dbt Semantic Layer format
+
+semantic_models:
+  - name: sfdc_cases
+    description: |
+      Salesforce support cases semantic model sourced from sfdc_cases.
+      Case-level data with hero tag classification, supply issue flags, and CX metrics.
+
+    defaults:
+      agg_time_dimension: created_at
+
+    entities:
+      - name: sfdc_case
+        type: primary
+        expr: sfdc_case_sk
+      - name: rental
+        type: foreign
+        expr: unique_rental_sk
+        meta:
+          join_cardinality: many_to_one
+      - name: facility
+        type: foreign
+        expr: facility_sk
+        meta:
+          join_cardinality: many_to_one
+
+    dimensions:
+      # ===== TIME DIMENSIONS =====
+      - name: created_at
+        label: Case Created
+        description: Timestamp when the case was created.
+        type: time
+        granularity: day
+        expr: case_created_at
+        group: Dates.Case Created
+
+      - name: closed_date
+        label: Case Closed Date
+        description: Date when the case was closed.
+        type: time
+        granularity: day
+        expr: closed_date
+        group: Dates.Case Closed
+
+      # ===== CASE ATTRIBUTES =====
+      - name: case_number
+        label: Case Number
+        description: Auto-generated case reference number.
+        type: categorical
+        expr: case_number
+        group: Support Cases.Identifiers
+
+      - name: case_status
+        label: Case Status
+        description: Current case status (New, Working, Closed, etc.).
+        type: categorical
+        expr: case_status
+        group: Support Cases.Status
+
+      - name: case_origin
+        label: Case Origin
+        description: Channel where case originated (Web, Phone, Email).
+        type: categorical
+        expr: case_origin
+        group: Support Cases.Channel
+
+      - name: case_type
+        label: Case Type
+        description: Type classification of the case.
+        type: categorical
+        expr: case_type
+        group: Support Cases.Classification
+
+      - name: case_category
+        label: Case Category
+        description: Custom category classification.
+        type: categorical
+        expr: case_category
+        group: Support Cases.Classification
+
+      - name: is_closed
+        label: Is Closed
+        description: Flag indicating if the case is closed.
+        type: categorical
+        expr: is_closed
+        group: Support Cases.Status
+
+      # ===== HERO TAG ATTRIBUTES =====
+      - name: tag_name
+        label: Tag Name
+        description: Name of the associated hero tag.
+        type: categorical
+        expr: tag_name
+        group: Hero Tags.Tag Details
+
+      - name: hero_tag_category
+        label: Hero Tag Category
+        description: Hero tag category (Facility, User Error, Billing, etc.).
+        type: categorical
+        expr: hero_tag_category
+        group: Hero Tags.Tag Details
+
+      - name: hero_tag_type
+        label: Hero Tag Type
+        description: Hero tag type classification.
+        type: categorical
+        expr: hero_tag_type
+        group: Hero Tags.Tag Details
+
+      - name: full_tag
+        label: Full Tag
+        description: Concatenated full tag (type - category - name).
+        type: categorical
+        expr: full_tag
+        group: Hero Tags.Tag Details
+
+      # ===== CLASSIFICATION FLAGS =====
+      - name: is_supply_issue
+        label: Is Supply Issue
+        description: Flag indicating supply-related issue (SIPP).
+        type: categorical
+        expr: is_supply_issue
+        group: Support Cases.Classification
+
+      - name: is_cx_addressable
+        label: Is CX Addressable
+        description: Flag indicating customer experience addressable issue.
+        type: categorical
+        expr: is_cx_addressable
+        group: Support Cases.Classification
+
+      - name: is_social_contact
+        label: Is Social Contact
+        description: Flag for social media contacts (often filtered out).
+        type: categorical
+        expr: is_social_contact
+        group: Support Cases.Channel
+
+    measures:
+      - name: case_count
+        label: Case Count
+        description: Count of support cases.
+        agg: count_distinct
+        expr: sfdc_case_sk
+        group: Support Cases.Metrics
+        hidden: true
+
+      - name: supply_issue_count
+        label: Supply Issue Count
+        description: Count of supply-related issues (is_supply_issue = true).
+        agg: count_distinct
+        expr: "CASE WHEN is_supply_issue = true THEN sfdc_case_sk END"
+        group: Support Cases.Metrics
+        hidden: true
+
+      - name: cx_addressable_count
+        label: CX Addressable Count
+        description: Count of customer experience addressable issues.
+        agg: count_distinct
+        expr: "CASE WHEN is_cx_addressable = true THEN sfdc_case_sk END"
+        group: Support Cases.Metrics
+        hidden: true
+
+      - name: closed_case_count
+        label: Closed Case Count
+        description: Count of closed cases.
+        agg: count_distinct
+        expr: "CASE WHEN is_closed = true THEN sfdc_case_sk END"
+        group: Support Cases.Metrics
+        hidden: true
+
+metrics:
+  - name: case_count
+    label: Case Count
+    description: Total count of support cases.
+    type: simple
+    measure: case_count
+    format: decimal_0
+    group: Support
+    entity: sfdc_case
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
+
+  - name: supply_issue_count
+    label: Supply Issue Count
+    description: Count of supply-related issues (SIPP).
+    type: simple
+    measure: supply_issue_count
+    format: decimal_0
+    group: Support
+    entity: sfdc_case
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
+
+  - name: cx_addressable_count
+    label: CX Addressable Count
+    description: Count of customer experience addressable issues.
+    type: simple
+    measure: cx_addressable_count
+    format: decimal_0
+    group: Support
+    entity: sfdc_case
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
+
+  - name: closed_case_count
+    label: Closed Case Count
+    description: Count of closed support cases.
+    type: simple
+    measure: closed_case_count
+    format: decimal_0
+    group: Support
+    entity: sfdc_case

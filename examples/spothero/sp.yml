@@ -1,0 +1,25 @@
+# semantic-patterns configuration
+
+input: .
+output: ./lookml
+schema: gold
+
+# Looker model file settings
+model:
+  name: semantic_model
+  connection: database
+
+# Explores (optional - omit for views only)
+# explores:
+#   - fact: rentals
+#   - fact: orders
+#     label: Order Analysis
+
+# Generator options (defaults shown)
+options:
+  dialect: redshift
+  pop_strategy: dynamic
+  date_selector: true
+  convert_tz: false
+  # view_prefix: ""
+  # explore_prefix: ""

@@ -1,0 +1,161 @@
+# Semantic-patterns format: SpotHero Facility Monthly Status
+# Converted from dbt Semantic Layer format
+
+semantic_models:
+  - name: facility_monthly_status
+    description: |
+      Canonical Facility Month-End Snapshots
+
+      Tracks canonical facility ON/OFF status at month end boundaries. Used for
+      portfolio metrics: how many canonical facilities are ON, gained, or lost.
+
+      Grain: one row per canonical_facility x month (deduplicated from facility level)
+
+      Core Metrics:
+      - on_facility_count_eom: Canonical facilities with ON status at month end
+      - gained_eom: Canonical facilities that moved OFF -> ON
+      - lost_eom: Canonical facilities that moved ON -> OFF
+      - net_change_eom: Gained minus lost
+
+      Note: A canonical is ON if ANY of its child facilities is ON. This matches
+      legacy analytics_sandbox.facility__canonical_facility_historical_facts.
+
+    defaults:
+      agg_time_dimension: month_end_date
+
+    entities:
+      - name: facility_monthly_status
+        type: primary
+        expr: "canonical_facility_id::varchar || '__' || month_end_date::varchar"
+
+      - name: facility
+        type: foreign
+        expr: facility_sk
+
+      - name: canonical_facility
+        type: foreign
+        expr: canonical_facility_id
+
+    dimensions:
+      # ===== TIME DIMENSIONS =====
+      - name: month_end_date
+        label: Month End Date
+        description: Last day of the month for this snapshot.
+        type: time
+        granularity: month
+        expr: month_end_date
+        group: Dates.Month End
+
+      # ===== LIFECYCLE STATUS =====
+      - name: canonical_is_on
+        label: Canonical Is On
+        description: True if canonical facility has ON status at month end (any child facility is ON)
+        type: categorical
+        expr: canonical_is_on
+        group: Status History.Status
+
+      - name: is_canonical_gained
+        label: Is Canonical Gained
+        description: True if canonical moved from OFF to ON at this month end
+        type: categorical
+        expr: is_canonical_gained
+        group: Status History.Transition
+
+      - name: is_canonical_lost
+        label: Is Canonical Lost
+        description: True if canonical moved from ON to OFF at this month end
+        type: categorical
+        expr: is_canonical_lost
+        group: Status History.Transition
+
+      # ===== IDENTIFIERS =====
+      - name: canonical_facility_id
+        label: Canonical Facility ID
+        description: Canonical facility identifier
+        type: categorical
+        expr: canonical_facility_id
+        group: Identifiers.Facility
+
+    measures:
+      # ===== LOCATION COUNTS =====
+      - name: on_facility_count_eom
+        label: Live Locations (EOM)
+        description: "Count of canonical locations with ON status at month end. This is the Finance team definition of 'Live Locations' at end of month."
+        agg: count_distinct
+        expr: "CASE WHEN canonical_is_on THEN canonical_facility_id END"
+        group: Metrics.Location Counts
+        hidden: true
+
+      # ===== LOCATION FLOW =====
+      - name: facilities_gained_eom
+        label: Locations Gained (EOM)
+        description: Count of canonical locations that moved from OFF to ON at month end.
+        agg: count_distinct
+        expr: "CASE WHEN is_canonical_gained THEN canonical_facility_id END"
+        group: Metrics.Location Flow
+        hidden: true
+
+      - name: facilities_lost_eom
+        label: Locations Lost (EOM)
+        description: Count of canonical locations that moved from ON to OFF at month end.
+        agg: count_distinct
+        expr: "CASE WHEN is_canonical_lost THEN canonical_facility_id END"
+        group: Metrics.Location Flow
+        hidden: true
+
+      - name: net_change_eom
+        label: Net Location Change (EOM)
+        description: Net change in ON canonical locations at month end (gained - lost).
+        agg: sum
+        expr: "CASE WHEN is_canonical_gained THEN 1 WHEN is_canonical_lost THEN -1 ELSE 0 END"
+        group: Metrics.Location Flow
+        hidden: true
+
+metrics:
+  - name: on_facility_count_eom
+    label: Live Locations (EOM)
+    description: "Count of canonical locations with ON status at month end. This is the Finance team definition of 'Live Locations' at end of month."
+    type: simple
+    measure: on_facility_count_eom
+    format: decimal_0
+    group: Location Counts
+    entity: facility_monthly_status
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
+
+  - name: gained_eom
+    label: Locations Gained (EOM)
+    description: Count of canonical locations that moved from OFF to ON at month end.
+    type: simple
+    measure: facilities_gained_eom
+    format: decimal_0
+    group: Location Flow
+    entity: facility_monthly_status
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
+
+  - name: lost_eom
+    label: Locations Lost (EOM)
+    description: Count of canonical locations that moved from ON to OFF at month end.
+    type: simple
+    measure: facilities_lost_eom
+    format: decimal_0
+    group: Location Flow
+    entity: facility_monthly_status
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
+
+  - name: net_change_eom
+    label: Net Location Change (EOM)
+    description: Net change in ON canonical locations at month end (gained - lost).
+    type: simple
+    measure: net_change_eom
+    format: decimal_0
+    group: Location Flow
+    entity: facility_monthly_status
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]

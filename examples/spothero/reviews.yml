@@ -1,0 +1,198 @@
+# Semantic-patterns format: SpotHero Reviews
+# Converted from dbt Semantic Layer format
+
+semantic_models:
+  - name: reviews
+    description: |
+      Customer review fact semantic model sourced from fct_review.
+      Review-level data with star ratings, prompt sentiment, and category concern flags.
+
+    defaults:
+      agg_time_dimension: created_at
+
+    entities:
+      - name: review
+        type: primary
+        expr: review_id
+      - name: rental
+        type: foreign
+        expr: unique_rental_sk
+        meta:
+          join_cardinality: one_to_one
+      - name: facility
+        type: foreign
+        expr: facility_sk
+
+    dimensions:
+      # ===== TIME DIMENSIONS =====
+      - name: created_at
+        label: Review Created
+        description: Timestamp when the review was submitted.
+        type: time
+        granularity: day
+        expr: review_created_at
+        group: Dates.Review Created
+
+      # ===== IDENTIFIERS =====
+      - name: facility_id
+        label: Facility ID
+        description: Facility being reviewed.
+        type: categorical
+        expr: facility_id
+        group: Identifiers.Facility
+
+      # ===== ATTRIBUTES =====
+      - name: star_rating
+        label: Star Rating
+        description: Customer rating from 1-5 stars.
+        type: categorical
+        expr: star_rating
+        group: Customer Feedback.Rating
+
+      - name: review_status
+        label: Review Status
+        description: Review lifecycle status (submitted, moderated, published).
+        type: categorical
+        expr: review_status
+        group: Customer Feedback.Status
+
+      - name: review_device_source
+        label: Device Source
+        description: Device used to submit review (ios, android, web).
+        type: categorical
+        expr: review_device_source
+        group: Customer Feedback.Device
+
+      # ===== FEEDBACK FLAGS =====
+      - name: has_positive_feedback
+        label: Has Positive Feedback
+        description: Review has at least one positive sentiment prompt.
+        type: categorical
+        expr: has_positive_feedback
+        group: Customer Feedback.Sentiment
+
+      - name: has_negative_feedback
+        label: Has Negative Feedback
+        description: Review has at least one negative sentiment prompt.
+        type: categorical
+        expr: has_negative_feedback
+        group: Customer Feedback.Sentiment
+
+      # ===== CONCERN FLAGS =====
+      - name: has_safety_concern
+        label: Has Safety Concern
+        description: Review mentions safety concerns.
+        type: categorical
+        expr: has_safety_concern
+        group: Customer Feedback.Concerns
+
+      - name: has_value_concern
+        label: Has Value Concern
+        description: Review mentions value/pricing concerns.
+        type: categorical
+        expr: has_value_concern
+        group: Customer Feedback.Concerns
+
+      - name: has_cleanliness_concern
+        label: Has Cleanliness Concern
+        description: Review mentions cleanliness concerns.
+        type: categorical
+        expr: has_cleanliness_concern
+        group: Customer Feedback.Concerns
+
+      - name: has_navigation_concern
+        label: Has Navigation Concern
+        description: Review mentions navigation/wayfinding concerns.
+        type: categorical
+        expr: has_navigation_concern
+        group: Customer Feedback.Concerns
+
+      - name: has_service_concern
+        label: Has Service Concern
+        description: Review mentions service concerns.
+        type: categorical
+        expr: has_service_concern
+        group: Customer Feedback.Concerns
+
+      - name: has_operations_concern
+        label: Has Operations Concern
+        description: Review mentions operational issues.
+        type: categorical
+        expr: has_operations_concern
+        group: Customer Feedback.Concerns
+
+    measures:
+      - name: review_count
+        label: Review Count
+        description: Count of reviews.
+        agg: count
+        expr: review_id
+        group: Reviews.Metrics
+        hidden: true
+
+      - name: average_star_rating
+        label: Average Star Rating
+        description: Average star rating (1-5 scale).
+        agg: average
+        expr: star_rating
+        group: Reviews.Metrics
+        hidden: true
+
+      - name: total_positive_prompts
+        label: Total Positive Prompts
+        description: Sum of positive prompts selected.
+        agg: sum
+        expr: count_positive_prompts
+        group: Reviews.Metrics
+        hidden: true
+
+      - name: total_negative_prompts
+        label: Total Negative Prompts
+        description: Sum of negative prompts selected.
+        agg: sum
+        expr: count_negative_prompts
+        group: Reviews.Metrics
+        hidden: true
+
+metrics:
+  - name: review_count
+    label: Review Count
+    description: Total count of customer reviews.
+    type: simple
+    measure: review_count
+    format: decimal_0
+    group: Ratings and Reviews
+    entity: review
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
+
+  - name: average_star_rating
+    label: Average Star Rating
+    description: Average star rating across reviews (1-5 scale).
+    type: simple
+    measure: average_star_rating
+    format: decimal_2
+    group: Ratings and Reviews
+    entity: review
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
+
+  - name: total_positive_prompts
+    label: Total Positive Prompts
+    description: Sum of positive sentiment prompts selected.
+    type: simple
+    measure: total_positive_prompts
+    format: decimal_0
+    group: Ratings and Reviews
+    entity: review
+
+  - name: total_negative_prompts
+    label: Total Negative Prompts
+    description: Sum of negative sentiment prompts selected.
+    type: simple
+    measure: total_negative_prompts
+    format: decimal_0
+    group: Ratings and Reviews
+    entity: review

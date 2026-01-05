@@ -1,0 +1,361 @@
+# Semantic-patterns format: SpotHero Facility Lifecycle
+# Converted from dbt Semantic Layer format
+
+semantic_models:
+  - name: facility_lifecycle
+    description: |
+      Facility lifecycle dimension (SCD Type 2 pattern).
+
+      Tracks facility state over time with two purposes:
+
+      1. METRICS: Count state transitions
+         - "How many facilities churned this month?"
+         - Filter by duration context (days_off_before_gain >= 30)
+
+      2. DIMENSIONS: Join to other facts for point-in-time state
+         - "GMV from facilities that were ON at time of rental"
+
+      Duration Context (for metric quality):
+      - days_off_before_gain: Distinguish acquisitions (>=30) from reacquisitions (<30)
+      - days_on_before_loss: Distinguish churn (>=30) from blips (<30)
+
+      Query Patterns:
+      - Current state: Filter is_current = true
+      - Historical point-in-time: Filter valid_from <= date AND (valid_to > date OR valid_to IS NULL)
+      - True churn: Filter is_status_lost = true AND days_on_before_loss >= 30
+
+    defaults:
+      agg_time_dimension: valid_from
+
+    entities:
+      - name: facility_lifecycle_transition
+        type: primary
+        expr: transition_sk
+
+      - name: facility
+        type: foreign
+        expr: facility_sk
+
+      - name: canonical_facility
+        type: foreign
+        expr: canonical_facility_id
+
+    dimensions:
+      # ===== TIME DIMENSIONS =====
+      - name: valid_from
+        label: Transition Date
+        description: Date when the facility entered this state
+        type: time
+        granularity: day
+        expr: valid_from
+        group: Dates.Transition
+
+      - name: valid_to
+        label: Valid To
+        description: Date when facility left this state. NULL if current state. Used for point-in-time joins with date spine.
+        type: time
+        granularity: day
+        expr: valid_to
+        group: Dates.Valid To
+
+      # ===== STATUS DIMENSIONS =====
+      - name: is_on
+        label: Is On (Live)
+        description: Facility can transact (status is live_sales or live_limited)
+        type: categorical
+        expr: is_on
+        group: Status History.Status
+
+      - name: is_active
+        label: Is Active
+        description: Facility had rental within 30 days
+        type: categorical
+        expr: is_active
+        group: Status History.Status
+
+      - name: is_on_and_active
+        label: Is Healthy
+        description: Facility is both ON and ACTIVE - the 'healthy facility' metric
+        type: categorical
+        expr: is_on_and_active
+        group: Status History.Status
+
+      - name: facility_status
+        label: Facility Status
+        description: "Detailed status: live_sales, live_limited, building, suspended_*, archived, deleted"
+        type: categorical
+        expr: facility_status
+        group: Status History.Status
+
+      - name: activity_state
+        label: Activity State
+        description: "Activity level: active, inactive_30d, inactive_90d, inactive_365d"
+        type: categorical
+        expr: activity_state
+        group: Status History.Status
+
+      # ===== TRANSITION DIMENSIONS =====
+      - name: is_current
+        label: Is Current State
+        description: "True if this is the facility's current state. IMPORTANT: Filter on this for current-state queries."
+        type: categorical
+        expr: is_current
+        group: Status History.Transition
+
+      - name: days_in_state
+        label: Days in State
+        description: Number of days facility spent in this state period.
+        type: categorical
+        expr: days_in_state
+        group: Status History.Transition
+
+      - name: transition_type
+        label: Transition Type
+        description: "How facility entered this state: initial, gained, lost, status_change, activity_change, activity_decay, state_change"
+        type: categorical
+        expr: transition_type
+        group: Status History.Transition
+
+      - name: is_status_gained
+        label: Is Status Gained
+        description: True if facility transitioned TO on status with this event. Use for flow metrics.
+        type: categorical
+        expr: is_status_gained
+        group: Status History.Transition
+
+      - name: is_status_lost
+        label: Is Status Lost
+        description: True if facility transitioned FROM on status with this event. Use for flow metrics.
+        type: categorical
+        expr: is_status_lost
+        group: Status History.Transition
+
+      # ===== HISTORY DIMENSIONS =====
+      - name: days_off_before_gain
+        label: Days Off Before Gain
+        description: Days facility was OFF before this gain. Use >=30 for true acquisitions, <30 for reacquisitions.
+        type: categorical
+        expr: days_off_before_gain
+        group: Status History.History
+
+      - name: days_on_before_loss
+        label: Days On Before Loss
+        description: Days facility was ON before this loss. Use >=30 for true churn, <30 for blips.
+        type: categorical
+        expr: days_on_before_loss
+        group: Status History.History
+
+      - name: gain_sequence
+        label: Gain Sequence
+        description: Running count of gains for this facility. 1=first acquisition, 2+=re-acquisition.
+        type: categorical
+        expr: gain_sequence
+        group: Status History.History
+
+      - name: loss_sequence
+        label: Loss Sequence
+        description: Running count of losses for this facility. >=3 indicates chronic churner.
+        type: categorical
+        expr: loss_sequence
+        group: Status History.History
+
+      - name: days_since_last_gain
+        label: Days Since Last Gain
+        description: Days since facility's last gain event. >365 indicates long-tenured facility.
+        type: categorical
+        expr: days_since_last_gain
+        group: Status History.History
+
+      - name: days_since_last_loss
+        label: Days Since Last Loss
+        description: Days since facility's last loss event.
+        type: categorical
+        expr: days_since_last_loss
+        group: Status History.History
+
+      # ===== ENTITY IDENTIFIERS =====
+      - name: facility_id
+        label: Facility ID
+        description: Parking facility identifier
+        type: categorical
+        expr: facility_id
+        group: Identifiers.Facility
+
+      - name: canonical_facility_id
+        label: Canonical Facility ID
+        description: Canonical facility identifier for rollup/grouping
+        type: categorical
+        expr: canonical_facility_id
+        group: Identifiers.Facility
+
+    measures:
+      # ===== BASE COUNTS =====
+      - name: transition_count
+        label: Transition Count
+        description: Count of state transitions. Filter by transition_type for gained/lost counts.
+        agg: count
+        expr: "1"
+        group: Metrics.Base Counts
+        hidden: true
+
+      - name: facility_count
+        label: Parking Spot Count
+        description: "Distinct count of parking spots (facilities). WARNING: Without is_current=true filter or timespine join, includes all historical states (inflated)."
+        agg: count_distinct
+        expr: facility_id
+        group: Metrics.Base Counts
+        hidden: true
+
+      - name: canonical_facility_count
+        label: Location Count
+        description: Distinct count of canonical locations.
+        agg: count_distinct
+        expr: canonical_facility_id
+        group: Metrics.Base Counts
+        hidden: true
+
+      # ===== POINT-IN-TIME COUNTS (Parking Spot Level) =====
+      - name: live_facility_count
+        label: Live Parking Spots
+        description: Count of parking spots with ON status (can transact). Use with timespine for point-in-time counts.
+        agg: count_distinct
+        expr: "CASE WHEN is_on THEN facility_id END"
+        group: Metrics.Point-in-Time Counts
+        hidden: true
+
+      - name: healthy_facility_count
+        label: Active Parking Spots
+        description: Count of parking spots both ON and ACTIVE. Use with timespine for point-in-time counts.
+        agg: count_distinct
+        expr: "CASE WHEN is_on_and_active THEN facility_id END"
+        group: Metrics.Point-in-Time Counts
+        hidden: true
+
+      # ===== POINT-IN-TIME COUNTS (Canonical Facility Level) =====
+      - name: live_canonical_facility_count
+        label: Live Locations
+        description: "Count of canonical locations with ON status (can transact). This is the Finance team definition of 'Live Locations'."
+        agg: count_distinct
+        expr: "CASE WHEN is_on THEN canonical_facility_id END"
+        group: Metrics.Point-in-Time Counts
+        hidden: true
+
+      - name: active_canonical_facility_count
+        label: Active Locations
+        description: "Count of canonical locations that are both ON (can transact) and ACTIVE (had rental within 30 days). This is the Revenue team definition of 'Active Locations'."
+        agg: count_distinct
+        expr: "CASE WHEN is_on_and_active THEN canonical_facility_id END"
+        group: Metrics.Point-in-Time Counts
+        hidden: true
+
+      - name: avg_active_location_rate
+        label: Average Active Location Rate
+        description: Average rate of active locations among live locations. Used for Active Locations Rate metric with PoP support.
+        agg: average
+        expr: "CASE WHEN is_on THEN CASE WHEN is_active THEN 1.0 ELSE 0.0 END END"
+        group: Metrics.Point-in-Time Counts
+        hidden: true
+
+      # ===== FLOW COUNTS (Parking Spot Level) =====
+      - name: facilities_gained
+        label: Parking Spots Gained
+        description: Parking spots that transitioned TO on status in period.
+        agg: count_distinct
+        expr: "CASE WHEN is_status_gained THEN facility_id END"
+        group: Metrics.Flow
+        hidden: true
+
+      - name: facilities_lost
+        label: Parking Spots Lost
+        description: Parking spots that transitioned FROM on status in period.
+        agg: count_distinct
+        expr: "CASE WHEN is_status_lost THEN facility_id END"
+        group: Metrics.Flow
+        hidden: true
+
+      # ===== FLOW COUNTS (Location Level) =====
+      - name: canonical_facilities_gained
+        label: Locations Gained
+        description: "Canonical locations that transitioned TO on status in period. Matches legacy 'gained' metric."
+        agg: count_distinct
+        expr: "CASE WHEN is_status_gained THEN canonical_facility_id END"
+        group: Metrics.Flow
+        hidden: true
+
+      - name: canonical_facilities_lost
+        label: Locations Lost
+        description: "Canonical locations that transitioned FROM on status in period. Matches legacy 'lost' metric."
+        agg: count_distinct
+        expr: "CASE WHEN is_status_lost THEN canonical_facility_id END"
+        group: Metrics.Flow
+        hidden: true
+
+      # ===== DURATION =====
+      - name: total_days_in_state
+        label: Total Days in State
+        description: Sum of days facilities spent in their states. Filter by state dimensions for specific states.
+        agg: sum
+        expr: days_in_state
+        group: Metrics.Duration
+        hidden: true
+
+      # ===== EXPERIMENTAL: DURATION-QUALIFIED FLOW COUNTS =====
+      - name: canonical_facilities_acquired
+        label: Locations Acquired
+        description: "[EXPERIMENTAL] True acquisitions: gained after being OFF 30+ days. Excludes reacquisitions/recoveries."
+        agg: count_distinct
+        expr: "CASE WHEN is_status_gained AND days_off_before_gain >= 30 THEN canonical_facility_id END"
+        group: Metrics.Flow Experimental
+        hidden: true
+
+      - name: canonical_facilities_reacquired
+        label: Locations Reacquired
+        description: "[EXPERIMENTAL] Reacquisitions: gained after being OFF <30 days. Represents temporary churn recovery."
+        agg: count_distinct
+        expr: "CASE WHEN is_status_gained AND days_off_before_gain < 30 THEN canonical_facility_id END"
+        group: Metrics.Flow Experimental
+        hidden: true
+
+      - name: canonical_facilities_churned
+        label: Locations Churned
+        description: "[EXPERIMENTAL] True churn: lost after being ON 30+ days. Excludes brief blips."
+        agg: count_distinct
+        expr: "CASE WHEN is_status_lost AND days_on_before_loss >= 30 THEN canonical_facility_id END"
+        group: Metrics.Flow Experimental
+        hidden: true
+
+      - name: canonical_facilities_blipped
+        label: Locations Blipped
+        description: "[EXPERIMENTAL] Brief losses: lost after being ON <30 days. Never truly stable."
+        agg: count_distinct
+        expr: "CASE WHEN is_status_lost AND days_on_before_loss < 30 THEN canonical_facility_id END"
+        group: Metrics.Flow Experimental
+        hidden: true
+
+metrics:
+  # Note: live_canonical_facility_count is hidden (bi_field: false in original)
+  # For canonical facility metrics, use facility_monthly_status model
+
+  - name: active_canonical_facility_count
+    label: Active Locations
+    description: "Count of canonical locations that are both ON (can transact) and ACTIVE (had rental within 30 days). This is the Revenue team definition of 'Active Locations'."
+    type: simple
+    measure: active_canonical_facility_count
+    format: decimal_0
+    group: Location Counts
+    entity: facility_lifecycle_transition
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
+
+  - name: active_locations_rate
+    label: Active Locations Rate
+    description: Percentage of live locations that are actively transacting. Measures portfolio health.
+    type: simple
+    measure: avg_active_location_rate
+    format: percent_1
+    group: Location Counts
+    entity: facility_lifecycle_transition
+    pop:
+      comparisons: [pm, py]
+      outputs: [previous, change, pct_change]
