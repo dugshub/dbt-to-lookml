@@ -40,14 +40,32 @@ class ExploreConfig(BaseModel):
         return self.name or self.fact
 
 
+class ModelConfig(BaseModel):
+    """Looker model file configuration."""
+
+    name: str = "semantic_model"  # Model file name (without .lkml)
+    connection: str = "database"  # Looker connection name
+    label: str | None = None  # Optional model label
+
+    model_config = {"frozen": True}
+
+
 class OptionsConfig(BaseModel):
     """Generator options configuration."""
 
     dialect: Dialect = Dialect.REDSHIFT
     pop_strategy: str = "dynamic"  # "dynamic" or "native"
     date_selector: bool = True
+    convert_tz: bool = False  # Convert time dimensions to UTC
+    view_prefix: str = ""  # Prefix for view names
+    explore_prefix: str = ""  # Prefix for explore names (defaults to view_prefix)
 
     model_config = {"frozen": True}
+
+    @property
+    def effective_explore_prefix(self) -> str:
+        """Get explore prefix, defaulting to view_prefix if not set."""
+        return self.explore_prefix or self.view_prefix
 
     @field_validator("dialect", mode="before")
     @classmethod
@@ -75,6 +93,10 @@ class D2LConfig(BaseModel):
         output: ./lookml
         schema: gold
 
+        model:
+          name: analytics
+          connection: redshift_prod
+
         explores:
           - fact: rentals
           - fact: orders
@@ -84,12 +106,14 @@ class D2LConfig(BaseModel):
           dialect: redshift
           pop_strategy: dynamic
           date_selector: true
+          view_prefix: sm_
     """
 
     input: str
     output: str
     schema_name: str = Field(alias="schema")
 
+    model: ModelConfig = Field(default_factory=ModelConfig)
     explores: list[ExploreConfig] = Field(default_factory=list)
     options: OptionsConfig = Field(default_factory=OptionsConfig)
 

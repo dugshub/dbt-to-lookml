@@ -113,6 +113,33 @@ explores:
         raise click.ClickException(str(e))
 
 
+def _generate_model_file(
+    config: D2LConfig,
+    all_files: dict[str, str],
+    view_prefix: str,
+) -> str:
+    """Generate the .model.lkml file content."""
+    lines = [f'connection: "{config.model.connection}"']
+
+    if config.model.label:
+        lines.append(f'label: "{config.model.label}"')
+
+    lines.append("")
+
+    # Include all view files
+    view_files = sorted(f for f in all_files.keys() if f.endswith(".view.lkml"))
+    for view_file in view_files:
+        lines.append(f'include: "/{view_file}"')
+
+    # Include all explore files
+    explore_files = sorted(f for f in all_files.keys() if f.endswith(".explore.lkml"))
+    for explore_file in explore_files:
+        lines.append(f'include: "/{explore_file}"')
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 def run_build(
     config: D2LConfig,
     dry_run: bool = False,
@@ -134,6 +161,9 @@ def run_build(
     from dbt_to_lookml_v2.adapters.lookml.types import ExploreConfig as LookMLExploreConfig
     from dbt_to_lookml_v2.ingestion import DomainBuilder
 
+    view_prefix = config.options.view_prefix
+    explore_prefix = config.options.effective_explore_prefix
+
     # Parse semantic models
     console.print(f"[blue]Input:[/blue] {config.input_path}")
     builder = DomainBuilder()
@@ -150,7 +180,7 @@ def run_build(
             dims_count = len(model.dimensions)
             console.print(f"    {model.name}: {dims_count} dims, {metrics_count} metrics")
 
-    # Create model lookup
+    # Create model lookup (with prefixed names for explores)
     model_dict = {m.name: m for m in models}
 
     # Generate views
@@ -162,7 +192,6 @@ def run_build(
     for model in models:
         # Override schema from config
         if model.data_model:
-            # Create new data model with schema override
             from dbt_to_lookml_v2.domain import DataModel
             model.data_model = DataModel(
                 name=model.data_model.name,
@@ -172,6 +201,14 @@ def run_build(
             )
 
         files = generator.generate_model(model)
+
+        # Apply view prefix to filenames
+        if view_prefix:
+            files = {
+                f"{view_prefix}{filename}": content
+                for filename, content in files.items()
+            }
+
         all_files.update(files)
 
     console.print(f"  Generated {len(all_files)} view files")
@@ -180,7 +217,7 @@ def run_build(
     if config.explores:
         explore_configs = [
             LookMLExploreConfig(
-                name=e.effective_name,
+                name=f"{explore_prefix}{e.effective_name}" if explore_prefix else e.effective_name,
                 fact_model=e.fact,
                 label=e.label,
                 description=e.description,
@@ -190,9 +227,16 @@ def run_build(
 
         explore_gen = ExploreGenerator(dialect=config.options.dialect)
         explore_files = explore_gen.generate(explore_configs, model_dict)
-        all_files.update(explore_files)
 
+        # Note: explore prefix is already in the explore name, so filenames are correct
+        all_files.update(explore_files)
         console.print(f"  Generated {len(explore_files)} explore files")
+
+    # Generate model file
+    model_content = _generate_model_file(config, all_files, view_prefix)
+    model_filename = f"{config.model.name}.model.lkml"
+    all_files[model_filename] = model_content
+    console.print(f"  Generated model file: {model_filename}")
 
     # Write files
     output_path = config.output_path
@@ -233,6 +277,11 @@ input: ./semantic_models
 output: ./lookml
 schema: gold
 
+# Looker model file settings
+model:
+  name: semantic_model
+  connection: database
+
 # Explores (optional - omit for views only)
 # explores:
 #   - fact: rentals
@@ -244,6 +293,9 @@ options:
   dialect: redshift
   pop_strategy: dynamic
   date_selector: true
+  convert_tz: false
+  # view_prefix: ""
+  # explore_prefix: ""
 """
 
     config_path.write_text(template, encoding="utf-8")
