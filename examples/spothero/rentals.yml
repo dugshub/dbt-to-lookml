@@ -1,0 +1,333 @@
+# Semantic-patterns format: SpotHero Rentals
+# Converted from dbt Semantic Layer format
+
+semantic_models:
+  - name: rentals
+    description: |
+      Consolidated rental semantic model for comprehensive rental analytics.
+      Combines fact data, segmentation, and attributes.
+
+    defaults:
+      agg_time_dimension: created_at
+
+    entities:
+      - name: rental
+        type: primary
+        expr: unique_rental_sk
+        label: Reservation
+      - name: facility
+        type: foreign
+        expr: facility_sk
+      - name: canonical_facility
+        type: foreign
+        expr: canonical_facility_sk
+      - name: search
+        type: foreign
+        expr: search_sk
+      - name: session
+        type: foreign
+        expr: session_sk
+
+    dimensions:
+      # ===== TIME DIMENSIONS =====
+      - name: created_at
+        label: Rental Created
+        description: Timestamp when the rental was created
+        type: time
+        granularity: day
+        expr: rental_created_at_utc
+        group: Dates
+        meta:
+          date_selector: true
+
+      - name: starts_at
+        label: Rental Start
+        description: Timestamp when the parking period begins
+        type: time
+        granularity: hour
+        expr: rental_starts_at_utc
+        group: Dates
+        meta:
+          date_selector: true
+
+      - name: ends_at
+        label: Rental End
+        description: Timestamp when the parking period ends
+        type: time
+        granularity: hour
+        expr: rental_ends_at_utc
+        group: Dates
+
+      # ===== IDENTIFIERS =====
+      - name: rental_id
+        label: Rental ID
+        description: Natural key identifier for the rental transaction
+        type: categorical
+        expr: rental_id
+        group: Identifiers.Rental
+
+      - name: facility_id
+        label: Facility ID
+        description: Natural key identifier for the parking facility
+        type: categorical
+        expr: facility_id
+        group: Identifiers.Facility
+
+      - name: canonical_facility_id
+        label: Canonical Facility ID
+        description: Canonical facility identifier for rollups
+        type: categorical
+        expr: canonical_facility_id
+        group: Identifiers.Facility
+
+      - name: renter_id
+        label: Renter ID
+        description: Natural key identifier for the customer
+        type: categorical
+        expr: renter_id
+        group: Identifiers.Customer
+
+      # ===== STATUS DIMENSIONS =====
+      - name: reservation_status
+        label: Reservation Status
+        description: Rental reservation lifecycle status
+        type: categorical
+        expr: rental_reservation_status
+        group: Reservation.Status
+
+      - name: payment_status
+        label: Payment Status
+        description: Rental payment status category
+        type: categorical
+        expr: rental_payment_status
+        group: Reservation.Status
+
+      - name: transaction_type
+        label: Rental Order Status
+        description: Order fulfillment status - use 'completed' for metrics
+        type: categorical
+        expr: rental_event_type
+        group: Reservation.Status
+
+      # ===== SEGMENTATION DIMENSIONS =====
+      - name: is_monthly_rental
+        label: Is Monthly Rental
+        description: Boolean for monthly pricing type
+        type: categorical
+        expr: is_monthly_rental
+        group: Reservation.Segment
+
+      - name: is_event_rental
+        label: Is Event Rental
+        description: Boolean for event-associated rentals
+        type: categorical
+        expr: is_event_rental
+        group: Reservation.Segment
+
+      - name: is_airport_rental
+        label: Is Airport Rental
+        description: Boolean for airport facility rentals
+        type: categorical
+        expr: is_airport_rental
+        group: Reservation.Segment
+
+      - name: rental_segment_rollup
+        label: Primary Rental Segment
+        description: Hierarchical rental categorization (Monthly > Event > Airport > Transient)
+        type: categorical
+        expr: rental_segment_rollup
+        group: Reservation.Segment
+
+      - name: rental_segment
+        label: Rental Segment
+        description: Granular rental segment categorization
+        type: categorical
+        expr: rental_segment
+        group: Reservation.Segment
+
+      # ===== CHANNEL DIMENSIONS =====
+      - name: payment_type
+        label: Payment Type
+        description: Payment method used for the rental
+        type: categorical
+        expr: payment_type_title
+        group: Reservation.Payment
+
+      - name: rental_source
+        label: Rental Source
+        description: Channel where the rental was booked
+        type: categorical
+        expr: rental_source_title
+        group: Reservation.Channel
+
+      - name: source_device_category
+        label: Source Device Category
+        description: Device category (Desktop, Mobile, Tablet)
+        type: categorical
+        expr: rental_source_device_category
+        group: Reservation.Channel
+
+    measures:
+      # ===== REVENUE MEASURES =====
+      - name: checkout_amount
+        label: Checkout Amount
+        description: Sum of rental checkout amounts
+        agg: sum
+        expr: rental_checkout_amount_local
+        group: Rentals.Revenue
+        hidden: true
+
+      - name: display_amount
+        label: Display Amount
+        description: Checkout minus SpotHero fees (flows to operators)
+        agg: sum
+        expr: rental_checkout_amount_local - coalesce(total_spothero_fee_amount, 0)
+        group: Rentals.Revenue
+        hidden: true
+
+      - name: avg_checkout_amount
+        label: Average Checkout Amount
+        agg: average
+        expr: rental_checkout_amount_local
+        group: Rentals.Revenue
+        hidden: true
+
+      - name: avg_display_amount
+        label: Average Display Amount
+        agg: average
+        expr: rental_checkout_amount_local - coalesce(total_spothero_fee_amount, 0)
+        group: Rentals.Revenue
+        hidden: true
+
+      # ===== COUNT MEASURES =====
+      - name: rental_count
+        label: Rental Count
+        agg: count_distinct
+        expr: unique_rental_sk
+        group: Rentals.Counts
+        hidden: true
+
+      - name: renters_with_rentals
+        label: Renters with Rentals
+        agg: count_distinct
+        expr: renter_id
+        group: Customers.Counts
+        hidden: true
+
+      - name: facilities_with_rentals
+        label: Facilities with Rentals
+        agg: count_distinct
+        expr: facility_id
+        group: Facilities.Counts
+        hidden: true
+
+      # ===== DURATION MEASURES =====
+      - name: rental_hours
+        label: Rental Hours
+        agg: sum
+        expr: rental_duration_minutes / 60.0
+        group: Rentals.Duration
+        hidden: true
+
+metrics:
+  - name: gov
+    label: Gross Order Value (GOV)
+    description: Total revenue including SpotHero fees from completed rentals
+    type: simple
+    measure: checkout_amount
+    format: usd
+    group: Revenue
+    entity: rental
+    filter:
+      transaction_type: completed
+    pop:
+      comparisons: [py, pm]
+      outputs: [previous, change, pct_change]
+
+  - name: gmv
+    label: Gross Merchandise Value (GMV)
+    description: Total revenue excluding SpotHero fees (display price)
+    type: simple
+    measure: display_amount
+    format: usd
+    group: Revenue
+    entity: rental
+    filter:
+      transaction_type: completed
+    pop:
+      comparisons: [py, pm]
+      outputs: [previous, change, pct_change]
+
+  - name: aov
+    label: Average Order Value (AOV)
+    description: Average checkout amount per completed rental
+    type: simple
+    measure: avg_checkout_amount
+    format: usd
+    group: Revenue
+    entity: rental
+    filter:
+      transaction_type: completed
+    pop:
+      comparisons: [py, pm]
+      outputs: [previous, change, pct_change]
+
+  - name: rental_count
+    label: Rental Count
+    description: Count of completed rental transactions
+    type: simple
+    measure: rental_count
+    format: decimal_0
+    group: Counts
+    entity: rental
+    filter:
+      transaction_type: completed
+    pop:
+      comparisons: [py, pm]
+      outputs: [previous, change, pct_change]
+
+  - name: renter_count
+    label: Renter Count
+    description: Distinct count of renters with completed rentals
+    type: simple
+    measure: renters_with_rentals
+    format: decimal_0
+    group: Counts
+    entity: rental
+    filter:
+      transaction_type: completed
+    pop:
+      comparisons: [py, pm]
+      outputs: [previous, change, pct_change]
+
+  - name: transacting_facility_count
+    label: Transacting Facility Count
+    description: Distinct count of facilities with completed rentals
+    type: simple
+    measure: facilities_with_rentals
+    format: decimal_0
+    group: Counts
+    entity: rental
+    filter:
+      transaction_type: completed
+
+  - name: total_rental_hours
+    label: Total Rental Hours
+    description: Sum of rental duration in hours
+    type: simple
+    measure: rental_hours
+    format: decimal_1
+    group: Duration
+    entity: rental
+    filter:
+      transaction_type: completed
+
+  - name: average_rental_hours
+    label: Average Rental Duration
+    description: Average rental duration (total hours / rental count)
+    type: derived
+    expr: total_hours / NULLIF(rentals, 0)
+    metrics: [total_rental_hours, rental_count]
+    format: decimal_1
+    group: Duration
+    entity: rental

@@ -75,3 +75,6 @@ uv.lock
 # Claude Code
 .claude/
 .mcp.json
+
+# Cloned repos for testing
+spothero-dbt-silver/
