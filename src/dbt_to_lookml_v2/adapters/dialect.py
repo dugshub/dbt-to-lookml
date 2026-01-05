@@ -124,3 +124,38 @@ class SqlRenderer:
             else:
                 formatted.append(str(v))
         return f"({', '.join(formatted)})"
+
+    def dateadd(self, period: str, amount: int, date_expr: str) -> str:
+        """
+        Generate dialect-specific DATEADD expression.
+
+        Args:
+            period: Time period (year, month, quarter, week, day)
+            amount: Number of periods to add (negative for subtraction)
+            date_expr: The date expression to offset
+
+        Returns:
+            Dialect-appropriate date arithmetic SQL
+        """
+        if self.dialect in (Dialect.REDSHIFT, Dialect.SNOWFLAKE):
+            # DATEADD(period, amount, date)
+            return f"DATEADD({period}, {amount}, {date_expr})"
+
+        elif self.dialect == Dialect.BIGQUERY:
+            # DATE_ADD(date, INTERVAL amount period)
+            return f"DATE_ADD({date_expr}, INTERVAL {amount} {period.upper()})"
+
+        elif self.dialect in (Dialect.POSTGRES, Dialect.DUCKDB):
+            # date + INTERVAL 'amount period'
+            if amount >= 0:
+                return f"{date_expr} + INTERVAL '{amount} {period}'"
+            else:
+                return f"{date_expr} - INTERVAL '{abs(amount)} {period}'"
+
+        elif self.dialect == Dialect.STARBURST:
+            # date_add('period', amount, date)
+            return f"date_add('{period}', {amount}, {date_expr})"
+
+        else:
+            # Fallback to Redshift syntax
+            return f"DATEADD({period}, {amount}, {date_expr})"

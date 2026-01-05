@@ -8,7 +8,10 @@ from typing import Any
 import lkml
 
 from dbt_to_lookml_v2.adapters.dialect import Dialect, get_default_dialect
-from dbt_to_lookml_v2.adapters.lookml.renderers.calendar import CalendarRenderer
+from dbt_to_lookml_v2.adapters.lookml.renderers.calendar import (
+    CalendarRenderer,
+    PopCalendarConfig,
+)
 from dbt_to_lookml_v2.adapters.lookml.renderers.explore import ExploreRenderer
 from dbt_to_lookml_v2.adapters.lookml.types import ExploreConfig, build_explore_config
 from dbt_to_lookml_v2.domain import ProcessedModel
@@ -25,7 +28,7 @@ class ExploreGenerator:
 
     def __init__(self, dialect: Dialect | None = None) -> None:
         self.dialect = dialect or get_default_dialect()
-        self.calendar_renderer = CalendarRenderer()
+        self.calendar_renderer = CalendarRenderer(self.dialect)
         self.explore_renderer = ExploreRenderer(self.calendar_renderer)
 
     def generate(
@@ -80,8 +83,12 @@ class ExploreGenerator:
             fact_model, joined_models
         )
         if date_options:
+            # Detect PoP metrics to enable calendar PoP infrastructure
+            all_explore_models = [fact_model] + joined_models
+            pop_config = PopCalendarConfig.from_models(all_explore_models)
+
             calendar_dict = self.calendar_renderer.render(
-                explore_config.name, date_options
+                explore_config.name, date_options, pop_config
             )
             if calendar_dict:
                 calendar_content = self._serialize_view(calendar_dict)
