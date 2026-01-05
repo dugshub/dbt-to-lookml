@@ -164,12 +164,16 @@ class ExploreGenerator:
     def _serialize_explore(self, explore: dict[str, Any]) -> str:
         """Serialize explore dict to LookML string."""
         lookml_dict = {"explores": [explore]}
-        return lkml.dump(lookml_dict)
+        result = lkml.dump(lookml_dict)
+        assert result is not None
+        return result
 
     def _serialize_view(self, view: dict[str, Any]) -> str:
         """Serialize view dict to LookML string."""
         lookml_dict = {"views": [view]}
-        return lkml.dump(lookml_dict)
+        result = lkml.dump(lookml_dict)
+        assert result is not None
+        return result
 
     @staticmethod
     def configs_from_fact_models(fact_models: list[str]) -> list[ExploreConfig]:

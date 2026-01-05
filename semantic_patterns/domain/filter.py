@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Any, Union
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -27,7 +27,7 @@ class FilterCondition(BaseModel):
 
     field: str
     operator: FilterOperator
-    value: Union[str, int, float, bool, list[Any]]
+    value: str | int | float | bool | list[Any]
 
     # NOTE: SQL generation is handled by adapters (dialect-specific)
     # See adapters/lookml/filter_renderer.py (future)
@@ -109,7 +109,7 @@ class Filter(BaseModel):
         return None
 
     @staticmethod
-    def _parse_value(value: str) -> Union[str, int, float]:
+    def _parse_value(value: str) -> str | int | float:
         """Parse a string value to appropriate type."""
         # Try int
         try:

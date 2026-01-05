@@ -79,7 +79,8 @@ class OptionsConfig(BaseModel):
             except ValueError:
                 valid = [d.value for d in Dialect]
                 raise ValueError(f"Invalid dialect '{v}'. Valid: {valid}")
-        return v
+        # If not Dialect or str, try to convert - will fail if invalid
+        return Dialect(v)
 
 
 class SPConfig(BaseModel):
@@ -128,13 +129,13 @@ class SPConfig(BaseModel):
         return Path(self.output)
 
     @classmethod
-    def from_yaml(cls, content: str) -> "SPConfig":
+    def from_yaml(cls, content: str) -> SPConfig:
         """Parse config from YAML string."""
         data = yaml.safe_load(content)
         return cls.model_validate(data)
 
     @classmethod
-    def from_file(cls, path: Path | str) -> "SPConfig":
+    def from_file(cls, path: Path | str) -> SPConfig:
         """Load config from a YAML file."""
         path = Path(path)
         content = path.read_text(encoding="utf-8")

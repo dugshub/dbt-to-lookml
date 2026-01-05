@@ -2,7 +2,7 @@
 
 Uses a strategy pattern to allow swapping PoP implementations:
 - LookerNativePopStrategy: Uses Looker's native period_over_period type
-- DynamicFilteredPopStrategy: Uses filtered measures with user-selectable comparison period
+- DynamicFilteredPopStrategy: Uses filtered measures with user-selectable period
 
 The dynamic strategy generates fewer measures (3 per metric vs N*M with native)
 and gives users runtime control over the comparison period.
@@ -169,7 +169,7 @@ class DynamicFilteredPopStrategy:
     - {metric}_pct_change: Percent change
 
     Requires:
-    - calendar_view_name: The explore calendar view name (e.g., "rentals_explore_calendar")
+    - calendar_view_name: The explore calendar view name
     - The calendar view must have `is_comparison_period` dimension
     """
 
@@ -178,7 +178,7 @@ class DynamicFilteredPopStrategy:
         Initialize with the calendar view name for filter references.
 
         Args:
-            calendar_view_name: Name of the calendar view (e.g., "rentals_explore_calendar")
+            calendar_view_name: Name of the calendar view
         """
         self.calendar_view_name = calendar_view_name
         self._rendered_outputs: dict[str, set[PopOutput]] = {}
@@ -252,7 +252,7 @@ class DynamicFilteredPopStrategy:
             "name": f"{metric.name}_prior",
             "type": "sum",  # TODO: inherit from base metric's aggregation
             "label": f"{base_label} (PoP)",
-            "description": f"{base_label} for the comparison period selected in Calendar",
+            "description": f"{base_label} for the selected comparison period",
             "filters": [{
                 "field": f"{self.calendar_view_name}.is_comparison_period",
                 "value": "yes",
@@ -297,12 +297,14 @@ class DynamicFilteredPopStrategy:
         """Render the _pct_change measure."""
         base_label = metric.label or metric.name.replace("_", " ").title()
 
+        prior = f"${{{metric.name}_prior}}"
+        current = f"${{{metric.name}}}"
         result: dict[str, Any] = {
             "name": f"{metric.name}_pct_change",
             "type": "number",
             "label": f"{base_label} % Change",
-            "description": f"Percent change from prior period",
-            "sql": f"(${{{metric.name}}} - ${{{metric.name}_prior}}) / NULLIF(${{{metric.name}_prior}}, 0)",
+            "description": "Percent change from prior period",
+            "sql": f"({current} - {prior}) / NULLIF({prior}, 0)",
             "value_format_name": "percent_1",
         }
 

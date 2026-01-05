@@ -11,7 +11,7 @@ This file provides guidance to Claude Code when working with this repository.
 ### Package Structure
 
 ```
-src/semantic_patterns/
+semantic_patterns/
 ├── domain/              # Core domain models (Dimension, Measure, Metric, Model)
 ├── ingestion/           # YAML loading and model building
 ├── adapters/            # Output adapters (LookML, future: Cube.js, etc.)
@@ -33,18 +33,19 @@ LookMLGenerator → Dict[filename, content] → .lkml files
 
 ```bash
 # Testing
-uv run pytest tests/v2/                    # Run all tests
-uv run pytest tests/v2/ -v                 # Verbose output
-uv run pytest tests/v2/test_domain.py      # Run specific test file
+uv run pytest tests/                    # Run all tests
+uv run pytest tests/ -v                 # Verbose output
+uv run pytest tests/test_domain.py      # Run specific test file
 
 # Code Quality
-uv run ruff check src/                     # Linting
-uv run ruff format src/                    # Auto-format
-uv run mypy src/semantic_patterns/         # Type checking
+uv run ruff check semantic_patterns/    # Linting
+uv run ruff format semantic_patterns/   # Auto-format
+uv run mypy semantic_patterns/          # Type checking
 
 # CLI
-sp generate -i semantic_models/ -o output/
-semantic-patterns generate -i semantic_models/ -o output/
+sp build                                # Build from sp.yml in current dir
+sp build --config ./configs/sp.yml      # Use specific config
+sp build --dry-run                      # Preview without writing
 ```
 
 ## Code Style

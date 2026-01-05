@@ -7,7 +7,7 @@ Includes MetricVariant which is owned by Metric (not a separate entity).
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Union
+from typing import Any
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -130,7 +130,7 @@ class MetricVariant(BaseModel):
     """
 
     kind: VariantKind
-    params: Union[PopParams, BenchmarkParams, None] = None
+    params: PopParams | BenchmarkParams | None = None
     value_format: str | None = None
 
     @property
@@ -228,17 +228,17 @@ class Metric(BaseModel):
     # Metadata
     meta: dict[str, Any] = Field(default_factory=dict)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def variant_count(self) -> int:
         return len(self.variants)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def has_pop(self) -> bool:
         return any(v.kind == VariantKind.POP for v in self.variants)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def has_benchmark(self) -> bool:
         return any(v.kind == VariantKind.BENCHMARK for v in self.variants)

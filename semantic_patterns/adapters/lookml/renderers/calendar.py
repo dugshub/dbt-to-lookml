@@ -42,7 +42,7 @@ class PopCalendarConfig:
     default_comparison: str = "year"  # Default to prior year
 
     @classmethod
-    def from_models(cls, models: list[ProcessedModel]) -> "PopCalendarConfig":
+    def from_models(cls, models: list[ProcessedModel]) -> PopCalendarConfig:
         """Build PoP config by scanning models for PoP-enabled metrics."""
         all_comparisons: set[PopComparison] = set()
 
@@ -52,7 +52,8 @@ class PopCalendarConfig:
                     all_comparisons.update(metric.pop.comparisons)
 
         if all_comparisons:
-            return cls(enabled=True, comparisons=sorted(all_comparisons, key=lambda c: c.value))
+            sorted_comps = sorted(all_comparisons, key=lambda c: c.value)
+            return cls(enabled=True, comparisons=sorted_comps)
         return cls(enabled=False)
 
 
@@ -195,7 +196,7 @@ class CalendarRenderer:
             "name": "date_range",
             "type": "date",
             "label": "Date Range",
-            "description": "Select date range for analysis. PoP comparisons offset from this range.",
+            "description": "Select date range. PoP comparisons offset from this.",
             "view_label": " Calendar",
         }
 
@@ -221,7 +222,9 @@ class CalendarRenderer:
         date_case_expr = self._build_date_case_statement(date_options)
 
         # is_selected_period - TRUE if date falls within selected date_range
-        is_selected_sql = f"{{% condition date_range %}} {date_case_expr} {{% endcondition %}}"
+        is_selected_sql = (
+            f"{{% condition date_range %}} {date_case_expr} {{% endcondition %}}"
+        )
 
         # is_comparison_period - TRUE if date falls within the offset period
         # Uses dialect-specific DATEADD to shift the date forward by comparison period
@@ -264,7 +267,8 @@ class CalendarRenderer:
 
         elif self.dialect == Dialect.BIGQUERY:
             # BigQuery needs uppercase period and different syntax
-            return f"DATE_ADD({date_expr}, INTERVAL 1 {{% parameter comparison_period %}})"
+            period = "{% parameter comparison_period %}"
+            return f"DATE_ADD({date_expr}, INTERVAL 1 {period})"
 
         elif self.dialect in (Dialect.POSTGRES, Dialect.DUCKDB):
             return f"{date_expr} + INTERVAL '1 ' || {{% parameter comparison_period %}}"

@@ -49,7 +49,7 @@ class YamlLoader:
 
     def _find_yaml_files(self) -> list[Path]:
         """Find all .yml and .yaml files recursively."""
-        files = []
+        files: list[Path] = []
         for pattern in ["**/*.yml", "**/*.yaml"]:
             files.extend(self.base_path.glob(pattern))
         # Sort for deterministic ordering
@@ -67,7 +67,9 @@ class YamlLoader:
             return {}
 
         if not isinstance(content, dict):
-            raise ValueError(f"Expected dict at root of {file_path}, got {type(content)}")
+            raise ValueError(
+                f"Expected dict at root of {file_path}, got {type(content)}"
+            )
 
         return content
 

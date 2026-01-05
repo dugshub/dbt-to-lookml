@@ -27,7 +27,7 @@ class DataModel(BaseModel):
     table: str
     connection: ConnectionType
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def fully_qualified(self) -> str:
         """Return fully qualified table name."""

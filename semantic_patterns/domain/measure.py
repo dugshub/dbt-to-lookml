@@ -39,7 +39,7 @@ class Measure(BaseModel):
     hidden: bool = Field(False, description="Hide from BI users")
 
     # Metadata
-    meta: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    meta: dict[str, Any] = Field(default_factory=dict, description="Extra metadata")
 
     @property
     def group_parts(self) -> list[str]:

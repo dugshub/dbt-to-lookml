@@ -64,7 +64,7 @@ class ProcessedModel(BaseModel):
     # Metadata
     meta: dict[str, Any] = Field(default_factory=dict)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def primary_entity(self) -> Entity | None:
         for entity in self.entities:
@@ -72,7 +72,7 @@ class ProcessedModel(BaseModel):
                 return entity
         return None
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def foreign_entities(self) -> list[Entity]:
         return [e for e in self.entities if e.type == "foreign"]
@@ -113,7 +113,7 @@ class ProcessedModel(BaseModel):
                 return dim
         return None
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def total_variant_count(self) -> int:
         return sum(m.variant_count for m in self.metrics)

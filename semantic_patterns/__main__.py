@@ -67,13 +67,14 @@ def build(config: Path | None, dry_run: bool, verbose: bool) -> None:
         sp build --config ./configs/sp.yml
     """
     # Load config
+    config_path: Path
     try:
         if config:
             cfg = load_config(config)
             config_path = config
         else:
-            config_path = find_config()
-            if config_path is None:
+            found_config = find_config()
+            if found_config is None:
                 console.print("[red]No sp.yml found[/red]")
                 console.print("\nCreate a sp.yml file:")
                 console.print("""
@@ -85,6 +86,7 @@ explores:
   - fact: rentals[/dim]
 """)
                 raise click.ClickException("Config file not found")
+            config_path = found_config
             cfg = load_config(config_path)
     except Exception as e:
         console.print(f"[red]Error loading config:[/red] {e}")
@@ -158,7 +160,9 @@ def run_build(
     """
     from semantic_patterns.adapters.lookml import LookMLGenerator
     from semantic_patterns.adapters.lookml.explore_generator import ExploreGenerator
-    from semantic_patterns.adapters.lookml.types import ExploreConfig as LookMLExploreConfig
+    from semantic_patterns.adapters.lookml.types import (
+        ExploreConfig as LookMLExploreConfig,
+    )
     from semantic_patterns.ingestion import DomainBuilder
 
     view_prefix = config.options.view_prefix
@@ -178,7 +182,9 @@ def run_build(
         for model in models:
             metrics_count = len(model.metrics)
             dims_count = len(model.dimensions)
-            console.print(f"    {model.name}: {dims_count} dims, {metrics_count} metrics")
+            console.print(
+                f"    {model.name}: {dims_count} dims, {metrics_count} metrics"
+            )
 
     # Create model lookup (with prefixed names for explores)
     model_dict = {m.name: m for m in models}
@@ -217,7 +223,11 @@ def run_build(
     if config.explores:
         explore_configs = [
             LookMLExploreConfig(
-                name=f"{explore_prefix}{e.effective_name}" if explore_prefix else e.effective_name,
+                name=(
+                    f"{explore_prefix}{e.effective_name}"
+                    if explore_prefix
+                    else e.effective_name
+                ),
                 fact_model=e.fact,
                 label=e.label,
                 description=e.description,
@@ -322,14 +332,16 @@ def validate(config: Path | None) -> None:
     from semantic_patterns.ingestion import DomainBuilder
 
     # Load config
+    config_path: Path
     try:
         if config:
             cfg = load_config(config)
             config_path = config
         else:
-            config_path = find_config()
-            if config_path is None:
+            found_config = find_config()
+            if found_config is None:
                 raise click.ClickException("No sp.yml found")
+            config_path = found_config
             cfg = load_config(config_path)
         console.print(f"[green]Config valid:[/green] {config_path}")
     except Exception as e:

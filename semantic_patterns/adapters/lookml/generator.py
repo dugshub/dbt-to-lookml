@@ -95,4 +95,6 @@ class LookMLGenerator:
         """Serialize view dict to LookML string."""
         # Wrap in views array for lkml
         lookml_dict = {"views": [view]}
-        return lkml.dump(lookml_dict)
+        result = lkml.dump(lookml_dict)
+        assert result is not None
+        return result
