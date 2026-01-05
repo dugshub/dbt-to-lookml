@@ -1,39 +1,30 @@
-# dbt-to-lookml
+# semantic-patterns
 
-Convert dbt semantic models into LookML views and explores with validation, formatting, and a friendly CLI.
+Transform semantic models (YAML) into BI tool patterns, starting with LookML views and explores.
 
 ## Overview
-- Parses dbt semantic model YAML, maps entities/dimensions/measures, and emits `.view.lkml` and `explores.lkml`.
-- Includes strict typing (mypy), linting (ruff), and a comprehensive pytest suite with high coverage.
+
+- Parses semantic model YAML, processes entities/dimensions/measures/metrics
+- Generates `.view.lkml` and `.explore.lkml` files with proper LookML formatting
+- Includes strict typing (mypy), linting (ruff), and comprehensive pytest test suite
 
 ## Requirements
-- Python >= 3.9
-- Optional: `uv` for fast, locked dependency management (repo includes `uv.lock`).
+
+- Python >= 3.10
+- Optional: `uv` for fast dependency management
 
 ## Installation
 
-### From Source (Recommended for now)
+### From Source
+
 ```bash
 git clone https://github.com/dugshub/dbt-to-lookml.git
 cd dbt-to-lookml
 pip install -e .
 ```
 
-### From Git Tag (once v0.1.0 is released)
-```bash
-pip install git+https://github.com/dugshub/dbt-to-lookml.git@v0.1.0
-```
-
-### Using Pre-built Package
-```bash
-# Build the package
-python -m build
-
-# Install from wheel
-pip install dist/dbt_to_lookml-0.1.0-py3-none-any.whl
-```
-
 ### For Development
+
 ```bash
 # With all dev dependencies
 pip install -e ".[dev]"
@@ -42,125 +33,53 @@ pip install -e ".[dev]"
 uv pip install -e ".[dev]"
 ```
 
-See [INSTALL.md](INSTALL.md) for detailed installation instructions.
-
-## Quickstart
-1) Place semantic model YAML files in a folder (e.g., `semantic_models/`).
-2) Dry-run generation to preview outputs:
-   - `dbt-to-lookml generate -i semantic_models -o build/lookml --dry-run --show-summary`
-3) Write LookML files:
-   - `dbt-to-lookml generate -i semantic_models -o build/lookml`
-4) Validate models without generating files:
-   - `dbt-to-lookml validate -i semantic_models -v`
-
-## CLI Usage
-- `dbt-to-lookml generate -i <input_dir> -o <output_dir> [--view-prefix X] [--explore-prefix Y] [--dry-run] [--no-validation] [--no-formatting] [--show-summary] [--convert-tz | --no-convert-tz]`
-- `dbt-to-lookml validate -i <input_dir> [--strict] [-v]`
-
-### Timezone Conversion
-Control timezone conversion in generated dimension_groups with CLI flags:
-- `--convert-tz`: Enable timezone conversion for all dimensions
-- `--no-convert-tz`: Disable timezone conversion for all dimensions
-- (No flag): Use default behavior (convert_tz: no, disabled by default)
-
-Per-dimension overrides are supported via `config.meta.convert_tz` in semantic models.
-See [CLAUDE.md](CLAUDE.md#timezone-conversion-configuration) for detailed precedence rules and examples.
-
-## Interactive Wizard
-
-The wizard provides an interactive way to build commands without memorizing all available flags.
-
-### Quick Start
+## Quick Start
 
 ```bash
-# Launch the wizard for the generate command
-dbt-to-lookml wizard generate
+# Generate LookML from semantic models
+sp generate -i semantic_models/ -o output/
 
-# Use TUI mode for full-screen interactive experience (requires Textual)
-dbt-to-lookml wizard generate --wizard-tui
+# Or using full name
+semantic-patterns generate -i semantic_models/ -o output/
 ```
-
-### Features
-
-- **Auto-detection**: Automatically finds semantic model directories and suggests output paths
-- **Contextual validation**: Real-time validation prevents invalid configurations
-- **Smart defaults**: Suggests values based on project structure and detected YAML files
-- **Command preview**: See the complete command before execution
-- **Helpful hints**: Descriptions for each option to guide decision-making
-
-### Example Workflow
-
-Start the wizard:
-```bash
-$ dbt-to-lookml wizard generate
-```
-
-Wizard output:
-```
-Generate Command Wizard
-Press Ctrl-C to cancel at any time
-
-? Input directory (auto-detected): semantic_models
-? Output directory (auto-detected): build/lookml
-? Database schema name (from YAML): analytics
-? View prefix (optional, press Enter to skip):
-? Explore prefix (optional, press Enter to skip):
-? Looker connection name: redshift_test
-? Model file name (without extension): semantic_model
-? Timezone conversion for time dimensions: (Use arrow keys)
-  > No (default) - Use database timezone as-is
-    Yes - Convert timestamps to user timezone
-    Explicitly disable - Add convert_tz: no
-? Additional options (use Space to select, Enter to continue):
-
-Generated Command:
-dbt-to-lookml generate \
-  -i semantic_models \
-  -o build/lookml \
-  -s analytics
-```
-
-### Wizard Modes
-
-- **Interactive mode** (default): Simple sequential prompts with real-time validation
-- **TUI mode** (`--wizard-tui`): Full-screen terminal UI with form navigation and live preview (if Textual is installed)
-
-### When to Use the Wizard
-
-- First time using dbt-to-lookml
-- Exploring available options and features
-- Building complex commands with many flags
-- Learning best practices through contextual hints
-- Setting up automation in unfamiliar environments
 
 ## Project Structure
-- `src/dbt_to_lookml/`: Core package (`parser.py`, `generator.py`, `models.py`, CLI)
-- `tests/`: Unit, integration, CLI, golden, performance, and error-handling tests
-- `scripts/`: Tooling scripts and utilities
-- `semantic_models/`: Sample inputs for testing/experiments
-- `Makefile`: Common dev commands
-- `USAGE.md`: Detailed CLI usage guide
-- `INSTALL.md`: Installation instructions
+
+```
+src/semantic_patterns/
+  domain/         # Core domain models (Dimension, Measure, Metric, Model)
+  ingestion/      # YAML loading and model building
+  adapters/       # Output adapters (LookML)
+    lookml/       # LookML generation and renderers
+  __main__.py     # CLI entry point
+
+tests/v2/         # Test suite
+  fixtures/       # Test data
+  test_*.py       # Test files
+```
 
 ## Development
-- Common commands (see `Makefile`):
-  - `make test` (unit + integration), `make test-full`, `make test-fast`
-  - `make lint` (ruff), `make type-check` (mypy), `make format`
-  - `make quality-gate` (lint + types + tests)
-- Run the full test orchestration script:
-  - `python scripts/run-tests.py all -v`
+
+```bash
+# Run tests
+uv run pytest tests/v2/
+
+# Type checking
+uv run mypy src/semantic_patterns/
+
+# Linting
+uv run ruff check src/
+uv run ruff format src/
+```
 
 ## Testing
-- Framework: pytest; coverage threshold enforced at 95% branch coverage.
-- Markers: `unit`, `integration`, `golden`, `cli`, `performance`, `error_handling`, `smoke`, `slow`.
-- Examples:
-  - `pytest -m unit -q`
-  - `pytest tests/unit/test_parser.py -q`
-  - `make test-coverage` (HTML at `htmlcov/index.html`)
+
+- Framework: pytest with coverage tracking
+- Markers: `unit`, `integration`
+- Run: `uv run pytest tests/v2/ -v`
 
 ## Code Style
-- Ruff (line length 88; rules: E,F,I,N,W,UP) and mypy strict type checking.
-- Format and fix before committing: `make format` and `make lint`.
 
-## Contributing
-- Please read `AGENTS.md` (Repository Guidelines) for coding style, tests, commit/PR conventions, and security notes.
+- Ruff (line length 88; rules: E,F,I,N,W,UP)
+- mypy strict type checking
+- Python 3.10+

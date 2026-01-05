@@ -1,9 +1,0 @@
-metrics:
-  - name: missing_measure_metric
-    type: simple
-    type_params:
-      measure: nonexistent_measure
-    label: Missing Measure Metric
-    description: Metric referencing a measure that doesn't exist
-    meta:
-      primary_entity: user

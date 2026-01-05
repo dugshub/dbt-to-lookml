@@ -5,8 +5,8 @@ from pathlib import Path
 
 import lkml
 
-from dbt_to_lookml_v2.ingestion import DomainBuilder
-from dbt_to_lookml_v2.adapters.lookml import LookMLGenerator, ExploreGenerator
+from semantic_patterns.ingestion import DomainBuilder
+from semantic_patterns.adapters.lookml import LookMLGenerator, ExploreGenerator
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "integration"

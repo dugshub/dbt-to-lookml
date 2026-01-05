@@ -6,7 +6,7 @@ Phase 1 Gate: These tests verify that domain types compile and instantiate corre
 
 import pytest
 
-from dbt_to_lookml_v2.domain import (
+from semantic_patterns.domain import (
     # Data Model
     ConnectionType,
     DataModel,

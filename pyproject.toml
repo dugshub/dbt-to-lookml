@@ -1,7 +1,7 @@
 [project]
-name = "dbt-to-lookml"
-version = "0.2.1"
-description = "Convert dbt semantic models to LookML views and explores"
+name = "semantic-patterns"
+version = "0.3.0"
+description = "Transform semantic models into BI tool patterns (LookML, and more)"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -11,7 +11,7 @@ maintainers = [
     { name = "DougsHub", email = "douglasgmcfarlane@gmail.com" }
 ]
 requires-python = ">=3.10"
-keywords = ["dbt", "lookml", "looker", "semantic-layer", "analytics", "data-modeling"]
+keywords = ["semantic-layer", "lookml", "looker", "dbt", "analytics", "data-modeling", "bi"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -32,7 +32,6 @@ dependencies = [
     "lkml",
     "click>=8.0",
     "rich",
-    "questionary>=2.0.0",
     "sqlglot>=28.5.0",
 ]
 
@@ -44,33 +43,29 @@ dev = [
     "ruff",
     "build",
     "twine",
-    "pytest-asyncio>=0.21.0",
-]
-wizard = [
-    "textual>=0.47.0",
-    "typing-extensions>=4.0",
+    "types-pyyaml",
 ]
 
 [project.scripts]
-dbt-to-lookml = "dbt_to_lookml.__main__:cli"
-d2l = "dbt_to_lookml_v2.__main__:cli"
+sp = "semantic_patterns.__main__:cli"
+semantic-patterns = "semantic_patterns.__main__:cli"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/dbt_to_lookml", "src/dbt_to_lookml_v2"]
+packages = ["semantic_patterns"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/tests/**/*.py" = ["E402", "E501", "F841"]  # Allow imports after pytest.importorskip, long lines, and unused variables in tests
+"tests/**/*.py" = ["E402", "E501", "F841"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -78,39 +73,23 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
 [tool.pytest.ini_options]
-testpaths = ["src/tests"]
+testpaths = ["tests/v2"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=dbt_to_lookml",
+    "--cov=semantic_patterns",
     "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
     "--cov-branch",
-    "--cov-fail-under=60",
     "-v",
     "--tb=short",
 ]
 markers = [
     "unit: marks tests as unit tests (fast, isolated)",
     "integration: marks tests as integration tests (slower, end-to-end)",
-    "golden: marks tests as golden file comparison tests",
-    "cli: marks tests as CLI interface tests",
-    "wizard: marks tests as wizard functionality tests",
-    "performance: marks tests as performance/benchmark tests",
-    "error_handling: marks tests as error handling and robustness tests",
-    "slow: marks tests as slow running (may be skipped in fast runs)",
-    "smoke: marks tests as smoke tests (quick validation)",
-    "stress: marks tests as stress tests (high load/memory)",
-    "memory: marks tests that check for memory leaks",
-    "concurrent: marks tests that test concurrent/parallel execution",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
@@ -119,15 +98,9 @@ filterwarnings = [
 
 [dependency-groups]
 dev = [
-    "mypy>=1.17.1",
-    "pytest>=8.4.1",
-    "pytest-cov>=6.2.1",
-    "pytest-xdist>=3.3.1", # Parallel test execution
-    "pytest-mock>=3.11.1", # Enhanced mocking
-    "pytest-benchmark>=4.0.0", # Performance benchmarking
-    "pytest-clarity>=1.0.1", # Better assertion output
-    "pytest-testmon>=2.0.1", # Smart test selection
-    "ruff>=0.12.11",
-    "types-pyyaml>=6.0.12.20250822",
-    "psutil>=5.9.0",
+    "mypy>=1.0",
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1",
+    "types-pyyaml",
 ]

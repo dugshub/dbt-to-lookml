@@ -1,9 +1,0 @@
-metrics:
-  - name: total_users
-    type: simple
-    type_params:
-      measure: user_count
-    label: Total Users
-    description: Count of all users
-    meta:
-      primary_entity: user

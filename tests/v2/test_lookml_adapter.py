@@ -2,7 +2,7 @@
 
 import pytest
 
-from dbt_to_lookml_v2.domain import (
+from semantic_patterns.domain import (
     AggregationType,
     ConnectionType,
     DataModel,
@@ -19,16 +19,16 @@ from dbt_to_lookml_v2.domain import (
     ProcessedModel,
     TimeGranularity,
 )
-from dbt_to_lookml_v2.adapters import Dialect, SqlRenderer
-from dbt_to_lookml_v2.adapters.lookml import (
+from semantic_patterns.adapters import Dialect, SqlRenderer
+from semantic_patterns.adapters.lookml import (
     DimensionRenderer,
     LookMLGenerator,
     MeasureRenderer,
     PopRenderer,
     ViewRenderer,
 )
-from dbt_to_lookml_v2.adapters.lookml.renderers.pop import DynamicFilteredPopStrategy
-from dbt_to_lookml_v2.adapters.lookml.renderers.calendar import (
+from semantic_patterns.adapters.lookml.renderers.pop import DynamicFilteredPopStrategy
+from semantic_patterns.adapters.lookml.renderers.calendar import (
     CalendarRenderer,
     DateOption,
     PopCalendarConfig,

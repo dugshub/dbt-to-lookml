@@ -3,7 +3,7 @@
 import pytest
 import lkml
 
-from dbt_to_lookml_v2.domain import (
+from semantic_patterns.domain import (
     AggregationType,
     ConnectionType,
     DataModel,
@@ -15,13 +15,13 @@ from dbt_to_lookml_v2.domain import (
     ProcessedModel,
     TimeGranularity,
 )
-from dbt_to_lookml_v2.adapters.lookml import (
+from semantic_patterns.adapters.lookml import (
     CalendarRenderer,
     DateOption,
     ExploreGenerator,
     ExploreRenderer,
 )
-from dbt_to_lookml_v2.adapters.lookml.types import (
+from semantic_patterns.adapters.lookml.types import (
     ExploreConfig,
     ExposeLevel,
     InferredJoin,

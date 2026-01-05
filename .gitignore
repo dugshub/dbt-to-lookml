@@ -57,9 +57,6 @@ dmypy.json
 .DS_Store
 
 # Generated output
-final_output/
-test_fixed/
-test_refactored/
 output/
 *.view.lkml
 *.explore.lkml
@@ -72,16 +69,9 @@ explores.lkml
 *.log
 
 # uv
-uv.lock  # Exclude lock file for libraries
+uv.lock
 .uv-cache/
 
-# Claude Code (except commands and ai-docs)
-.claude/*
-!.claude/commands/
-!.claude/ai-docs/
+# Claude Code
+.claude/
 .mcp.json
-AGENTS.md
-
-# Task Management (track everything except temp files)
-.tasks/**/*.tmp
-.tasks/**/*.backup

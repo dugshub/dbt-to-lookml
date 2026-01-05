@@ -1,9 +1,0 @@
-metrics:
-  - name: invalid_entity_metric
-    type: simple
-    type_params:
-      measure: user_count
-    label: Invalid Entity Metric
-    description: Metric with invalid primary_entity
-    meta:
-      primary_entity: nonexistent_entity
