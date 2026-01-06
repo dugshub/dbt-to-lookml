@@ -1,13 +1,12 @@
 """Integration tests using real-world semantic model fixtures."""
 
-import pytest
 from pathlib import Path
 
 import lkml
+import pytest
 
+from semantic_patterns.adapters.lookml import ExploreGenerator, LookMLGenerator
 from semantic_patterns.ingestion import DomainBuilder
-from semantic_patterns.adapters.lookml import LookMLGenerator, ExploreGenerator
-
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "integration"
 
@@ -255,6 +254,161 @@ class TestIntegrationWithFixtures:
                 lkml.load(content)
             except Exception as e:
                 pytest.fail(f"Invalid LookML in {filename}: {e}")
+
+
+class TestViewPrefixBehavior:
+    """Tests for view_prefix configuration applying to both filenames and view names."""
+
+    def test_view_prefix_applies_to_view_name(self):
+        """Test that view_prefix applies to the view name inside the LookML file."""
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
+        view_prefix = "sm_"
+
+        # Apply prefix to model names (simulating what __main__.py does)
+        for model in models:
+            model.name = f"{view_prefix}{model.name}"
+
+        generator = LookMLGenerator()
+        files = generator.generate(models)
+
+        # Filename should be prefixed
+        assert "sm_rentals.view.lkml" in files
+
+        # View name inside the file should also be prefixed
+        content = files["sm_rentals.view.lkml"]
+        parsed = lkml.load(content)
+        view = parsed["views"][0]
+        assert view["name"] == "sm_rentals"
+
+    def test_view_prefix_applies_to_metrics_refinement(self):
+        """Test that view_prefix applies to metrics refinement view name."""
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
+        view_prefix = "sm_"
+
+        for model in models:
+            model.name = f"{view_prefix}{model.name}"
+
+        generator = LookMLGenerator()
+        files = generator.generate(models)
+
+        # Metrics refinement should also be prefixed
+        assert "sm_rentals.metrics.view.lkml" in files
+
+        content = files["sm_rentals.metrics.view.lkml"]
+        parsed = lkml.load(content)
+        view = parsed["views"][0]
+        # Refinement syntax uses +prefix
+        assert view["name"] == "+sm_rentals"
+
+    def test_view_prefix_applies_to_explore_from_clause(self):
+        """Test that explore from clause uses prefixed view name."""
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
+        view_prefix = "sm_"
+        explore_prefix = "sm_"
+
+        # Apply prefix to model names
+        for model in models:
+            model.name = f"{view_prefix}{model.name}"
+
+        # Build model lookup with prefixed names
+        model_dict = {m.name: m for m in models}
+
+        # Create explore config with prefixed fact_model
+        from semantic_patterns.adapters.lookml.types import (
+            ExploreConfig as LookMLExploreConfig,
+        )
+
+        explore_configs = [
+            LookMLExploreConfig(
+                name=f"{explore_prefix}rentals",
+                fact_model=f"{view_prefix}rentals",
+            )
+        ]
+
+        explore_gen = ExploreGenerator()
+        files = explore_gen.generate(explore_configs, model_dict)
+
+        content = files["sm_rentals.explore.lkml"]
+        parsed = lkml.load(content)
+        explore = parsed["explores"][0]
+
+        # Explore name should be prefixed
+        assert explore["name"] == "sm_rentals"
+        # from clause should reference prefixed view
+        # Note: from is only present when name != fact_model
+        # In this case they're equal, so no 'from' needed
+
+    def test_view_prefix_applies_to_join_references(self):
+        """Test that joins reference prefixed view names."""
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
+        view_prefix = "sm_"
+        explore_prefix = "sm_"
+
+        # Apply prefix to model names
+        for model in models:
+            model.name = f"{view_prefix}{model.name}"
+
+        model_dict = {m.name: m for m in models}
+
+        from semantic_patterns.adapters.lookml.types import (
+            ExploreConfig as LookMLExploreConfig,
+        )
+
+        explore_configs = [
+            LookMLExploreConfig(
+                name=f"{explore_prefix}rentals",
+                fact_model=f"{view_prefix}rentals",
+            )
+        ]
+
+        explore_gen = ExploreGenerator()
+        files = explore_gen.generate(explore_configs, model_dict)
+
+        content = files["sm_rentals.explore.lkml"]
+        parsed = lkml.load(content)
+        explore = parsed["explores"][0]
+
+        # Get join names
+        joins = explore.get("joins", [])
+        join_names = {j["name"] for j in joins}
+
+        # Joined views should be prefixed
+        assert "sm_facilities" in join_names
+        assert "sm_reviews" in join_names
+
+        # SQL references should use prefixed names
+        facilities_join = next(j for j in joins if j["name"] == "sm_facilities")
+        assert "sm_rentals" in facilities_join["sql_on"]
+        assert "sm_facilities" in facilities_join["sql_on"]
+
+    def test_filename_matches_view_name_with_prefix(self):
+        """Test that filename and view name are consistent when using prefix."""
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
+        view_prefix = "gold_"
+
+        for model in models:
+            model.name = f"{view_prefix}{model.name}"
+
+        generator = LookMLGenerator()
+        files = generator.generate(models)
+
+        # For each file, verify the view name matches the filename pattern
+        for filename, content in files.items():
+            if filename.endswith(".view.lkml"):
+                parsed = lkml.load(content)
+                view = parsed["views"][0]
+                view_name = view["name"].lstrip("+")  # Remove refinement prefix
+
+                # Extract expected view name from filename
+                # e.g., "gold_rentals.view.lkml" -> "gold_rentals"
+                # e.g., "gold_rentals.metrics.view.lkml" -> "gold_rentals"
+                expected_name = filename.replace(".metrics.view.lkml", "").replace(
+                    ".pop.view.lkml", ""
+                ).replace(".view.lkml", "")
+
+                assert view_name == expected_name, (
+                    f"View name '{view_name}' doesn't match filename '{filename}'"
+                )
 
 
 class TestGeneratedLookMLContent:

@@ -163,15 +163,35 @@ def run_build(
     from semantic_patterns.adapters.lookml.types import (
         ExploreConfig as LookMLExploreConfig,
     )
-    from semantic_patterns.ingestion import DomainBuilder
+    from semantic_patterns.ingestion import DbtLoader, DbtMapper, DomainBuilder
 
     view_prefix = config.options.view_prefix
     explore_prefix = config.options.effective_explore_prefix
 
     # Parse semantic models
     console.print(f"[blue]Input:[/blue] {config.input_path}")
-    builder = DomainBuilder()
-    models = builder.from_directory(config.input_path)
+    console.print(f"[blue]Format:[/blue] {config.format}")
+
+    if config.format == "dbt":
+        # Load dbt format and transform to our format
+        dbt_loader = DbtLoader(config.input_path)
+        semantic_models, metrics = dbt_loader.load_all()
+
+        # Map dbt format to our format
+        mapper = DbtMapper()
+        mapper.add_semantic_models(semantic_models)
+        mapper.add_metrics(metrics)
+        documents = mapper.get_documents()
+
+        # Build domain models from mapped documents
+        builder = DomainBuilder()
+        for doc in documents:
+            builder._collect_from_document(doc)
+        models = builder.build()
+    else:
+        # Use native semantic-patterns format
+        builder = DomainBuilder()
+        models = builder.from_directory(config.input_path)
 
     if not models:
         raise click.ClickException(f"No semantic models found in {config.input_path}")
@@ -186,7 +206,13 @@ def run_build(
                 f"    {model.name}: {dims_count} dims, {metrics_count} metrics"
             )
 
-    # Create model lookup (with prefixed names for explores)
+    # Apply view prefix to model names BEFORE generation
+    # This ensures view names, refinements, and join references all use prefixed names
+    if view_prefix:
+        for model in models:
+            model.name = f"{view_prefix}{model.name}"
+
+    # Create model lookup (with prefixed names)
     model_dict = {m.name: m for m in models}
 
     # Generate views
@@ -199,6 +225,7 @@ def run_build(
         # Override schema from config
         if model.data_model:
             from semantic_patterns.domain import DataModel
+
             model.data_model = DataModel(
                 name=model.data_model.name,
                 schema_name=config.schema_name,
@@ -207,14 +234,6 @@ def run_build(
             )
 
         files = generator.generate_model(model)
-
-        # Apply view prefix to filenames
-        if view_prefix:
-            files = {
-                f"{view_prefix}{filename}": content
-                for filename, content in files.items()
-            }
-
         all_files.update(files)
 
     console.print(f"  Generated {len(all_files)} view files")
@@ -228,7 +247,10 @@ def run_build(
                     if explore_prefix
                     else e.effective_name
                 ),
-                fact_model=e.fact,
+                # Use prefixed fact_model name to match prefixed model names
+                fact_model=(
+                    f"{view_prefix}{e.fact}" if view_prefix else e.fact
+                ),
                 label=e.label,
                 description=e.description,
             )
@@ -329,8 +351,6 @@ def validate(config: Path | None) -> None:
     - Semantic models parse correctly
     - Explore fact models exist
     """
-    from semantic_patterns.ingestion import DomainBuilder
-
     # Load config
     config_path: Path
     try:
@@ -356,8 +376,27 @@ def validate(config: Path | None) -> None:
 
     # Parse models
     try:
-        builder = DomainBuilder()
-        models = builder.from_directory(cfg.input_path)
+        from semantic_patterns.ingestion import DbtLoader, DbtMapper, DomainBuilder
+
+        if cfg.format == "dbt":
+            # Load dbt format
+            dbt_loader = DbtLoader(cfg.input_path)
+            semantic_models, metrics = dbt_loader.load_all()
+
+            # Map and build
+            mapper = DbtMapper()
+            mapper.add_semantic_models(semantic_models)
+            mapper.add_metrics(metrics)
+            documents = mapper.get_documents()
+
+            builder = DomainBuilder()
+            for doc in documents:
+                builder._collect_from_document(doc)
+            models = builder.build()
+        else:
+            builder = DomainBuilder()
+            models = builder.from_directory(cfg.input_path)
+
         console.print(f"[green]Models valid:[/green] {len(models)} models")
 
         model_names = {m.name for m in models}
@@ -371,9 +410,7 @@ def validate(config: Path | None) -> None:
     if cfg.explores:
         for explore in cfg.explores:
             if explore.fact not in model_names:
-                console.print(
-                    f"[red]Explore fact not found:[/red] {explore.fact}"
-                )
+                console.print(f"[red]Explore fact not found:[/red] {explore.fact}")
                 raise click.ClickException(f"Fact model '{explore.fact}' not found")
         console.print(f"[green]Explores valid:[/green] {len(cfg.explores)} explores")
 
