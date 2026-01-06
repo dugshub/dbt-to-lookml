@@ -14,11 +14,21 @@ from pydantic import BaseModel, Field, field_validator
 from semantic_patterns.adapters.dialect import Dialect
 
 
+class OutputOptionsConfig(BaseModel):
+    """Output options configuration."""
+
+    clean: str | None = None  # "clean", "warn", or "ignore" - None prompts on first run
+    manifest: bool = True  # Generate .sp-manifest.json
+
+    model_config = {"frozen": True}
+
+
 class ExploreJoinConfig(BaseModel):
     """Configuration for a join override in an explore."""
 
     model: str
     expose: str | None = None  # "all" or "dimensions"
+    relationship: str | None = None  # "one_to_one", "many_to_one", "one_to_many"
 
     model_config = {"frozen": True}
 
@@ -31,6 +41,8 @@ class ExploreConfig(BaseModel):
     label: str | None = None
     description: str | None = None
     joins: list[ExploreJoinConfig] = Field(default_factory=list)
+    # Models to exclude from auto-join
+    join_exclusions: list[str] = Field(default_factory=list)
 
     model_config = {"frozen": True}
 
@@ -38,6 +50,13 @@ class ExploreConfig(BaseModel):
     def effective_name(self) -> str:
         """Get the explore name (defaults to fact model name)."""
         return self.name or self.fact
+
+    def get_join_config(self, model_name: str) -> ExploreJoinConfig | None:
+        """Get join config for a specific model if it exists."""
+        for join in self.joins:
+            if join.model == model_name:
+                return join
+        return None
 
 
 class ModelConfig(BaseModel):
@@ -90,6 +109,7 @@ class SPConfig(BaseModel):
     This is the schema for sp.yml files.
 
     Example:
+        project: my_project  # Names output folder (default: semantic-patterns)
         input: ./semantic_models
         output: ./lookml
         schema: gold
@@ -103,20 +123,28 @@ class SPConfig(BaseModel):
           - fact: rentals
           - fact: orders
             label: Order Analysis
+            join_exclusions:
+              - some_model_to_skip
 
         options:
           dialect: redshift
           view_prefix: sm_
+
+        output_options:
+          clean: clean  # or 'warn' or 'ignore'
+          manifest: true
     """
 
     input: str
     output: str
     schema_name: str = Field(alias="schema")
     format: str = "semantic-patterns"  # 'dbt' or 'semantic-patterns'
+    project: str = "semantic-patterns"  # Project name (names output folder)
 
     model: ModelConfig = Field(default_factory=ModelConfig)
     explores: list[ExploreConfig] = Field(default_factory=list)
     options: OptionsConfig = Field(default_factory=OptionsConfig)
+    output_options: OutputOptionsConfig = Field(default_factory=OutputOptionsConfig)
 
     @field_validator("format", mode="before")
     @classmethod

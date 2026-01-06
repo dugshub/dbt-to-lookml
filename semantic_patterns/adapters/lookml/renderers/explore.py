@@ -101,15 +101,15 @@ class ExploreRenderer:
         explore_config: ExploreConfig,
     ) -> list[InferredJoin]:
         """
-        Infer joins from entity relationships.
+        Infer joins from entity relationships (exclude-based).
 
-        Walks fact model's foreign entities and finds matching primary entities
-        in other models.
+        Auto-joins ALL entity-linked models by default. Use join_exclusions
+        to exclude specific models from auto-join.
 
         Args:
             fact_model: The fact model for this explore
             all_models: Dict of all models by name
-            explore_config: Config for potential join overrides
+            explore_config: Config for join overrides and exclusions
 
         Returns:
             List of InferredJoin objects
@@ -117,9 +117,12 @@ class ExploreRenderer:
         joins: list[InferredJoin] = []
 
         # Build lookup: entity_name -> (model, entity) for primary entities
+        # Exclude models in join_exclusions
         primary_entity_lookup: dict[str, tuple[ProcessedModel, Any]] = {}
         for model in all_models.values():
             if model.name == fact_model.name:
+                continue
+            if explore_config.is_excluded(model.name):
                 continue
             for entity in model.entities:
                 if entity.type == "primary":
@@ -132,6 +135,11 @@ class ExploreRenderer:
 
             target_model, target_entity = primary_entity_lookup[foreign_entity.name]
 
+            # Determine relationship (explicit override takes priority)
+            relationship = self._determine_relationship(
+                target_model.name, explore_config, JoinRelationship.MANY_TO_ONE
+            )
+
             # Determine expose level
             expose = self._determine_expose_level(
                 foreign_entity, target_model, explore_config
@@ -141,32 +149,39 @@ class ExploreRenderer:
                 InferredJoin(
                     model=target_model.name,
                     entity=foreign_entity.name,
-                    relationship=JoinRelationship.MANY_TO_ONE,
+                    relationship=relationship,
                     expose=expose,
                     fact_entity_expr=foreign_entity.expr,
                     joined_entity_expr=target_entity.expr,
                 )
             )
 
-        # Check for child facts (models with complete foreign entity pointing to fact)
+        # Check for child facts (models with foreign entity pointing to fact)
         if fact_model.primary_entity:
             fact_entity_name = fact_model.primary_entity.name
             for model in all_models.values():
                 if model.name == fact_model.name:
                     continue
+                if explore_config.is_excluded(model.name):
+                    continue
                 for entity in model.foreign_entities:
                     if entity.name == fact_entity_name:
                         # This model has a FK to our fact model
+                        # Determine relationship (explicit override takes priority)
+                        relationship = self._determine_relationship(
+                            model.name, explore_config, JoinRelationship.ONE_TO_MANY
+                        )
+
                         expose = self._determine_expose_level(
                             entity, model, explore_config
                         )
-                        # Find the matching entity expr on the joined model's primary
+                        # Find the matching entity expr on the joined model
                         joined_expr = entity.expr
                         joins.append(
                             InferredJoin(
                                 model=model.name,
                                 entity=fact_entity_name,
-                                relationship=JoinRelationship.ONE_TO_MANY,
+                                relationship=relationship,
                                 expose=expose,
                                 fact_entity_expr=fact_model.primary_entity.expr,
                                 joined_entity_expr=joined_expr,
@@ -174,6 +189,24 @@ class ExploreRenderer:
                         )
 
         return joins
+
+    def _determine_relationship(
+        self,
+        model_name: str,
+        explore_config: ExploreConfig,
+        default: JoinRelationship,
+    ) -> JoinRelationship:
+        """
+        Determine join relationship from explicit config or default.
+
+        Priority:
+        1. Explicit relationship in join override
+        2. Default based on entity direction
+        """
+        override = explore_config.get_override(model_name)
+        if override and override.relationship:
+            return override.relationship
+        return default
 
     def _determine_expose_level(
         self,

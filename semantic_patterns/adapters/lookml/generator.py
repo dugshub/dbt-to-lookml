@@ -1,7 +1,9 @@
 """LookML Generator - orchestrates file generation from ProcessedModels."""
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import lkml
 
@@ -9,6 +11,9 @@ from semantic_patterns.adapters.dialect import Dialect, get_default_dialect
 from semantic_patterns.adapters.lookml.renderers.pop import PopStrategy
 from semantic_patterns.adapters.lookml.renderers.view import ViewRenderer
 from semantic_patterns.domain import ProcessedModel
+
+if TYPE_CHECKING:
+    from semantic_patterns.adapters.lookml.paths import OutputPaths
 
 
 class LookMLGenerator:
@@ -65,6 +70,63 @@ class LookMLGenerator:
         if pop_view:
             pop_content = self._serialize_view(pop_view)
             files[f"{model.name}.pop.view.lkml"] = pop_content
+
+        return files
+
+    def generate_model_with_paths(
+        self,
+        model: ProcessedModel,
+        paths: OutputPaths,
+    ) -> dict[Path, str]:
+        """
+        Generate LookML files with full path information.
+
+        Uses domain-based folder structure:
+        views/{model_name}/{model_name}.view.lkml
+
+        Args:
+            model: ProcessedModel to generate
+            paths: OutputPaths for path generation
+
+        Returns:
+            Dict mapping full Path to content
+        """
+        files: dict[Path, str] = {}
+
+        # Base view (always generated)
+        base_view = self.view_renderer.render_base_view(model)
+        base_content = self._serialize_view(base_view)
+        files[paths.view_file_path(model.name)] = base_content
+
+        # Metrics refinement (if has metrics)
+        metrics_view = self.view_renderer.render_metrics_refinement(model)
+        if metrics_view:
+            metrics_content = self._serialize_view(metrics_view)
+            files[paths.view_file_path(model.name, ".metrics")] = metrics_content
+
+        # PoP refinement (if has PoP variants)
+        pop_view = self.view_renderer.render_pop_refinement(model)
+        if pop_view:
+            pop_content = self._serialize_view(pop_view)
+            files[paths.view_file_path(model.name, ".pop")] = pop_content
+
+        return files
+
+    def generate_with_paths(
+        self,
+        models: list[ProcessedModel],
+        paths: OutputPaths,
+    ) -> dict[Path, str]:
+        """
+        Generate LookML files for all models with path information.
+
+        Returns dict of {Path: content}.
+        """
+        files: dict[Path, str] = {}
+
+        for model in models:
+            model_files = self.generate_model_with_paths(model, paths)
+            files.update(model_files)
 
         return files
 

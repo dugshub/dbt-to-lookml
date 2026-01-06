@@ -5,6 +5,7 @@ from __future__ import annotations
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 import yaml
@@ -13,6 +14,9 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from semantic_patterns.config import SPConfig, find_config, load_config
+
+if TYPE_CHECKING:
+    from semantic_patterns.adapters.lookml.paths import OutputPaths
 
 console = Console()
 
@@ -171,12 +175,12 @@ explores:
         raise click.ClickException(str(e))
 
 
-def _generate_model_file(
+def _generate_model_file_content(
     config: SPConfig,
-    all_files: dict[str, str],
-    view_prefix: str,
+    all_files: dict[Path, str],
+    paths: OutputPaths,
 ) -> str:
-    """Generate the .model.lkml file content."""
+    """Generate the .model.lkml file content with domain-structured includes."""
     lines = [f'connection: "{config.model.connection}"']
 
     if config.model.label:
@@ -184,15 +188,21 @@ def _generate_model_file(
 
     lines.append("")
 
-    # Include all view files
-    view_files = sorted(f for f in all_files.keys() if f.endswith(".view.lkml"))
-    for view_file in view_files:
-        lines.append(f'include: "/{view_file}"')
+    # Include all view files with relative paths
+    view_files = sorted(
+        p for p in all_files.keys() if str(p).endswith(".view.lkml")
+    )
+    for view_path in view_files:
+        rel_path = paths.relative_path(view_path)
+        lines.append(f'include: "{rel_path}"')
 
     # Include all explore files
-    explore_files = sorted(f for f in all_files.keys() if f.endswith(".explore.lkml"))
-    for explore_file in explore_files:
-        lines.append(f'include: "/{explore_file}"')
+    explore_files = sorted(
+        p for p in all_files.keys() if str(p).endswith(".explore.lkml")
+    )
+    for explore_path in explore_files:
+        rel_path = paths.relative_path(explore_path)
+        lines.append(f'include: "{rel_path}"')
 
     lines.append("")
     return "\n".join(lines)
@@ -204,7 +214,7 @@ def run_build(
     verbose: bool = False,
 ) -> tuple[list[Path], BuildStatistics]:
     """
-    Execute the build process.
+    Execute the build process with domain-based output structure.
 
     Args:
         config: Parsed SPConfig
@@ -216,15 +226,26 @@ def run_build(
     """
     from semantic_patterns.adapters.lookml import LookMLGenerator
     from semantic_patterns.adapters.lookml.explore_generator import ExploreGenerator
+    from semantic_patterns.adapters.lookml.paths import OutputPaths
     from semantic_patterns.adapters.lookml.types import (
         ExploreConfig as LookMLExploreConfig,
     )
     from semantic_patterns.domain import ProcessedModel
     from semantic_patterns.ingestion import DbtLoader, DbtMapper, DomainBuilder
+    from semantic_patterns.manifest import (
+        ModelSummary,
+        OutputInfo,
+        SPManifest,
+        compute_config_hash,
+        compute_content_hash,
+    )
 
     view_prefix = config.options.view_prefix
     explore_prefix = config.options.effective_explore_prefix
     stats = BuildStatistics()
+
+    # Initialize output paths with domain-based structure
+    paths = OutputPaths(project=config.project, base_path=config.output_path)
 
     # Parse semantic models
     console.print(f"[blue]Input:[/blue] {config.input_path}")
@@ -268,11 +289,21 @@ def run_build(
 
     console.print(f"  Found {len(models)} models")
 
-    # Collect statistics from models
+    # Collect statistics and model summaries
+    model_summaries: list[ModelSummary] = []
     for model in models:
         stats.dimensions += len(model.dimensions)
         stats.measures += len(model.measures)
         stats.metrics += len(model.metrics)
+        model_summaries.append(
+            ModelSummary(
+                name=model.name,
+                dimension_count=len(model.dimensions),
+                measure_count=len(model.measures),
+                metric_count=len(model.metrics),
+                entities=[e.name for e in model.entities],
+            )
+        )
 
     if verbose:
         for model in models:
@@ -291,11 +322,11 @@ def run_build(
     # Create model lookup (with prefixed names)
     model_dict = {m.name: m for m in models}
 
-    # Generate views
-    console.print(f"[blue]Output:[/blue] {config.output_path}")
+    # Generate views using path-aware methods
+    console.print(f"[blue]Output:[/blue] {paths.project_path}")
 
     generator = LookMLGenerator(dialect=config.options.dialect)
-    all_files: dict[str, str] = {}
+    all_files: dict[Path, str] = {}
 
     with Progress(
         SpinnerColumn(),
@@ -317,7 +348,7 @@ def run_build(
                     connection=model.data_model.connection,
                 )
 
-            files = generator.generate_model(model)
+            files = generator.generate_model_with_paths(model, paths)
             all_files.update(files)
             progress.advance(task)
 
@@ -338,31 +369,47 @@ def run_build(
                 ),
                 label=e.label,
                 description=e.description,
+                join_exclusions=e.join_exclusions,
             )
             for e in config.explores
         ]
 
         explore_gen = ExploreGenerator(dialect=config.options.dialect)
-        explore_files = explore_gen.generate(explore_configs, model_dict)
+        explore_files = explore_gen.generate_with_paths(
+            explore_configs, model_dict, paths
+        )
 
-        # Note: explore prefix is already in the explore name, so filenames are correct
         all_files.update(explore_files)
         stats.explores = len(config.explores)
         console.print(f"  Generated {len(explore_files)} explore files")
 
-    # Generate model file
-    model_content = _generate_model_file(config, all_files, view_prefix)
-    model_filename = f"{config.model.name}.model.lkml"
-    all_files[model_filename] = model_content
-    console.print(f"  Generated model file: {model_filename}")
+    # Generate model file (rollup with includes)
+    model_content = _generate_model_file_content(config, all_files, paths)
+    model_file_path = paths.model_file_path()
+    all_files[model_file_path] = model_content
+    console.print(f"  Generated model file: {config.project}.model.lkml")
 
     # Write files
-    output_path = config.output_path
     written: list[Path] = []
     stats.files = len(all_files)
 
     if not dry_run:
-        output_path.mkdir(parents=True, exist_ok=True)
+        # Create directory structure
+        paths.ensure_directories()
+
+        # Create domain folders for each model
+        for model in models:
+            paths.ensure_view_domain(model.name)
+
+        # Also create domain folders for calendar views
+        for e in config.explores:
+            explore_name = (
+                f"{explore_prefix}{e.effective_name}"
+                if explore_prefix
+                else e.effective_name
+            )
+            calendar_name = f"{explore_name}_calendar"
+            paths.ensure_view_domain(calendar_name)
 
         with Progress(
             SpinnerColumn(),
@@ -372,14 +419,37 @@ def run_build(
         ) as progress:
             task = progress.add_task("Writing files...", total=len(all_files))
 
-            for filename, content in all_files.items():
-                file_path = output_path / filename
+            for file_path, content in all_files.items():
+                # Ensure parent directory exists (for any edge cases)
+                file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_text(content, encoding="utf-8")
                 written.append(file_path)
                 progress.advance(task)
+
+        # Generate and write manifest if enabled
+        if config.output_options.manifest:
+            output_infos = [
+                OutputInfo(
+                    path=str(p.relative_to(paths.project_path)),
+                    hash=compute_content_hash(all_files[p]),
+                    type="view" if ".view.lkml" in str(p) else (
+                        "explore" if ".explore.lkml" in str(p) else "model"
+                    ),
+                )
+                for p in all_files.keys()
+            ]
+
+            manifest = SPManifest.create(
+                project=config.project,
+                config_hash=compute_config_hash(config),
+                outputs=output_infos,
+                models=model_summaries,
+            )
+            paths.manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+            console.print("  Generated manifest: .sp-manifest.json")
     else:
         # Dry run - just return what would be written
-        written = [output_path / f for f in all_files.keys()]
+        written = list(all_files.keys())
 
     return written, stats
 
@@ -400,13 +470,15 @@ def init() -> None:
     template = """\
 # semantic-patterns configuration
 
+# Project name (used for output folder)
+# project: my_project
+
 input: ./semantic_models
 output: ./lookml
 schema: gold
 
 # Looker model file settings
 model:
-  name: semantic_model
   connection: database
 
 # Explores (optional - omit for views only)
@@ -414,6 +486,13 @@ model:
 #   - fact: rentals
 #   - fact: orders
 #     label: Order Analysis
+#     join_exclusions:
+#       - some_model_to_skip
+
+# Output options
+output_options:
+  manifest: true
+  # clean: clean  # or 'warn' or 'ignore'
 
 # Generator options (defaults shown)
 options:

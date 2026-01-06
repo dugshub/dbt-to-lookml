@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import lkml
 
@@ -15,6 +15,9 @@ from semantic_patterns.adapters.lookml.renderers.calendar import (
 from semantic_patterns.adapters.lookml.renderers.explore import ExploreRenderer
 from semantic_patterns.adapters.lookml.types import ExploreConfig, build_explore_config
 from semantic_patterns.domain import ProcessedModel
+
+if TYPE_CHECKING:
+    from semantic_patterns.adapters.lookml.paths import OutputPaths
 
 
 class ExploreGenerator:
@@ -92,6 +95,74 @@ class ExploreGenerator:
                 calendar_content = self._serialize_view(calendar_dict)
                 calendar_filename = f"{explore_config.name}_explore_calendar.view.lkml"
                 files[calendar_filename] = calendar_content
+
+        return files
+
+    def generate_explore_with_paths(
+        self,
+        explore_config: ExploreConfig,
+        models: dict[str, ProcessedModel],
+        paths: OutputPaths,
+    ) -> dict[Path, str]:
+        """Generate files for a single explore with full paths."""
+        files: dict[Path, str] = {}
+
+        # Get fact model
+        fact_model = models.get(explore_config.fact_model)
+        if not fact_model:
+            # Skip if fact model not found
+            return files
+
+        # Render explore
+        explore_dict = self.explore_renderer.render(explore_config, fact_model, models)
+        explore_content = self._serialize_explore(explore_dict)
+        files[paths.explore_file_path(explore_config.name)] = explore_content
+
+        # Collect joined models for calendar
+        joined_models = self._get_joined_models(fact_model, models)
+
+        # Generate calendar view if has date options
+        date_options = self.calendar_renderer.collect_date_options(
+            fact_model, joined_models
+        )
+        if date_options:
+            # Detect PoP metrics to enable calendar PoP infrastructure
+            all_explore_models = [fact_model] + joined_models
+            pop_config = PopCalendarConfig.from_models(all_explore_models)
+
+            calendar_dict = self.calendar_renderer.render(
+                explore_config.name, date_options, pop_config
+            )
+            if calendar_dict:
+                calendar_content = self._serialize_view(calendar_dict)
+                files[paths.calendar_file_path(explore_config.name)] = calendar_content
+
+        return files
+
+    def generate_with_paths(
+        self,
+        explores: list[ExploreConfig],
+        models: dict[str, ProcessedModel],
+        paths: OutputPaths,
+    ) -> dict[Path, str]:
+        """
+        Generate all explore files with full path information.
+
+        Args:
+            explores: List of explore configurations
+            models: Dict of all models by name
+            paths: OutputPaths for path generation
+
+        Returns:
+            Dict of {Path: content}
+        """
+        files: dict[Path, str] = {}
+
+        for explore_config in explores:
+            explore_files = self.generate_explore_with_paths(
+                explore_config, models, paths
+            )
+            files.update(explore_files)
 
         return files
 

@@ -40,6 +40,7 @@ class JoinOverride(BaseModel):
 
     model: str
     expose: ExposeLevel | None = None
+    relationship: JoinRelationship | None = None
 
     model_config = {"frozen": True}
 
@@ -52,6 +53,8 @@ class ExploreConfig(BaseModel):
     label: str | None = None
     description: str | None = None
     join_overrides: list[JoinOverride] = Field(default_factory=list)
+    # Models to exclude from auto-join
+    join_exclusions: list[str] = Field(default_factory=list)
 
     model_config = {"frozen": True}
 
@@ -61,6 +64,10 @@ class ExploreConfig(BaseModel):
             if override.model == model_name:
                 return override
         return None
+
+    def is_excluded(self, model_name: str) -> bool:
+        """Check if a model is excluded from auto-join."""
+        return model_name in self.join_exclusions
 
 
 class InferredJoin(BaseModel):
@@ -97,6 +104,7 @@ def build_explore_config(data: dict[str, Any]) -> ExploreConfig:
         label=data.get("label"),
         description=data.get("description"),
         join_overrides=join_overrides,
+        join_exclusions=data.get("join_exclusions", []),
     )
 
 
@@ -110,7 +118,16 @@ def _build_join_override(data: dict[str, Any]) -> JoinOverride:
         except ValueError:
             pass
 
+    relationship = None
+    rel_str = data.get("relationship")
+    if rel_str:
+        try:
+            relationship = JoinRelationship(rel_str)
+        except ValueError:
+            pass
+
     return JoinOverride(
         model=data["model"],
         expose=expose,
+        relationship=relationship,
     )
