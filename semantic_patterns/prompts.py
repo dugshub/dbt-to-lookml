@@ -23,8 +23,7 @@ def prompt_for_clean_setting(config_path: Path) -> CleanMode:
     """
     console.print("\n[bold yellow]First-run setup[/bold yellow]")
     console.print(
-        "\nHow should semantic-patterns handle existing files "
-        "in the output directory?"
+        "\nHow should semantic-patterns handle existing files in the output directory?"
     )
     console.print("")
     console.print("  [bold]1.[/bold] Clean automatically - Remove orphaned files")
