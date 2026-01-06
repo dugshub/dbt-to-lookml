@@ -250,7 +250,10 @@ class DynamicFilteredPopStrategy:
 
         result: dict[str, Any] = {
             "name": f"{metric.name}_prior",
-            "type": "sum",  # TODO: inherit from base metric's aggregation
+            # Known limitation: hardcoded to SUM aggregation. Inheriting from base
+            # metric requires tracking the measure's aggregation type through the
+            # domain layer. For now, most PoP metrics are additive (sum-based).
+            "type": "sum",
             "label": f"{base_label} (PoP)",
             "description": f"{base_label} for the selected comparison period",
             "filters": [
@@ -261,9 +264,10 @@ class DynamicFilteredPopStrategy:
             ],
         }
 
-        # Build SQL - needs to match the base metric
-        # For simple metrics, this is the measure's expression
-        # TODO: Handle derived/ratio metrics and filters
+        # Build SQL - needs to match the base metric.
+        # For simple metrics, this is the measure's expression.
+        # Out of scope for v0.3: derived/ratio metrics (which combine multiple
+        # measures) and pre-filtered metrics would require recursive SQL building.
         if metric.measure:
             result["sql"] = f"${{TABLE}}.{metric.measure}"
 

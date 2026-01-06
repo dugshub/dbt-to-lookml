@@ -1,6 +1,27 @@
 # semantic-patterns
 
+<!-- Badges placeholder -->
+<!-- [![CI](https://github.com/dugshub/semantic-patterns/actions/workflows/ci.yml/badge.svg)](https://github.com/dugshub/semantic-patterns/actions/workflows/ci.yml) -->
+<!-- [![PyPI](https://img.shields.io/pypi/v/semantic-patterns.svg)](https://pypi.org/project/semantic-patterns/) -->
+<!-- [![Python](https://img.shields.io/pypi/pyversions/semantic-patterns.svg)](https://pypi.org/project/semantic-patterns/) -->
+
 Transform semantic models (YAML) into BI tool patterns, starting with LookML views and explores.
+
+## Why semantic-patterns?
+
+**The Problem**: Analytics teams spend significant time manually translating semantic definitions into BI tool configurations. This leads to:
+- Inconsistent naming and logic between data models and dashboards
+- Drift between semantic definitions and BI implementations
+- Tedious, error-prone manual work maintaining LookML, Cube.js, or other BI configs
+
+**The Solution**: semantic-patterns automates this translation. Define your dimensions, measures, and metrics once in a clean YAML format, and generate consistent BI tool configurations automatically.
+
+**Key Benefits**:
+- **Single source of truth** - Semantic definitions drive BI tool output
+- **Consistency** - Generated configs follow best practices and naming conventions
+- **Speed** - Go from semantic model to working LookML in seconds
+- **Flexibility** - Supports dbt Semantic Layer format or native semantic-patterns YAML
+- **Extensible** - Clean adapter architecture for adding new output formats (Cube.js, MetricFlow, etc.)
 
 ## Overview
 
@@ -36,24 +57,31 @@ uv pip install -e ".[dev]"
 ## Quick Start
 
 ```bash
-# Generate LookML from semantic models
-sp generate -i semantic_models/ -o output/
+# Create a config file in your project
+sp init
 
-# Or using full name
-semantic-patterns generate -i semantic_models/ -o output/
+# Build LookML from semantic models
+sp build
+
+# Preview without writing files
+sp build --dry-run
+
+# Use specific config file
+sp build --config ./configs/sp.yml
 ```
 
 ## Project Structure
 
 ```
-src/semantic_patterns/
+semantic_patterns/
   domain/         # Core domain models (Dimension, Measure, Metric, Model)
   ingestion/      # YAML loading and model building
   adapters/       # Output adapters (LookML)
     lookml/       # LookML generation and renderers
+  config.py       # Configuration schema (sp.yml)
   __main__.py     # CLI entry point
 
-tests/v2/         # Test suite
+tests/            # Test suite
   fixtures/       # Test data
   test_*.py       # Test files
 ```
@@ -62,21 +90,21 @@ tests/v2/         # Test suite
 
 ```bash
 # Run tests
-uv run pytest tests/v2/
+uv run pytest tests/
 
 # Type checking
-uv run mypy src/semantic_patterns/
+uv run mypy semantic_patterns/
 
 # Linting
-uv run ruff check src/
-uv run ruff format src/
+uv run ruff check semantic_patterns/
+uv run ruff format semantic_patterns/
 ```
 
 ## Testing
 
 - Framework: pytest with coverage tracking
 - Markers: `unit`, `integration`
-- Run: `uv run pytest tests/v2/ -v`
+- Run: `uv run pytest tests/ -v`
 
 ## Code Style
 

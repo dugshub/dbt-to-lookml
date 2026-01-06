@@ -2,14 +2,30 @@
 
 from __future__ import annotations
 
+import traceback
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
+import yaml
+from pydantic import ValidationError
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from semantic_patterns.config import SPConfig, find_config, load_config
 
 console = Console()
+
+
+@dataclass
+class BuildStatistics:
+    """Statistics collected during a build."""
+
+    dimensions: int = 0
+    measures: int = 0
+    metrics: int = 0
+    explores: int = 0
+    files: int = 0
 
 
 @click.group()
@@ -46,7 +62,12 @@ def cli() -> None:
     is_flag=True,
     help="Show detailed output",
 )
-def build(config: Path | None, dry_run: bool, verbose: bool) -> None:
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Show full exception stacktraces for troubleshooting",
+)
+def build(config: Path | None, dry_run: bool, verbose: bool, debug: bool) -> None:
     """Generate LookML from semantic models.
 
     Reads configuration from sp.yml and generates:
@@ -65,6 +86,9 @@ def build(config: Path | None, dry_run: bool, verbose: bool) -> None:
 
         # Use specific config file
         sp build --config ./configs/sp.yml
+
+        # Show full stacktraces for debugging
+        sp build --debug
     """
     # Load config
     config_path: Path
@@ -88,8 +112,20 @@ explores:
                 raise click.ClickException("Config file not found")
             config_path = found_config
             cfg = load_config(config_path)
-    except Exception as e:
-        console.print(f"[red]Error loading config:[/red] {e}")
+    except FileNotFoundError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]Config file not found:[/red] {e}")
+        raise click.ClickException(str(e))
+    except yaml.YAMLError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]YAML parsing error:[/red] {e}")
+        raise click.ClickException(str(e))
+    except ValidationError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]Config validation error:[/red] {e}")
         raise click.ClickException(str(e))
 
     console.print(f"[blue]Config:[/blue] {config_path}")
@@ -99,19 +135,39 @@ explores:
 
     # Run build
     try:
-        files = run_build(cfg, dry_run=dry_run, verbose=verbose)
+        files, stats = run_build(cfg, dry_run=dry_run, verbose=verbose)
 
         if dry_run:
-            console.print(f"\n[green]Would generate {len(files)} files[/green]")
+            console.print(f"\n[green]Would generate {stats.files} files[/green]")
         else:
-            console.print(f"\n[green]Generated {len(files)} files[/green]")
+            console.print(f"\n[green]Generated {stats.files} files[/green]")
+
+        # Show build statistics
+        console.print("\n[bold]Build Statistics:[/bold]")
+        console.print(f"  Dimensions: {stats.dimensions}")
+        console.print(f"  Measures:   {stats.measures}")
+        console.print(f"  Metrics:    {stats.metrics}")
+        console.print(f"  Explores:   {stats.explores}")
 
         if verbose or dry_run:
+            console.print("\n[bold]Generated files:[/bold]")
             for f in sorted(files):
                 console.print(f"  {f}")
 
-    except Exception as e:
-        console.print(f"[red]Build failed:[/red] {e}")
+    except FileNotFoundError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]File not found:[/red] {e}")
+        raise click.ClickException(str(e))
+    except yaml.YAMLError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]YAML parsing error:[/red] {e}")
+        raise click.ClickException(str(e))
+    except ValidationError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]Model validation error:[/red] {e}")
         raise click.ClickException(str(e))
 
 
@@ -146,7 +202,7 @@ def run_build(
     config: SPConfig,
     dry_run: bool = False,
     verbose: bool = False,
-) -> list[Path]:
+) -> tuple[list[Path], BuildStatistics]:
     """
     Execute the build process.
 
@@ -156,47 +212,67 @@ def run_build(
         verbose: If True, show detailed output
 
     Returns:
-        List of generated file paths
+        Tuple of (list of generated file paths, build statistics)
     """
     from semantic_patterns.adapters.lookml import LookMLGenerator
     from semantic_patterns.adapters.lookml.explore_generator import ExploreGenerator
     from semantic_patterns.adapters.lookml.types import (
         ExploreConfig as LookMLExploreConfig,
     )
+    from semantic_patterns.domain import ProcessedModel
     from semantic_patterns.ingestion import DbtLoader, DbtMapper, DomainBuilder
 
     view_prefix = config.options.view_prefix
     explore_prefix = config.options.effective_explore_prefix
+    stats = BuildStatistics()
 
     # Parse semantic models
     console.print(f"[blue]Input:[/blue] {config.input_path}")
     console.print(f"[blue]Format:[/blue] {config.format}")
 
-    if config.format == "dbt":
-        # Load dbt format and transform to our format
-        dbt_loader = DbtLoader(config.input_path)
-        semantic_models, metrics = dbt_loader.load_all()
+    models: list[ProcessedModel] = []
 
-        # Map dbt format to our format
-        mapper = DbtMapper()
-        mapper.add_semantic_models(semantic_models)
-        mapper.add_metrics(metrics)
-        documents = mapper.get_documents()
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        # Loading models
+        task = progress.add_task("Loading semantic models...", total=None)
 
-        # Build domain models from mapped documents
-        builder = DomainBuilder()
-        for doc in documents:
-            builder._collect_from_document(doc)
-        models = builder.build()
-    else:
-        # Use native semantic-patterns format
-        builder = DomainBuilder()
-        models = builder.from_directory(config.input_path)
+        if config.format == "dbt":
+            # Load dbt format and transform to our format
+            dbt_loader = DbtLoader(config.input_path)
+            semantic_models, metrics = dbt_loader.load_all()
+
+            # Map dbt format to our format
+            mapper = DbtMapper()
+            mapper.add_semantic_models(semantic_models)
+            mapper.add_metrics(metrics)
+            documents = mapper.get_documents()
+
+            # Build domain models from mapped documents
+            builder = DomainBuilder()
+            for doc in documents:
+                builder.add_document(doc)
+            models = builder.build()
+        else:
+            # Use native semantic-patterns format
+            models = DomainBuilder.from_directory(config.input_path)
+
+        progress.update(task, completed=True)
 
     if not models:
         raise click.ClickException(f"No semantic models found in {config.input_path}")
 
     console.print(f"  Found {len(models)} models")
+
+    # Collect statistics from models
+    for model in models:
+        stats.dimensions += len(model.dimensions)
+        stats.measures += len(model.measures)
+        stats.metrics += len(model.metrics)
 
     if verbose:
         for model in models:
@@ -221,20 +297,29 @@ def run_build(
     generator = LookMLGenerator(dialect=config.options.dialect)
     all_files: dict[str, str] = {}
 
-    for model in models:
-        # Override schema from config
-        if model.data_model:
-            from semantic_patterns.domain import DataModel
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Generating view files...", total=len(models))
 
-            model.data_model = DataModel(
-                name=model.data_model.name,
-                schema_name=config.schema_name,
-                table=model.data_model.table,
-                connection=model.data_model.connection,
-            )
+        for model in models:
+            # Override schema from config
+            if model.data_model:
+                from semantic_patterns.domain import DataModel
 
-        files = generator.generate_model(model)
-        all_files.update(files)
+                model.data_model = DataModel(
+                    name=model.data_model.name,
+                    schema_name=config.schema_name,
+                    table=model.data_model.table,
+                    connection=model.data_model.connection,
+                )
+
+            files = generator.generate_model(model)
+            all_files.update(files)
+            progress.advance(task)
 
     console.print(f"  Generated {len(all_files)} view files")
 
@@ -262,6 +347,7 @@ def run_build(
 
         # Note: explore prefix is already in the explore name, so filenames are correct
         all_files.update(explore_files)
+        stats.explores = len(config.explores)
         console.print(f"  Generated {len(explore_files)} explore files")
 
     # Generate model file
@@ -273,19 +359,29 @@ def run_build(
     # Write files
     output_path = config.output_path
     written: list[Path] = []
+    stats.files = len(all_files)
 
     if not dry_run:
         output_path.mkdir(parents=True, exist_ok=True)
 
-        for filename, content in all_files.items():
-            file_path = output_path / filename
-            file_path.write_text(content, encoding="utf-8")
-            written.append(file_path)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("Writing files...", total=len(all_files))
+
+            for filename, content in all_files.items():
+                file_path = output_path / filename
+                file_path.write_text(content, encoding="utf-8")
+                written.append(file_path)
+                progress.advance(task)
     else:
         # Dry run - just return what would be written
         written = [output_path / f for f in all_files.keys()]
 
-    return written
+    return written, stats
 
 
 @cli.command()
@@ -342,7 +438,12 @@ options:
     type=click.Path(exists=True, path_type=Path),
     help="Path to sp.yml config file",
 )
-def validate(config: Path | None) -> None:
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Show full exception stacktraces for troubleshooting",
+)
+def validate(config: Path | None, debug: bool) -> None:
     """Validate configuration and semantic models.
 
     Checks that:
@@ -350,6 +451,14 @@ def validate(config: Path | None) -> None:
     - Input directory exists
     - Semantic models parse correctly
     - Explore fact models exist
+
+    Examples:
+
+        # Validate using sp.yml in current directory
+        sp validate
+
+        # Show full stacktraces for debugging
+        sp validate --debug
     """
     # Load config
     config_path: Path
@@ -364,8 +473,20 @@ def validate(config: Path | None) -> None:
             config_path = found_config
             cfg = load_config(config_path)
         console.print(f"[green]Config valid:[/green] {config_path}")
-    except Exception as e:
-        console.print(f"[red]Config error:[/red] {e}")
+    except FileNotFoundError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]Config file not found:[/red] {e}")
+        raise click.ClickException(str(e))
+    except yaml.YAMLError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]YAML parsing error:[/red] {e}")
+        raise click.ClickException(str(e))
+    except ValidationError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]Config validation error:[/red] {e}")
         raise click.ClickException(str(e))
 
     # Check input directory
@@ -391,19 +512,30 @@ def validate(config: Path | None) -> None:
 
             builder = DomainBuilder()
             for doc in documents:
-                builder._collect_from_document(doc)
+                builder.add_document(doc)
             models = builder.build()
         else:
-            builder = DomainBuilder()
-            models = builder.from_directory(cfg.input_path)
+            models = DomainBuilder.from_directory(cfg.input_path)
 
         console.print(f"[green]Models valid:[/green] {len(models)} models")
 
         model_names = {m.name for m in models}
         for model in models:
             console.print(f"  - {model.name}")
-    except Exception as e:
-        console.print(f"[red]Parse error:[/red] {e}")
+    except FileNotFoundError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]File not found:[/red] {e}")
+        raise click.ClickException(str(e))
+    except yaml.YAMLError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]YAML parsing error:[/red] {e}")
+        raise click.ClickException(str(e))
+    except ValidationError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"[red]Model validation error:[/red] {e}")
         raise click.ClickException(str(e))
 
     # Check explore facts exist

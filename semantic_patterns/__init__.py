@@ -15,4 +15,4 @@ Key Concepts:
     - LookML-specific concepts (explores, joins) live in adapters/lookml/types.py
 """
 
-__version__ = "2.0.0-dev"
+__version__ = "0.3.0"

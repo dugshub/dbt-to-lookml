@@ -62,6 +62,18 @@ class DomainBuilder:
         builder._collect_from_document(data)
         return builder.build()
 
+    def add_document(self, doc: dict[str, Any]) -> None:
+        """
+        Add a parsed document to the builder.
+
+        Public method for adding documents from external sources (e.g., dbt mapper).
+        Collects data models, semantic models, and metrics from the document.
+
+        Args:
+            doc: Parsed YAML document with data_models, semantic_models, and/or metrics
+        """
+        self._collect_from_document(doc)
+
     def _collect_from_document(self, doc: dict[str, Any]) -> None:
         """Collect data models, semantic models, and metrics from YAML."""
         # Collect data models
