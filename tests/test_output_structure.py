@@ -30,9 +30,9 @@ class TestOutputPaths:
         paths = OutputPaths(project="myproject", base_path=Path("/output"))
         assert paths.views_path == Path("/output/myproject/views")
 
-    def test_models_path(self) -> None:
+    def test_explores_path(self) -> None:
         paths = OutputPaths(project="myproject", base_path=Path("/output"))
-        assert paths.models_path == Path("/output/myproject/models")
+        assert paths.explores_path == Path("/output/myproject/explores")
 
     def test_manifest_path(self) -> None:
         paths = OutputPaths(project="myproject", base_path=Path("/output"))
@@ -53,13 +53,13 @@ class TestOutputPaths:
     def test_explore_file_path(self) -> None:
         paths = OutputPaths(project="myproject", base_path=Path("/output"))
         assert paths.explore_file_path("orders") == Path(
-            "/output/myproject/models/orders.explore.lkml"
+            "/output/myproject/explores/orders.explore.lkml"
         )
 
     def test_model_file_path(self) -> None:
         paths = OutputPaths(project="myproject", base_path=Path("/output"))
         assert paths.model_file_path() == Path(
-            "/output/myproject/models/myproject.model.lkml"
+            "/output/myproject/myproject.model.lkml"
         )
 
     def test_relative_view_include(self) -> None:
@@ -75,7 +75,7 @@ class TestOutputPaths:
 
     def test_relative_explore_include(self) -> None:
         paths = OutputPaths(project="myproject", base_path=Path("/output"))
-        assert paths.relative_explore_include("orders") == "/models/orders.explore.lkml"
+        assert paths.relative_explore_include("orders") == "/explores/orders.explore.lkml"
 
 
 class TestManifest:
@@ -260,10 +260,10 @@ semantic_models:
         runner.invoke(cli, ["build", "--config", str(sample_project / "sp.yml")])
         assert (sample_project / "output/test_project/views").exists()
 
-    def test_creates_models_folder(self, sample_project: Path) -> None:
+    def test_creates_explores_folder(self, sample_project: Path) -> None:
         runner = CliRunner()
         runner.invoke(cli, ["build", "--config", str(sample_project / "sp.yml")])
-        assert (sample_project / "output/test_project/models").exists()
+        assert (sample_project / "output/test_project/explores").exists()
 
     def test_creates_domain_folder(self, sample_project: Path) -> None:
         runner = CliRunner()
@@ -288,13 +288,13 @@ semantic_models:
     def test_creates_rollup_model(self, sample_project: Path) -> None:
         runner = CliRunner()
         runner.invoke(cli, ["build", "--config", str(sample_project / "sp.yml")])
-        model_file = sample_project / "output/test_project/models/test_project.model.lkml"
+        model_file = sample_project / "output/test_project/test_project.model.lkml"
         assert model_file.exists()
 
     def test_model_uses_relative_includes(self, sample_project: Path) -> None:
         runner = CliRunner()
         runner.invoke(cli, ["build", "--config", str(sample_project / "sp.yml")])
-        model_file = sample_project / "output/test_project/models/test_project.model.lkml"
+        model_file = sample_project / "output/test_project/test_project.model.lkml"
         content = model_file.read_text()
         assert "/views/orders/orders.view.lkml" in content
 

@@ -33,6 +33,8 @@ dependencies = [
     "click>=8.0",
     "rich",
     "sqlglot>=28.5.0",
+    "httpx>=0.27",
+    "keyring>=25",
 ]
 
 [project.optional-dependencies]

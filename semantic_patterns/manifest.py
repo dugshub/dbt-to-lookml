@@ -43,6 +43,37 @@ class ModelSummary(BaseModel):
     model_config = {"frozen": True}
 
 
+class GitHubPushInfo(BaseModel):
+    """Information about a GitHub push operation."""
+
+    repo: str  # owner/repo format
+    branch: str
+    commit_sha: str
+    pushed_at: str  # ISO timestamp
+    files_pushed: int
+    commit_url: str | None = None
+
+    model_config = {"frozen": True}
+
+    @classmethod
+    def create(
+        cls,
+        repo: str,
+        branch: str,
+        commit_sha: str,
+        files_pushed: int,
+    ) -> GitHubPushInfo:
+        """Create a new GitHubPushInfo with current timestamp."""
+        return cls(
+            repo=repo,
+            branch=branch,
+            commit_sha=commit_sha,
+            pushed_at=datetime.now(timezone.utc).isoformat(),
+            files_pushed=files_pushed,
+            commit_url=f"https://github.com/{repo}/commit/{commit_sha}",
+        )
+
+
 class SPManifest(BaseModel):
     """Manifest tracking generated files and sources."""
 
@@ -53,6 +84,7 @@ class SPManifest(BaseModel):
     sources: list[SourceInfo] = Field(default_factory=list)
     outputs: list[OutputInfo] = Field(default_factory=list)
     models: list[ModelSummary] = Field(default_factory=list)
+    github_push: GitHubPushInfo | None = None
 
     model_config = {"frozen": True}
 
@@ -64,6 +96,7 @@ class SPManifest(BaseModel):
         sources: list[SourceInfo] | None = None,
         outputs: list[OutputInfo] | None = None,
         models: list[ModelSummary] | None = None,
+        github_push: GitHubPushInfo | None = None,
     ) -> SPManifest:
         """Create a new manifest with current timestamp."""
         return cls(
@@ -73,6 +106,7 @@ class SPManifest(BaseModel):
             sources=sources or [],
             outputs=outputs or [],
             models=models or [],
+            github_push=github_push,
         )
 
     def to_json(self) -> str:

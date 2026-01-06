@@ -3,15 +3,15 @@
 Generates domain-based folder structure:
     {output}/{project}/
     ├── .sp-manifest.json
+    ├── {project}.model.lkml
     ├── views/
     │   ├── {model_name}/
     │   │   ├── {model}.view.lkml
     │   │   ├── {model}.metrics.view.lkml
     │   │   └── {model}.pop.view.lkml
     │   └── ...
-    └── models/
-        ├── {explore}.explore.lkml
-        └── {project}.model.lkml
+    └── explores/
+        └── {explore}.explore.lkml
 """
 
 from __future__ import annotations
@@ -38,9 +38,9 @@ class OutputPaths:
         return self.project_path / "views"
 
     @property
-    def models_path(self) -> Path:
-        """Models folder: {output}/{project}/models/"""
-        return self.project_path / "models"
+    def explores_path(self) -> Path:
+        """Explores folder: {output}/{project}/explores/"""
+        return self.project_path / "explores"
 
     @property
     def manifest_path(self) -> Path:
@@ -71,12 +71,12 @@ class OutputPaths:
         return self.view_domain_path(calendar_name) / f"{calendar_name}.view.lkml"
 
     def explore_file_path(self, explore_name: str) -> Path:
-        """Path for explore file: {output}/{project}/models/{explore}.explore.lkml"""
-        return self.models_path / f"{explore_name}.explore.lkml"
+        """Path for explore file: {output}/{project}/explores/{explore}.explore.lkml"""
+        return self.explores_path / f"{explore_name}.explore.lkml"
 
     def model_file_path(self) -> Path:
-        """Path for model file: {output}/{project}/models/{project}.model.lkml"""
-        return self.models_path / f"{self.project}.model.lkml"
+        """Path for model file: {output}/{project}/{project}.model.lkml"""
+        return self.project_path / f"{self.project}.model.lkml"
 
     def relative_path(self, full_path: Path) -> str:
         """
@@ -100,9 +100,9 @@ class OutputPaths:
         """
         Generate include path relative to project root for model file.
 
-        Returns: "/models/{explore}.explore.lkml"
+        Returns: "/explores/{explore}.explore.lkml"
         """
-        return f"/models/{explore_name}.explore.lkml"
+        return f"/explores/{explore_name}.explore.lkml"
 
     def relative_calendar_include(self, explore_name: str) -> str:
         """
@@ -117,7 +117,7 @@ class OutputPaths:
         """Create all required directories."""
         self.project_path.mkdir(parents=True, exist_ok=True)
         self.views_path.mkdir(exist_ok=True)
-        self.models_path.mkdir(exist_ok=True)
+        self.explores_path.mkdir(exist_ok=True)
 
     def ensure_view_domain(self, model_name: str) -> None:
         """Ensure domain folder exists for a model."""

@@ -21,13 +21,17 @@ Transform semantic models (YAML) into BI tool patterns, starting with LookML vie
 - **Consistency** - Generated configs follow best practices and naming conventions
 - **Speed** - Go from semantic model to working LookML in seconds
 - **Flexibility** - Supports dbt Semantic Layer format or native semantic-patterns YAML
-- **Extensible** - Clean adapter architecture for adding new output formats (Cube.js, MetricFlow, etc.)
+- **Extensible** - Clean adapter architecture for adding new output formats
 
-## Overview
+## Features
 
-- Parses semantic model YAML, processes entities/dimensions/measures/metrics
-- Generates `.view.lkml` and `.explore.lkml` files with proper LookML formatting
-- Includes strict typing (mypy), linting (ruff), and comprehensive pytest test suite
+- **Domain-based output** - Views organized by domain with clean folder structure
+- **dbt Semantic Layer support** - Ingest dbt semantic models and metrics directly
+- **Period-over-period** - Dynamic PoP comparisons (prior year, prior month, etc.)
+- **Entity-based joins** - Auto-infer explore joins from entity relationships
+- **Manifest tracking** - `.sp-manifest.json` tracks generated files for change detection
+- **Multi-dialect** - Redshift, Snowflake, BigQuery, Postgres, DuckDB, Trino
+- **GitHub integration** - Push generated LookML directly to GitHub with secure keychain auth
 
 ## Requirements
 
@@ -68,17 +72,54 @@ sp build --dry-run
 
 # Use specific config file
 sp build --config ./configs/sp.yml
+
+# Build and push to GitHub (when github.enabled=true)
+sp build --push
+
+# Validate config and models without building
+sp validate
 ```
 
-## Project Structure
+## Output Structure
+
+Generated LookML is organized by domain for clean separation:
+
+```
+{output}/{project}/
+├── my_project.model.lkml
+├── views/
+│   ├── orders/
+│   │   ├── orders.view.lkml
+│   │   └── orders.metrics.view.lkml
+│   └── customers/
+│       ├── customers.view.lkml
+│       └── customers.metrics.view.lkml
+├── explores/
+│   └── orders.explore.lkml
+└── .sp-manifest.json
+```
+
+The manifest file tracks generated files with content hashes, enabling future incremental builds and orphan cleanup.
+
+## Documentation
+
+- [Quickstart Guide](docs/quickstart.md) - Get started in 5 minutes
+- [Configuration Reference](docs/configuration.md) - All sp.yml options
+- [YAML Schema](docs/schema.md) - Native semantic model format
+- [dbt Format Guide](docs/dbt-format.md) - Using dbt Semantic Layer format
+
+## Package Structure
 
 ```
 semantic_patterns/
   domain/         # Core domain models (Dimension, Measure, Metric, Model)
-  ingestion/      # YAML loading and model building
+  ingestion/      # YAML loading, dbt mapper
   adapters/       # Output adapters (LookML)
     lookml/       # LookML generation and renderers
+  destinations/   # Output destinations (GitHub)
   config.py       # Configuration schema (sp.yml)
+  credentials.py  # Secure credential storage (keychain)
+  manifest.py     # Output manifest tracking
   __main__.py     # CLI entry point
 
 tests/            # Test suite

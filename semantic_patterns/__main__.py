@@ -105,7 +105,14 @@ def cli() -> None:
     is_flag=True,
     help="Show full exception stacktraces for troubleshooting",
 )
-def build(config: Path | None, dry_run: bool, verbose: bool, debug: bool) -> None:
+@click.option(
+    "--push",
+    is_flag=True,
+    help="Push to GitHub without confirmation (when github.enabled=true)",
+)
+def build(
+    config: Path | None, dry_run: bool, verbose: bool, debug: bool, push: bool
+) -> None:
     """Generate LookML from semantic models.
 
     Reads configuration from sp.yml and generates:
@@ -113,6 +120,9 @@ def build(config: Path | None, dry_run: bool, verbose: bool, debug: bool) -> Non
     - Metric refinements (.metrics.view.lkml)
     - Explore files (.explore.lkml) if explores configured
     - Calendar views for date selection
+
+    If github.enabled=true in config, prompts to push to GitHub after build.
+    Use --push to skip confirmation.
 
     Examples:
 
@@ -124,6 +134,9 @@ def build(config: Path | None, dry_run: bool, verbose: bool, debug: bool) -> Non
 
         # Use specific config file
         sp build --config ./configs/sp.yml
+
+        # Build and push to GitHub (skip confirmation)
+        sp build --push
 
         # Show full stacktraces for debugging
         sp build --debug
@@ -177,7 +190,9 @@ explores:
 
     # Run build
     try:
-        files, stats, project_path = run_build(cfg, dry_run=dry_run, verbose=verbose)
+        files, stats, project_path, all_files = run_build(
+            cfg, dry_run=dry_run, verbose=verbose
+        )
 
         # Summary line
         action = "Would generate" if dry_run else "Generated"
@@ -192,6 +207,10 @@ explores:
             console.print()
             tree = _build_file_tree(files, project_path)
             console.print(tree)
+
+        # GitHub push if enabled
+        if cfg.github.enabled:
+            _handle_github_push(cfg, all_files, push=push, dry_run=dry_run, debug=debug)
 
     except FileNotFoundError as e:
         if debug:
@@ -210,6 +229,66 @@ explores:
         raise click.ClickException(str(e))
 
 
+def _handle_github_push(
+    config: SPConfig,
+    all_files: dict[Path, str],
+    *,
+    push: bool,
+    dry_run: bool,
+    debug: bool,
+) -> None:
+    """Handle GitHub push after build completes.
+
+    Args:
+        config: Parsed configuration
+        all_files: Dictionary of file paths to content
+        push: If True, skip confirmation prompt
+        dry_run: If True, simulate without pushing
+        debug: If True, show full stacktraces
+    """
+    from semantic_patterns.destinations import GitHubDestination
+    from semantic_patterns.destinations.github import GitHubAPIError
+
+    github_cfg = config.github
+
+    # Show what will be pushed
+    console.print()
+    console.print("[bold]GitHub Push[/bold]")
+    console.print(f"  [dim]Repo:[/dim]   {github_cfg.repo}")
+    console.print(f"  [dim]Branch:[/dim] {github_cfg.branch}")
+    console.print(f"  [dim]Files:[/dim]  {len(all_files)}")
+
+    # Confirm unless --push flag or dry-run
+    if not push and not dry_run:
+        console.print()
+        if not click.confirm("Push to GitHub?", default=True):
+            console.print("[yellow]Push skipped[/yellow]")
+            return
+
+    # Create destination and push
+    try:
+        dest = GitHubDestination(github_cfg, config.project, console=console)
+        result = dest.write(all_files, dry_run=dry_run)
+
+        if dry_run:
+            console.print(f"\n[yellow]{result.message}[/yellow]")
+        else:
+            console.print(f"\n[bold green]{result.message}[/bold green]")
+            if result.destination_url:
+                console.print(f"[dim]Commit:[/dim] {result.destination_url}")
+
+    except GitHubAPIError as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"\n[red]GitHub push failed:[/red] {e}")
+        raise click.ClickException(str(e))
+    except Exception as e:
+        if debug:
+            console.print(traceback.format_exc())
+        console.print(f"\n[red]GitHub push failed:[/red] {e}")
+        raise click.ClickException(str(e))
+
+
 def _generate_model_file_content(
     config: SPConfig,
     all_files: dict[Path, str],
@@ -224,9 +303,7 @@ def _generate_model_file_content(
     lines.append("")
 
     # Include all view files with relative paths
-    view_files = sorted(
-        p for p in all_files.keys() if str(p).endswith(".view.lkml")
-    )
+    view_files = sorted(p for p in all_files.keys() if str(p).endswith(".view.lkml"))
     for view_path in view_files:
         rel_path = paths.relative_path(view_path)
         lines.append(f'include: "{rel_path}"')
@@ -247,7 +324,7 @@ def run_build(
     config: SPConfig,
     dry_run: bool = False,
     verbose: bool = False,
-) -> tuple[list[Path], BuildStatistics, Path]:
+) -> tuple[list[Path], BuildStatistics, Path, dict[Path, str]]:
     """
     Execute the build process with domain-based output structure.
 
@@ -257,7 +334,8 @@ def run_build(
         verbose: If True, show detailed output
 
     Returns:
-        Tuple of (list of generated file paths, build statistics, project_path)
+        Tuple of (list of generated file paths, build statistics,
+        project_path, all_files)
     """
     from semantic_patterns.adapters.lookml import LookMLGenerator
     from semantic_patterns.adapters.lookml.explore_generator import ExploreGenerator
@@ -342,9 +420,11 @@ def run_build(
     if verbose:
         console.print(f"[dim]Models:[/dim]  {len(models)} semantic models")
         for model in models:
+            dims_count = len(model.dimensions)
+            metrics_count = len(model.metrics)
             console.print(
                 f"          [cyan]{model.name}[/cyan] "
-                f"[dim]({len(model.dimensions)} dims, {len(model.metrics)} metrics)[/dim]"
+                f"[dim]({dims_count} dims, {metrics_count} metrics)[/dim]"
             )
 
     # Apply view prefix to model names BEFORE generation
@@ -394,9 +474,7 @@ def run_build(
                     else e.effective_name
                 ),
                 # Use prefixed fact_model name to match prefixed model names
-                fact_model=(
-                    f"{view_prefix}{e.fact}" if view_prefix else e.fact
-                ),
+                fact_model=(f"{view_prefix}{e.fact}" if view_prefix else e.fact),
                 label=e.label,
                 description=e.description,
                 join_exclusions=e.join_exclusions,
@@ -460,9 +538,9 @@ def run_build(
                 OutputInfo(
                     path=str(p.relative_to(paths.project_path)),
                     hash=compute_content_hash(all_files[p]),
-                    type="view" if ".view.lkml" in str(p) else (
-                        "explore" if ".explore.lkml" in str(p) else "model"
-                    ),
+                    type="view"
+                    if ".view.lkml" in str(p)
+                    else ("explore" if ".explore.lkml" in str(p) else "model"),
                 )
                 for p in all_files.keys()
             ]
@@ -478,7 +556,7 @@ def run_build(
         # Dry run - just return what would be written
         written = list(all_files.keys())
 
-    return written, stats, paths.project_path
+    return written, stats, paths.project_path, all_files
 
 
 @cli.command()
@@ -529,6 +607,14 @@ options:
   convert_tz: false
   # view_prefix: ""
   # explore_prefix: ""
+
+# GitHub destination (optional)
+# github:
+#   enabled: true
+#   repo: myorg/looker-models
+#   branch: semantic-patterns/dev    # Cannot be main or master
+#   path: lookml/                     # Path within repo (optional)
+#   commit_message: "semantic-patterns: Update LookML"
 """
 
     config_path.write_text(template, encoding="utf-8")

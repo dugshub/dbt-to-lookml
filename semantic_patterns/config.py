@@ -5,11 +5,13 @@ Defines the sp.yml configuration file format using Pydantic models.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing_extensions import Self
 
 from semantic_patterns.adapters.dialect import Dialect
 
@@ -102,6 +104,86 @@ class OptionsConfig(BaseModel):
         return Dialect(v)
 
 
+class GitHubConfig(BaseModel):
+    """GitHub destination configuration.
+
+    Example:
+        github:
+          enabled: true
+          repo: myorg/looker-models
+          branch: semantic-patterns/dev
+          path: lookml/
+          protected_branches:
+            - production
+            - release
+          commit_message: "Update LookML from dbt models"
+    """
+
+    enabled: bool = False
+    repo: str = ""  # owner/repo format (required if enabled)
+    branch: str = ""  # Target branch (required if enabled)
+    path: str = ""  # Path within repo (default: repo root)
+    protected_branches: list[str] = Field(default_factory=list)
+    commit_message: str = "semantic-patterns: Update LookML"
+
+    model_config = {"frozen": True}
+
+    # Hard-coded protection - NEVER push to these branches
+    # ClassVar excludes this from model serialization
+    ALWAYS_PROTECTED: ClassVar[frozenset[str]] = frozenset({"main", "master"})
+
+    @field_validator("repo")
+    @classmethod
+    def validate_repo_format(cls, v: str) -> str:
+        """Validate repo is in owner/repo format."""
+        if not v:
+            return v  # Empty is ok when not enabled
+        if not re.match(r"^[\w.-]+/[\w.-]+$", v):
+            raise ValueError(
+                f"Invalid repo format '{v}'. Expected 'owner/repo' format."
+            )
+        return v
+
+    @field_validator("branch")
+    @classmethod
+    def validate_branch_not_protected(cls, v: str) -> str:
+        """Validate branch is not in always-protected list."""
+        if not v:
+            return v  # Empty is ok when not enabled
+        if v.lower() in cls.ALWAYS_PROTECTED:
+            raise ValueError(
+                f"Cannot push to '{v}' - this is a protected branch. "
+                f"Use a feature branch like 'semantic-patterns/dev' instead."
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_enabled_requires_fields(self) -> Self:
+        """Validate required fields when enabled."""
+        if self.enabled:
+            if not self.repo:
+                raise ValueError("github.repo is required when github.enabled is true")
+            if not self.branch:
+                raise ValueError(
+                    "github.branch is required when github.enabled is true"
+                )
+            if self.branch in self.protected_branches:
+                raise ValueError(
+                    f"Branch '{self.branch}' is in protected_branches list"
+                )
+        return self
+
+    @property
+    def all_protected_branches(self) -> frozenset[str]:
+        """Get all protected branches (built-in + custom)."""
+        return self.ALWAYS_PROTECTED | frozenset(self.protected_branches)
+
+    @property
+    def repo_url(self) -> str:
+        """Get the full GitHub repo URL."""
+        return f"https://github.com/{self.repo}" if self.repo else ""
+
+
 class SPConfig(BaseModel):
     """
     Root configuration for semantic-patterns.
@@ -133,6 +215,12 @@ class SPConfig(BaseModel):
         output_options:
           clean: clean  # or 'warn' or 'ignore'
           manifest: true
+
+        # Optional: Push to GitHub
+        github:
+          enabled: true
+          repo: myorg/looker-models
+          branch: semantic-patterns/dev
     """
 
     input: str
@@ -145,6 +233,7 @@ class SPConfig(BaseModel):
     explores: list[ExploreConfig] = Field(default_factory=list)
     options: OptionsConfig = Field(default_factory=OptionsConfig)
     output_options: OutputOptionsConfig = Field(default_factory=OutputOptionsConfig)
+    github: GitHubConfig = Field(default_factory=GitHubConfig)
 
     @field_validator("format", mode="before")
     @classmethod

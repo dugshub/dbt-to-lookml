@@ -40,6 +40,7 @@ This creates `sp.yml` with default settings:
 input: ./semantic_models
 output: ./lookml
 schema: gold
+project: my_project
 
 # Looker model file settings
 model:
@@ -58,6 +59,7 @@ Edit the config to match your environment:
 - `input`: Directory containing your semantic model YAML files
 - `output`: Where to write generated LookML
 - `schema`: Database schema name for table references
+- `project`: Names the output folder (e.g., `lookml/my_project/`)
 - `model.connection`: Your Looker connection name
 
 ## Create a Semantic Model
@@ -146,18 +148,36 @@ Config: sp.yml
 Input: ./semantic_models
 Format: semantic-patterns
   Found 1 models
-Output: ./lookml
+Output: ./lookml/my_project
   Generated 2 view files
+  Generated 1 explore file
   Generated model file: semantic_model.model.lkml
 
-Generated 3 files
+Generated 4 files
 ```
 
 ## Review Generated Output
 
-The generated LookML files will be in your output directory:
+The generated LookML files are organized by domain in your output directory:
 
-### `orders.view.lkml`
+```
+lookml/my_project/
+├── my_project.model.lkml
+├── views/
+│   └── orders/
+│       ├── orders.view.lkml
+│       └── orders.metrics.view.lkml
+├── explores/
+│   └── orders.explore.lkml
+└── .sp-manifest.json
+```
+
+- **{project}.model.lkml**: Main model file at project root
+- **views/{model}/**: Each semantic model gets its own folder containing the base view and metrics view
+- **explores/**: Contains explore files
+- **.sp-manifest.json**: Tracks all generated files (useful for cleanup and CI/CD)
+
+### `views/orders/orders.view.lkml`
 
 Contains the base view with dimensions and measures:
 
@@ -190,7 +210,7 @@ view: orders {
 }
 ```
 
-### `orders.metrics.view.lkml`
+### `views/orders/orders.metrics.view.lkml`
 
 Contains metric refinements with business logic:
 
@@ -220,25 +240,26 @@ view: +orders {
 }
 ```
 
-### `semantic_model.model.lkml`
+### `my_project.model.lkml`
 
-The model file that ties everything together:
+The model file at project root ties everything together:
 
 ```lookml
 connection: "database"
 
-include: "/orders.view.lkml"
-include: "/orders.metrics.view.lkml"
+include: "/views/**/*.view.lkml"
+include: "/explores/**/*.explore.lkml"
 ```
 
 ## Add an Explore
 
-Update `sp.yml` to generate an explore:
+Update `sp.yml` to add an explore configuration:
 
 ```yaml
 input: ./semantic_models
 output: ./lookml
 schema: gold
+project: my_project
 
 model:
   name: semantic_model
@@ -252,7 +273,31 @@ options:
   dialect: redshift
 ```
 
-Run `sp build` again to generate the explore file.
+Run `sp build` again. The explore will be generated at `explores/orders.explore.lkml`.
+
+## Push to GitHub (Optional)
+
+You can push generated LookML directly to a GitHub repository. Add a `github` section to your config:
+
+```yaml
+github:
+  enabled: true
+  repo: myorg/looker-models
+  branch: semantic-patterns/dev    # Cannot be main or master
+  path: lookml/                     # Path within repo (optional)
+```
+
+Then run:
+
+```bash
+# Build and prompt before pushing
+sp build
+
+# Build and push without confirmation
+sp build --push
+```
+
+On first run, you'll be prompted to enter a GitHub Personal Access Token (with `repo` scope). The token is saved to your system keychain for future use.
 
 ## Next Steps
 
@@ -260,3 +305,4 @@ Run `sp build` again to generate the explore file.
 - Explore the `examples/` directory for more complex semantic models
 - Try the `--dry-run` flag to preview changes before writing files
 - Use `sp validate` to check your config and semantic models
+- Set up [GitHub integration](configuration.md#github) for automated deployments
