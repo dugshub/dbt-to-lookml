@@ -1,25 +1,23 @@
-# semantic-patterns configuration
+project: spothero
 
 input: .
 output: ./lookml
 schema: gold
 
-# Looker model file settings
 model:
-  name: semantic_model
+  name: spothero
   connection: database
 
-# Explores (optional - omit for views only)
-# explores:
-#   - fact: rentals
-#   - fact: orders
-#     label: Order Analysis
+explores:
+  - fact: rentals
+  - fact: facility_lifecycle
 
-# Generator options (defaults shown)
+output_options:
+  clean: clean
+  manifest: true
+
 options:
   dialect: redshift
   pop_strategy: dynamic
   date_selector: true
   convert_tz: false
-  # view_prefix: ""
-  # explore_prefix: ""

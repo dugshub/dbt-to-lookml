@@ -12,6 +12,7 @@ import yaml
 from pydantic import ValidationError
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.tree import Tree
 
 from semantic_patterns.config import SPConfig, find_config, load_config
 
@@ -19,6 +20,39 @@ if TYPE_CHECKING:
     from semantic_patterns.adapters.lookml.paths import OutputPaths
 
 console = Console()
+
+
+def _build_file_tree(files: list[Path], project_path: Path) -> Tree:
+    """Build a Rich Tree from generated file paths."""
+    tree = Tree(f"[bold]{project_path.name}/[/bold]")
+    nodes: dict[str, Tree] = {}
+
+    for f in sorted(files):
+        try:
+            rel = f.relative_to(project_path)
+        except ValueError:
+            continue
+
+        parts = rel.parts
+        parent = tree
+
+        # Build directory nodes
+        for i, part in enumerate(parts[:-1]):
+            key = "/".join(parts[: i + 1])
+            if key not in nodes:
+                nodes[key] = parent.add(f"[blue]{part}/[/blue]")
+            parent = nodes[key]
+
+        # Add file with color based on type
+        fname = parts[-1]
+        if ".explore.lkml" in fname:
+            parent.add(f"[yellow]{fname}[/yellow]")
+        elif ".model.lkml" in fname:
+            parent.add(f"[magenta]{fname}[/magenta]")
+        else:
+            parent.add(f"[green]{fname}[/green]")
+
+    return tree
 
 
 @dataclass
@@ -132,31 +166,32 @@ explores:
         console.print(f"[red]Config validation error:[/red] {e}")
         raise click.ClickException(str(e))
 
-    console.print(f"[blue]Config:[/blue] {config_path}")
+    console.print()
+    console.print("[bold]semantic-patterns[/bold]", highlight=False)
+    console.print()
+    console.print(f"[dim]Config:[/dim] {config_path}")
 
     if dry_run:
-        console.print("[yellow]Dry run mode - no files will be written[/yellow]")
+        console.print("[yellow]Dry run mode[/yellow]")
+        console.print()
 
     # Run build
     try:
-        files, stats = run_build(cfg, dry_run=dry_run, verbose=verbose)
+        files, stats, project_path = run_build(cfg, dry_run=dry_run, verbose=verbose)
 
-        if dry_run:
-            console.print(f"\n[green]Would generate {stats.files} files[/green]")
-        else:
-            console.print(f"\n[green]Generated {stats.files} files[/green]")
+        # Summary line
+        action = "Would generate" if dry_run else "Generated"
+        console.print(
+            f"\n[bold green]{action} {stats.files} files[/bold green] "
+            f"[dim]({stats.dimensions} dims, {stats.measures} measures, "
+            f"{stats.metrics} metrics, {stats.explores} explores)[/dim]"
+        )
 
-        # Show build statistics
-        console.print("\n[bold]Build Statistics:[/bold]")
-        console.print(f"  Dimensions: {stats.dimensions}")
-        console.print(f"  Measures:   {stats.measures}")
-        console.print(f"  Metrics:    {stats.metrics}")
-        console.print(f"  Explores:   {stats.explores}")
-
+        # Show file tree in verbose/dry-run mode
         if verbose or dry_run:
-            console.print("\n[bold]Generated files:[/bold]")
-            for f in sorted(files):
-                console.print(f"  {f}")
+            console.print()
+            tree = _build_file_tree(files, project_path)
+            console.print(tree)
 
     except FileNotFoundError as e:
         if debug:
@@ -212,7 +247,7 @@ def run_build(
     config: SPConfig,
     dry_run: bool = False,
     verbose: bool = False,
-) -> tuple[list[Path], BuildStatistics]:
+) -> tuple[list[Path], BuildStatistics, Path]:
     """
     Execute the build process with domain-based output structure.
 
@@ -222,7 +257,7 @@ def run_build(
         verbose: If True, show detailed output
 
     Returns:
-        Tuple of (list of generated file paths, build statistics)
+        Tuple of (list of generated file paths, build statistics, project_path)
     """
     from semantic_patterns.adapters.lookml import LookMLGenerator
     from semantic_patterns.adapters.lookml.explore_generator import ExploreGenerator
@@ -248,8 +283,9 @@ def run_build(
     paths = OutputPaths(project=config.project, base_path=config.output_path)
 
     # Parse semantic models
-    console.print(f"[blue]Input:[/blue] {config.input_path}")
-    console.print(f"[blue]Format:[/blue] {config.format}")
+    console.print(f"[dim]Input:[/dim]  {config.input_path}")
+    console.print(f"[dim]Output:[/dim] {paths.project_path}")
+    console.print()
 
     models: list[ProcessedModel] = []
 
@@ -287,8 +323,6 @@ def run_build(
     if not models:
         raise click.ClickException(f"No semantic models found in {config.input_path}")
 
-    console.print(f"  Found {len(models)} models")
-
     # Collect statistics and model summaries
     model_summaries: list[ModelSummary] = []
     for model in models:
@@ -306,11 +340,11 @@ def run_build(
         )
 
     if verbose:
+        console.print(f"[dim]Models:[/dim]  {len(models)} semantic models")
         for model in models:
-            metrics_count = len(model.metrics)
-            dims_count = len(model.dimensions)
             console.print(
-                f"    {model.name}: {dims_count} dims, {metrics_count} metrics"
+                f"          [cyan]{model.name}[/cyan] "
+                f"[dim]({len(model.dimensions)} dims, {len(model.metrics)} metrics)[/dim]"
             )
 
     # Apply view prefix to model names BEFORE generation
@@ -322,9 +356,7 @@ def run_build(
     # Create model lookup (with prefixed names)
     model_dict = {m.name: m for m in models}
 
-    # Generate views using path-aware methods
-    console.print(f"[blue]Output:[/blue] {paths.project_path}")
-
+    # Generate views
     generator = LookMLGenerator(dialect=config.options.dialect)
     all_files: dict[Path, str] = {}
 
@@ -351,8 +383,6 @@ def run_build(
             files = generator.generate_model_with_paths(model, paths)
             all_files.update(files)
             progress.advance(task)
-
-    console.print(f"  Generated {len(all_files)} view files")
 
     # Generate explores if configured
     if config.explores:
@@ -381,13 +411,11 @@ def run_build(
 
         all_files.update(explore_files)
         stats.explores = len(config.explores)
-        console.print(f"  Generated {len(explore_files)} explore files")
 
     # Generate model file (rollup with includes)
     model_content = _generate_model_file_content(config, all_files, paths)
     model_file_path = paths.model_file_path()
     all_files[model_file_path] = model_content
-    console.print(f"  Generated model file: {config.project}.model.lkml")
 
     # Write files
     written: list[Path] = []
@@ -446,12 +474,11 @@ def run_build(
                 models=model_summaries,
             )
             paths.manifest_path.write_text(manifest.to_json(), encoding="utf-8")
-            console.print("  Generated manifest: .sp-manifest.json")
     else:
         # Dry run - just return what would be written
         written = list(all_files.keys())
 
-    return written, stats
+    return written, stats, paths.project_path
 
 
 @cli.command()
