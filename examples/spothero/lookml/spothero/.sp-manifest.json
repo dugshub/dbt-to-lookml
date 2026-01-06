@@ -1,0 +1,193 @@
+{
+  "version": "1.0.0",
+  "project": "spothero",
+  "generated_at": "2026-01-06T15:03:10.014963+00:00",
+  "config_hash": "429b1a551dbd5d8a",
+  "sources": [],
+  "outputs": [
+    {
+      "path": "views/facility_dimension/facility_dimension.view.lkml",
+      "hash": "9a0a9514cbd6a4bd",
+      "type": "view"
+    },
+    {
+      "path": "views/facility_dimension/facility_dimension.metrics.view.lkml",
+      "hash": "c4bd0bf14140110d",
+      "type": "view"
+    },
+    {
+      "path": "views/facility_lifecycle/facility_lifecycle.view.lkml",
+      "hash": "75aba5dad0fbf627",
+      "type": "view"
+    },
+    {
+      "path": "views/facility_lifecycle/facility_lifecycle.metrics.view.lkml",
+      "hash": "c210267097f00645",
+      "type": "view"
+    },
+    {
+      "path": "views/facility_lifecycle/facility_lifecycle.pop.view.lkml",
+      "hash": "b6402bac43414265",
+      "type": "view"
+    },
+    {
+      "path": "views/facility_monthly_status/facility_monthly_status.view.lkml",
+      "hash": "c9df487f67e5db5e",
+      "type": "view"
+    },
+    {
+      "path": "views/facility_monthly_status/facility_monthly_status.metrics.view.lkml",
+      "hash": "e785015664070748",
+      "type": "view"
+    },
+    {
+      "path": "views/facility_monthly_status/facility_monthly_status.pop.view.lkml",
+      "hash": "03a618d4ebf5a479",
+      "type": "view"
+    },
+    {
+      "path": "views/rentals/rentals.view.lkml",
+      "hash": "5cb4e50b82eca05e",
+      "type": "view"
+    },
+    {
+      "path": "views/rentals/rentals.metrics.view.lkml",
+      "hash": "00babe91e8e4a860",
+      "type": "view"
+    },
+    {
+      "path": "views/rentals/rentals.pop.view.lkml",
+      "hash": "dc6cce8fb977406c",
+      "type": "view"
+    },
+    {
+      "path": "views/reviews/reviews.view.lkml",
+      "hash": "4da651b6eaf823e0",
+      "type": "view"
+    },
+    {
+      "path": "views/reviews/reviews.metrics.view.lkml",
+      "hash": "7dad1854812c6cc2",
+      "type": "view"
+    },
+    {
+      "path": "views/reviews/reviews.pop.view.lkml",
+      "hash": "59068a4fc67190c6",
+      "type": "view"
+    },
+    {
+      "path": "views/sfdc_cases/sfdc_cases.view.lkml",
+      "hash": "e108d7c6f39e02a3",
+      "type": "view"
+    },
+    {
+      "path": "views/sfdc_cases/sfdc_cases.metrics.view.lkml",
+      "hash": "13413189129f0fcb",
+      "type": "view"
+    },
+    {
+      "path": "views/sfdc_cases/sfdc_cases.pop.view.lkml",
+      "hash": "5b8f38a769a4921c",
+      "type": "view"
+    },
+    {
+      "path": "views/time_spine/time_spine.view.lkml",
+      "hash": "80e138a61f29e2ad",
+      "type": "view"
+    },
+    {
+      "path": "explores/rentals.explore.lkml",
+      "hash": "7411cb0b0da7ffa9",
+      "type": "explore"
+    },
+    {
+      "path": "explores/facility_lifecycle.explore.lkml",
+      "hash": "f0547d2283e33e75",
+      "type": "explore"
+    },
+    {
+      "path": "spothero.model.lkml",
+      "hash": "ceabe4c1b0b0e003",
+      "type": "model"
+    }
+  ],
+  "models": [
+    {
+      "name": "facility_dimension",
+      "dimension_count": 42,
+      "measure_count": 1,
+      "metric_count": 1,
+      "entities": [
+        "facility",
+        "canonical_facility"
+      ]
+    },
+    {
+      "name": "facility_lifecycle",
+      "dimension_count": 20,
+      "measure_count": 17,
+      "metric_count": 2,
+      "entities": [
+        "facility_lifecycle_transition",
+        "facility",
+        "canonical_facility"
+      ]
+    },
+    {
+      "name": "facility_monthly_status",
+      "dimension_count": 5,
+      "measure_count": 4,
+      "metric_count": 4,
+      "entities": [
+        "facility_monthly_status",
+        "facility",
+        "canonical_facility"
+      ]
+    },
+    {
+      "name": "rentals",
+      "dimension_count": 37,
+      "measure_count": 14,
+      "metric_count": 11,
+      "entities": [
+        "rental",
+        "facility",
+        "canonical_facility",
+        "search",
+        "session"
+      ]
+    },
+    {
+      "name": "reviews",
+      "dimension_count": 13,
+      "measure_count": 4,
+      "metric_count": 4,
+      "entities": [
+        "review",
+        "rental",
+        "facility"
+      ]
+    },
+    {
+      "name": "sfdc_cases",
+      "dimension_count": 15,
+      "measure_count": 4,
+      "metric_count": 4,
+      "entities": [
+        "sfdc_case",
+        "rental",
+        "facility"
+      ]
+    },
+    {
+      "name": "time_spine",
+      "dimension_count": 1,
+      "measure_count": 1,
+      "metric_count": 0,
+      "entities": [
+        "day_key"
+      ]
+    }
+  ],
+  "github_push": null
+}
