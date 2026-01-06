@@ -9,7 +9,14 @@ from semantic_patterns.domain import Dimension, DimensionType, TimeGranularity
 # Map TimeGranularity to LookML timeframes
 GRANULARITY_TIMEFRAMES: dict[TimeGranularity, list[str]] = {
     TimeGranularity.HOUR: [
-        "raw", "time", "hour", "date", "week", "month", "quarter", "year"
+        "raw",
+        "time",
+        "hour",
+        "date",
+        "week",
+        "month",
+        "quarter",
+        "year",
     ],
     TimeGranularity.DAY: ["raw", "date", "week", "month", "quarter", "year"],
     TimeGranularity.WEEK: ["raw", "week", "month", "quarter", "year"],

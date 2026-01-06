@@ -98,9 +98,7 @@ class ProcessedModel(BaseModel):
         if not self.date_selector:
             return []
         return [
-            d
-            for d in self.time_dimensions
-            if d.name in self.date_selector.dimensions
+            d for d in self.time_dimensions if d.name in self.date_selector.dimensions
         ]
 
     @property

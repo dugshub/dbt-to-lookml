@@ -1,0 +1,51 @@
+version: 2
+
+metrics:
+  - name: gov
+    label: "Gross Order Value (GOV)"
+    type: simple
+    type_params:
+      measure: checkout_amount
+    filter:
+      - "{{ Dimension('rental__transaction_type') }} = 'completed'"
+    config:
+      meta:
+        semantic_patterns:
+          format: usd
+          group: "Revenue"
+          entity: rental
+          pop:
+            comparisons: [py, pm]
+            outputs: [previous, pct_change]
+
+  - name: rental_count
+    label: "Rental Count"
+    type: simple
+    type_params:
+      measure: rental_count
+    filter:
+      - "{{ Dimension('rental__transaction_type') }} = 'completed'"
+    config:
+      meta:
+        semantic_patterns:
+          format: decimal_0
+          group: "Counts"
+          entity: rental
+          pop:
+            comparisons: [py, pm]
+            outputs: [previous, pct_change]
+
+  - name: aov
+    label: "Average Order Value"
+    type: derived
+    type_params:
+      expr: gov / NULLIF(rental_count, 0)
+      metrics:
+        - gov
+        - rental_count
+    config:
+      meta:
+        semantic_patterns:
+          format: usd
+          group: "Revenue"
+          entity: rental

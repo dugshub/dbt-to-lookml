@@ -69,9 +69,7 @@ class ExploreGenerator:
             return files
 
         # Render explore
-        explore_dict = self.explore_renderer.render(
-            explore_config, fact_model, models
-        )
+        explore_dict = self.explore_renderer.render(explore_config, fact_model, models)
         explore_content = self._serialize_explore(explore_dict)
         files[f"{explore_config.name}.explore.lkml"] = explore_content
 
@@ -189,10 +187,7 @@ class ExploreGenerator:
         Returns:
             List of ExploreConfig with name=fact_model, no overrides
         """
-        return [
-            ExploreConfig(name=name, fact_model=name)
-            for name in fact_models
-        ]
+        return [ExploreConfig(name=name, fact_model=name) for name in fact_models]
 
     @staticmethod
     def configs_from_yaml(explore_dicts: list[dict[str, Any]]) -> list[ExploreConfig]:

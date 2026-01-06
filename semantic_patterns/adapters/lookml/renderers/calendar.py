@@ -105,10 +105,12 @@ class CalendarRenderer:
         # Build date_field parameter with allowed values
         allowed_values = []
         for opt in date_options:
-            allowed_values.append({
-                "label": opt.label,
-                "value": opt.parameter_value,
-            })
+            allowed_values.append(
+                {
+                    "label": opt.label,
+                    "value": opt.parameter_value,
+                }
+            )
 
         # Use first option as default
         default_value = date_options[0].parameter_value
@@ -170,9 +172,7 @@ class CalendarRenderer:
         """Build CASE statement for dynamic date selection."""
         case_branches = []
         for opt in date_options:
-            case_branches.append(
-                f"WHEN '{opt.parameter_value}' THEN {opt.raw_ref}"
-            )
+            case_branches.append(f"WHEN '{opt.parameter_value}' THEN {opt.raw_ref}")
         return (
             "CASE {% parameter date_field %}\n        "
             + "\n        ".join(case_branches)
@@ -203,10 +203,12 @@ class CalendarRenderer:
         # comparison_period parameter - user selects which period to compare to
         comparison_allowed_values = []
         for comp in pop_config.comparisons:
-            comparison_allowed_values.append({
-                "label": COMPARISON_LABELS.get(comp, comp.value),
-                "value": COMPARISON_PERIODS.get(comp, comp.value),
-            })
+            comparison_allowed_values.append(
+                {
+                    "label": COMPARISON_LABELS.get(comp, comp.value),
+                    "value": COMPARISON_PERIODS.get(comp, comp.value),
+                }
+            )
 
         result["parameter"] = {
             "name": "comparison_period",

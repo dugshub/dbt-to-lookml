@@ -1,20 +1,7 @@
 """Tests for explore generation - Phase 4."""
 
-import pytest
 import lkml
 
-from semantic_patterns.domain import (
-    AggregationType,
-    ConnectionType,
-    DataModel,
-    DateSelectorConfig,
-    Dimension,
-    DimensionType,
-    Entity,
-    Measure,
-    ProcessedModel,
-    TimeGranularity,
-)
 from semantic_patterns.adapters.lookml import (
     CalendarRenderer,
     DateOption,
@@ -27,6 +14,14 @@ from semantic_patterns.adapters.lookml.types import (
     InferredJoin,
     JoinOverride,
     JoinRelationship,
+)
+from semantic_patterns.domain import (
+    DateSelectorConfig,
+    Dimension,
+    DimensionType,
+    Entity,
+    ProcessedModel,
+    TimeGranularity,
 )
 
 
@@ -354,9 +349,7 @@ class TestExploreRenderer:
             name="searches",
             entities=[
                 Entity(name="search", type="primary", expr="search_id"),
-                Entity(
-                    name="rental", type="foreign", expr="rental_sk", complete=False
-                ),
+                Entity(name="rental", type="foreign", expr="rental_sk", complete=False),
             ],
         )
 

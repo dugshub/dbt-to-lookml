@@ -93,6 +93,7 @@ class SPConfig(BaseModel):
         input: ./semantic_models
         output: ./lookml
         schema: gold
+        format: semantic-patterns  # or 'dbt'
 
         model:
           name: analytics
@@ -111,10 +112,24 @@ class SPConfig(BaseModel):
     input: str
     output: str
     schema_name: str = Field(alias="schema")
+    format: str = "semantic-patterns"  # 'dbt' or 'semantic-patterns'
 
     model: ModelConfig = Field(default_factory=ModelConfig)
     explores: list[ExploreConfig] = Field(default_factory=list)
     options: OptionsConfig = Field(default_factory=OptionsConfig)
+
+    @field_validator("format", mode="before")
+    @classmethod
+    def validate_format(cls, v: Any) -> str:
+        """Validate format is one of the allowed values."""
+        if v is None:
+            return "semantic-patterns"
+        if isinstance(v, str):
+            v_lower = v.lower()
+            if v_lower in ("dbt", "semantic-patterns"):
+                return v_lower
+            raise ValueError(f"Invalid format '{v}'. Valid: 'dbt', 'semantic-patterns'")
+        raise ValueError(f"format must be a string, got {type(v)}")
 
     model_config = {"frozen": True, "populate_by_name": True}
 

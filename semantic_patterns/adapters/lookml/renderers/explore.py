@@ -65,9 +65,7 @@ class ExploreRenderer:
             explore["description"] = explore_config.description
 
         # Infer joins from entity relationships
-        inferred_joins = self.infer_joins(
-            fact_model, all_models, explore_config
-        )
+        inferred_joins = self.infer_joins(fact_model, all_models, explore_config)
 
         # Collect joined models for calendar generation
         joined_models: list[ProcessedModel] = []

@@ -131,9 +131,7 @@ class DomainBuilder:
         date_selector = None
         if "date_selector" in data:
             ds = data["date_selector"]
-            date_selector = DateSelectorConfig(
-                dimensions=ds.get("dimensions", [])
-            )
+            date_selector = DateSelectorConfig(dimensions=ds.get("dimensions", []))
 
         return ProcessedModel(
             name=name,

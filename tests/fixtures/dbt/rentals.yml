@@ -1,0 +1,83 @@
+version: 2
+
+semantic_models:
+  - name: rentals
+    model: ref('rentals')
+    defaults:
+      agg_time_dimension: created_at
+
+    entities:
+      - name: rental
+        type: primary
+        expr: unique_rental_sk
+        label: "Reservation"
+
+      - name: facility
+        type: foreign
+        expr: facility_sk
+
+    dimensions:
+      - name: created_at
+        label: "Rental Created"
+        type: time
+        type_params:
+          time_granularity: day
+        expr: rental_created_at_utc
+        config:
+          meta:
+            semantic_patterns:
+              group: "Dates"
+              date_selector: true
+
+      - name: starts_at
+        label: "Rental Start"
+        type: time
+        type_params:
+          time_granularity: hour
+        expr: rental_starts_at_utc
+        config:
+          meta:
+            semantic_patterns:
+              group: "Dates"
+              date_selector: true
+
+      - name: transaction_type
+        label: "Order Status"
+        type: categorical
+        expr: rental_event_type
+        config:
+          meta:
+            semantic_patterns:
+              group: "Status"
+
+      - name: rental_segment
+        label: "Primary Segment"
+        type: categorical
+        expr: rental_segment_rollup
+        config:
+          meta:
+            semantic_patterns:
+              group: "Segment"
+
+    measures:
+      - name: checkout_amount
+        label: "Checkout Amount"
+        agg: sum
+        expr: rental_checkout_amount_local
+        config:
+          meta:
+            semantic_patterns:
+              group: "Revenue"
+              format: usd
+              hidden: true
+
+      - name: rental_count
+        label: "Rental Count"
+        agg: count_distinct
+        expr: unique_rental_sk
+        config:
+          meta:
+            semantic_patterns:
+              group: "Counts"
+              format: decimal_0
+              hidden: true

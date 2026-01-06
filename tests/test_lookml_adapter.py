@@ -1,7 +1,20 @@
 """Tests for LookML adapter."""
 
-import pytest
 
+from semantic_patterns.adapters import Dialect, SqlRenderer
+from semantic_patterns.adapters.lookml import (
+    DimensionRenderer,
+    LookMLGenerator,
+    MeasureRenderer,
+    PopRenderer,
+    ViewRenderer,
+)
+from semantic_patterns.adapters.lookml.renderers.calendar import (
+    CalendarRenderer,
+    DateOption,
+    PopCalendarConfig,
+)
+from semantic_patterns.adapters.lookml.renderers.pop import DynamicFilteredPopStrategy
 from semantic_patterns.domain import (
     AggregationType,
     ConnectionType,
@@ -18,20 +31,6 @@ from semantic_patterns.domain import (
     PopOutput,
     ProcessedModel,
     TimeGranularity,
-)
-from semantic_patterns.adapters import Dialect, SqlRenderer
-from semantic_patterns.adapters.lookml import (
-    DimensionRenderer,
-    LookMLGenerator,
-    MeasureRenderer,
-    PopRenderer,
-    ViewRenderer,
-)
-from semantic_patterns.adapters.lookml.renderers.pop import DynamicFilteredPopStrategy
-from semantic_patterns.adapters.lookml.renderers.calendar import (
-    CalendarRenderer,
-    DateOption,
-    PopCalendarConfig,
 )
 
 
@@ -305,7 +304,9 @@ class TestLookMLGenerator:
                 Dimension(name="status", type=DimensionType.CATEGORICAL, expr="status"),
             ],
             measures=[
-                Measure(name="amount", agg=AggregationType.SUM, expr="amount", hidden=True),
+                Measure(
+                    name="amount", agg=AggregationType.SUM, expr="amount", hidden=True
+                ),
             ],
             metrics=[
                 Metric(name="gmv", type=MetricType.SIMPLE, measure="amount"),
@@ -386,7 +387,10 @@ class TestDynamicFilteredPopStrategy:
         assert result["type"] == "sum"
         assert result["label"] == "GMV (PoP)"
         assert result["value_format_name"] == "usd"
-        assert result["filters"][0]["field"] == "rentals_explore_calendar.is_comparison_period"
+        assert (
+            result["filters"][0]["field"]
+            == "rentals_explore_calendar.is_comparison_period"
+        )
         assert result["filters"][0]["value"] == "yes"
         assert result["view_label"] == "  Metrics"  # From two-level group
         assert result["group_label"] == "Revenue"
@@ -438,7 +442,11 @@ class TestDynamicFilteredPopStrategy:
             measure="total_gmv",
             pop=PopConfig(
                 comparisons=[PopComparison.PRIOR_YEAR, PopComparison.PRIOR_MONTH],
-                outputs=[PopOutput.PREVIOUS, PopOutput.CHANGE, PopOutput.PERCENT_CHANGE],
+                outputs=[
+                    PopOutput.PREVIOUS,
+                    PopOutput.CHANGE,
+                    PopOutput.PERCENT_CHANGE,
+                ],
             ),
         )
 

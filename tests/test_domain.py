@@ -7,19 +7,20 @@ Phase 1 Gate: These tests verify that domain types compile and instantiate corre
 import pytest
 
 from semantic_patterns.domain import (
+    # Measure
+    AggregationType,
     # Data Model
     ConnectionType,
     DataModel,
+    # Model
+    DateSelectorConfig,
     # Dimension
     Dimension,
     DimensionType,
-    TimeGranularity,
+    Entity,
     # Filter
     Filter,
-    FilterCondition,
     FilterOperator,
-    # Measure
-    AggregationType,
     Measure,
     # Metric
     Metric,
@@ -28,11 +29,9 @@ from semantic_patterns.domain import (
     PopComparison,
     PopConfig,
     PopOutput,
-    VariantKind,
-    # Model
-    DateSelectorConfig,
-    Entity,
     ProcessedModel,
+    TimeGranularity,
+    VariantKind,
 )
 
 
@@ -134,7 +133,9 @@ class TestDimension:
         assert dim.effective_expr == "rental_created_at_utc"
 
     def test_dimension_requires_expr_or_variants(self):
-        with pytest.raises(ValueError, match="Either 'expr' or 'variants' must be specified"):
+        with pytest.raises(
+            ValueError, match="Either 'expr' or 'variants' must be specified"
+        ):
             Dimension(
                 name="bad_dim",
                 type=DimensionType.CATEGORICAL,
@@ -176,10 +177,12 @@ class TestFilter:
         assert f.conditions[0].value == 5
 
     def test_filter_multiple_conditions(self):
-        f = Filter.from_dict({
-            "transaction_type": "completed",
-            "amount": ">100",
-        })
+        f = Filter.from_dict(
+            {
+                "transaction_type": "completed",
+                "amount": ">100",
+            }
+        )
         assert len(f.conditions) == 2
 
 
@@ -315,7 +318,11 @@ class TestMetric:
             measure="total_gmv",
             pop=PopConfig(
                 comparisons=[PopComparison.PRIOR_YEAR, PopComparison.PRIOR_MONTH],
-                outputs=[PopOutput.PREVIOUS, PopOutput.CHANGE, PopOutput.PERCENT_CHANGE],
+                outputs=[
+                    PopOutput.PREVIOUS,
+                    PopOutput.CHANGE,
+                    PopOutput.PERCENT_CHANGE,
+                ],
             ),
             format="usd",
         )
@@ -379,7 +386,9 @@ class TestProcessedModel:
             ],
             dimensions=[
                 Dimension(name="status", type=DimensionType.CATEGORICAL, expr="status"),
-                Dimension(name="created_at", type=DimensionType.TIME, expr="created_at"),
+                Dimension(
+                    name="created_at", type=DimensionType.TIME, expr="created_at"
+                ),
             ],
             metrics=[
                 Metric(
@@ -415,7 +424,9 @@ class TestProcessedModel:
             time_dimension="created_at",
             date_selector=DateSelectorConfig(dimensions=["created_at", "starts_at"]),
             dimensions=[
-                Dimension(name="created_at", type=DimensionType.TIME, expr="created_at"),
+                Dimension(
+                    name="created_at", type=DimensionType.TIME, expr="created_at"
+                ),
                 Dimension(name="starts_at", type=DimensionType.TIME, expr="starts_at"),
                 Dimension(name="ends_at", type=DimensionType.TIME, expr="ends_at"),
             ],
@@ -460,7 +471,11 @@ class TestProcessedModel:
                 + [
                     MetricVariant.pop(comp, out)
                     for comp in [PopComparison.PRIOR_YEAR, PopComparison.PRIOR_MONTH]
-                    for out in [PopOutput.PREVIOUS, PopOutput.CHANGE, PopOutput.PERCENT_CHANGE]
+                    for out in [
+                        PopOutput.PREVIOUS,
+                        PopOutput.CHANGE,
+                        PopOutput.PERCENT_CHANGE,
+                    ]
                 ],
             )
             for i in range(10)

@@ -253,10 +253,12 @@ class DynamicFilteredPopStrategy:
             "type": "sum",  # TODO: inherit from base metric's aggregation
             "label": f"{base_label} (PoP)",
             "description": f"{base_label} for the selected comparison period",
-            "filters": [{
-                "field": f"{self.calendar_view_name}.is_comparison_period",
-                "value": "yes",
-            }],
+            "filters": [
+                {
+                    "field": f"{self.calendar_view_name}.is_comparison_period",
+                    "value": "yes",
+                }
+            ],
         }
 
         # Build SQL - needs to match the base metric
