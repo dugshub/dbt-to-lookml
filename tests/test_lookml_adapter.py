@@ -42,19 +42,20 @@ class TestDialect:
         assert renderer.dialect == Dialect.REDSHIFT
 
     def test_qualify_expression_simple(self):
+        """Test basic column qualification - SQL-pure (no LookML)."""
         renderer = SqlRenderer(Dialect.REDSHIFT)
         result = renderer.qualify_expression("rental_status")
-        # sqlglot quotes identifiers
-        assert "rental_status" in result
-        assert "${TABLE}" in result
+        # Should add SQL table qualifier (not LookML ${TABLE})
+        assert result == "t.rental_status"
 
     def test_qualify_expression_complex(self):
+        """Test complex expression qualification - SQL-pure (no LookML)."""
         renderer = SqlRenderer(Dialect.REDSHIFT)
         expr = "CASE WHEN status = 'active' THEN 1 ELSE 0 END"
         result = renderer.qualify_expression(expr)
-        # sqlglot quotes identifiers
-        assert "status" in result
-        assert "${TABLE}" in result
+        # Should add SQL table qualifier to bare columns
+        assert "t.status" in result
+        assert "'active'" in result
 
     def test_extract_columns(self):
         renderer = SqlRenderer(Dialect.REDSHIFT)
