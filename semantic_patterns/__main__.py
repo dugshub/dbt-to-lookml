@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.tree import Tree
 
+from semantic_patterns.cli import RichCommand, RichGroup
 from semantic_patterns.config import SPConfig, find_config, load_config
 
 if TYPE_CHECKING:
@@ -67,23 +68,62 @@ class BuildStatistics:
     files: int = 0
 
 
-@click.group()
+@click.group(cls=RichGroup)
 @click.version_option()
 def cli() -> None:
     """Transform semantic models into BI tool patterns.
 
-    Config-driven generation:
+    A CLI tool for generating LookML views and explores from semantic models.
+    Supports both native semantic-patterns format and dbt Semantic Layer.
+
+    ## Quick Start
+
+    Create a config file:
+
+        $ sp init
+
+    Generate LookML from semantic models:
 
         $ sp build
 
-    Or with explicit config:
+    Validate your configuration:
 
-        $ sp build --config sp.yml
+        $ sp validate
+
+    ## Common Workflows
+
+    **Development workflow with dry-run preview:**
+
+        $ sp build --dry-run --verbose
+
+    **Production build and push to Looker:**
+
+        $ sp build --push
+
+    **Build with specific config:**
+
+        $ sp build --config ./configs/production.yml
+
+    **Validate before building:**
+
+        $ sp validate && sp build
+
+    ## Authentication
+
+    Manage credentials for GitHub and Looker:
+
+        $ sp auth status          # Check credential status
+        $ sp auth test github     # Test GitHub token
+        $ sp auth clear all       # Clear all credentials
+
+    For detailed help on any command:
+
+        $ sp COMMAND --help
     """
     pass
 
 
-@cli.command()
+@cli.command(cls=RichCommand)
 @click.option(
     "--config",
     "-c",
@@ -262,7 +302,9 @@ def _handle_looker_push(
     console.print(f"  [dim]Branch:[/dim] {looker_cfg.branch}")
     console.print(f"  [dim]Files:[/dim]  {len(all_files)}")
     if looker_cfg.looker_sync_enabled:
-        console.print(f"  [dim]Looker:[/dim] {looker_cfg.base_url} ({looker_cfg.project_id})")
+        console.print(
+            f"  [dim]Looker:[/dim] {looker_cfg.base_url} ({looker_cfg.project_id})"
+        )
 
     # Confirm unless --push flag or dry-run
     if not push and not dry_run:
@@ -285,9 +327,13 @@ def _handle_looker_push(
         else:
             console.print(f"\n[bold green]{result.message}[/bold green]")
             if result.destination_url:
-                console.print(f"[dim]Commit:[/dim] {result.destination_url}", overflow="ignore")
+                console.print(
+                    f"[dim]Commit:[/dim] {result.destination_url}", overflow="ignore"
+                )
             if result.looker_url:
-                console.print(f"[dim]Looker:[/dim] {result.looker_url}", overflow="ignore")
+                console.print(
+                    f"[dim]Looker:[/dim] {result.looker_url}", overflow="ignore"
+                )
 
     except LookerAPIError as e:
         if debug:
@@ -474,14 +520,18 @@ def run_build(
                 if explore_prefix
                 else explore.effective_name
             )
-            fact_model_name = f"{view_prefix}{explore.fact}" if view_prefix else explore.fact
+            fact_model_name = (
+                f"{view_prefix}{explore.fact}" if view_prefix else explore.fact
+            )
 
             # Map fact model to its explore
             model_to_explore[fact_model_name] = explore_name
 
             # Map joined_facts to this parent explore
             for joined_fact in explore.joined_facts:
-                joined_fact_name = f"{view_prefix}{joined_fact}" if view_prefix else joined_fact
+                joined_fact_name = (
+                    f"{view_prefix}{joined_fact}" if view_prefix else joined_fact
+                )
                 model_to_explore[joined_fact_name] = explore_name
 
     # Generate views
@@ -605,12 +655,22 @@ def run_build(
     return written, stats, paths.project_path, all_files
 
 
-@cli.command()
+@cli.command(cls=RichCommand)
 def init() -> None:
     """Create a sp.yml config file.
 
     Generates a starter config file in the current directory
     with sensible defaults.
+
+    ## Examples
+
+    Create a new config file:
+
+        $ sp init
+
+    Then edit sp.yml and run:
+
+        $ sp build
     """
     config_path = Path("sp.yml")
 
@@ -671,7 +731,7 @@ options:
     console.print("  sp build")
 
 
-@cli.command()
+@cli.command(cls=RichCommand)
 @click.option(
     "--config",
     "-c",
@@ -692,13 +752,19 @@ def validate(config: Path | None, debug: bool) -> None:
     - Semantic models parse correctly
     - Explore fact models exist
 
-    Examples:
+    ## Examples
 
-        # Validate using sp.yml in current directory
-        sp validate
+    Validate using sp.yml in current directory:
 
-        # Show full stacktraces for debugging
-        sp validate --debug
+        $ sp validate
+
+    Show full stacktraces for debugging:
+
+        $ sp validate --debug
+
+    Validate before building:
+
+        $ sp validate && sp build
     """
     # Load config
     config_path: Path
@@ -794,10 +860,42 @@ def validate(config: Path | None, debug: bool) -> None:
 # ============================================================================
 
 
-@cli.group()
-def auth() -> None:
-    """Manage authentication credentials."""
-    pass
+@cli.group(cls=RichGroup, invoke_without_command=True)
+@click.pass_context
+def auth(ctx: click.Context) -> None:
+    """Manage authentication credentials.
+
+    When called without a subcommand, displays credential status and available commands.
+
+    ## Available Commands
+
+    **status** - Show configured credentials and their status
+    **test** - Test if credentials are valid
+    **clear** - Clear stored credentials
+    **reset** - Clear all stored credentials (fresh start)
+    **whoami** - Show current authenticated user identity
+
+    ## Quick Examples
+
+    Check credential status:
+
+        $ sp auth
+        $ sp auth status
+
+    Test GitHub credentials:
+
+        $ sp auth test github
+
+    Clear all credentials:
+
+        $ sp auth clear all
+    """
+    # If no subcommand provided, run status and then show help
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(status)
+        console.print()
+        console.print("[dim]Available commands:[/dim]")
+        console.print(ctx.get_help())
 
 
 def _get_github_username(token: str) -> str:
@@ -827,7 +925,7 @@ def _get_github_username(token: str) -> str:
         return data["login"]
 
 
-@auth.command()
+@auth.command(cls=RichCommand)
 def status() -> None:
     """Show configured credentials and their status."""
     import httpx
@@ -846,7 +944,7 @@ def status() -> None:
         # Try to fetch user info
         try:
             username = _get_github_username(github_token)
-            console.print(f"[green]✓[/green] GitHub:      Configured")
+            console.print("[green]✓[/green] GitHub:      Configured")
             console.print(f"             User: @{username}")
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
@@ -876,9 +974,7 @@ def status() -> None:
 
     # Looker
     looker_client_id = store.get("looker-client-id", prompt_if_missing=False)
-    looker_client_secret = store.get(
-        "looker-client-secret", prompt_if_missing=False
-    )
+    looker_client_secret = store.get("looker-client-secret", prompt_if_missing=False)
 
     if looker_client_id and looker_client_secret:
         console.print("[green]✓[/green] Looker:      Configured")
@@ -899,7 +995,7 @@ def status() -> None:
     console.print()
 
 
-@auth.command()
+@auth.command(cls=RichCommand)
 @click.argument("service", type=click.Choice(["github", "looker", "all"]))
 @click.option("--force", is_flag=True, help="Skip confirmation prompt")
 def clear(service: str, force: bool) -> None:
@@ -950,7 +1046,7 @@ def clear(service: str, force: bool) -> None:
     console.print("[dim]Run 'sp build' to re-authenticate[/dim]")
 
 
-@auth.command()
+@auth.command(cls=RichCommand)
 @click.argument("service", type=click.Choice(["github", "looker"]))
 @click.option("--debug", is_flag=True, help="Show detailed error messages")
 def test(service: str, debug: bool) -> None:
@@ -1005,7 +1101,7 @@ def test(service: str, debug: bool) -> None:
                 user_data = user_response.json()
                 username = user_data.get("login", "unknown")
 
-                console.print(f"[green]✓[/green] Token is valid")
+                console.print("[green]✓[/green] Token is valid")
                 console.print(f"[green]✓[/green] User: @{username}")
 
                 # Check token scopes
@@ -1015,7 +1111,7 @@ def test(service: str, debug: bool) -> None:
 
                     if "repo" not in scopes:
                         console.print(
-                            f"[yellow]⚠[/yellow] Warning: 'repo' scope required for pushing"
+                            "[yellow]⚠[/yellow] Warning: 'repo' scope required for pushing"
                         )
 
         except Exception as e:
@@ -1047,21 +1143,15 @@ def test(service: str, debug: bool) -> None:
             config = load_config(config_path) if config_path else None
 
             if not config or not config.looker.base_url:
-                console.print(
-                    "[yellow]⚠[/yellow] Credentials found but not tested"
-                )
+                console.print("[yellow]⚠[/yellow] Credentials found but not tested")
                 console.print(
                     "[dim]Cannot test without looker.base_url in sp.yml[/dim]"
                 )
                 console.print()
-                console.print(
-                    "[dim]Credential files exist in keychain only[/dim]"
-                )
+                console.print("[dim]Credential files exist in keychain only[/dim]")
                 return
 
-            console.print(
-                f"Testing Looker credentials for {config.looker.base_url}..."
-            )
+            console.print(f"Testing Looker credentials for {config.looker.base_url}...")
 
             with httpx.Client(timeout=10.0) as client:
                 # Attempt login
@@ -1084,7 +1174,7 @@ def test(service: str, debug: bool) -> None:
                 data = response.json()
                 access_token = data.get("access_token")
 
-                console.print(f"[green]✓[/green] Authentication successful")
+                console.print("[green]✓[/green] Authentication successful")
 
                 # Get current user
                 me_response = client.get(
@@ -1121,7 +1211,7 @@ def test(service: str, debug: bool) -> None:
     console.print()
 
 
-@auth.command()
+@auth.command(cls=RichCommand)
 @click.option("--force", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
 def reset(ctx: click.Context, force: bool) -> None:
@@ -1136,7 +1226,7 @@ def reset(ctx: click.Context, force: bool) -> None:
     ctx.invoke(clear, service="all", force=force)
 
 
-@auth.command()
+@auth.command(cls=RichCommand)
 def whoami() -> None:
     """Show current authenticated user identity.
 
