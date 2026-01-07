@@ -26,20 +26,16 @@ class DateOption:
     dimension: str  # Dimension name (e.g., "created_at")
     label: str  # Display label (e.g., "Rental Created")
     raw_ref: str  # LookML reference (e.g., "${rentals.created_at_raw}")
+    expr: str  # SQL column expression (e.g., "rental_created_at_utc")
 
     @property
     def parameter_value(self) -> str:
         """
-        Value for the parameter.
+        Value for the parameter - returns the SQL column name for direct injection.
 
-        For same-view references: just dimension name (e.g., 'created_at')
-        For joined views: view__dimension (e.g., 'reviews__created_at')
+        This allows ${TABLE}.{% parameter date_field %} to work correctly.
         """
-        # If it's the fact view (first in the list), just use dimension name
-        # Otherwise use view__dimension for joined models
-        # Note: This assumes the fact view is always first in date_options
-        # We'll handle this distinction in the calling code
-        return f"{self.view}__{self.dimension}"
+        return self.expr
 
 
 @dataclass
@@ -115,36 +111,22 @@ class CalendarRenderer:
         fact_view = fact_view_name or (date_options[0].view if date_options else None)
 
         # Build date_field parameter with allowed values
-        # Use simple names for fact view, prefixed for joined views
+        # Use actual SQL column names for direct parameter injection
         allowed_values = []
-        case_branches = []
         for opt in date_options:
-            # For fact view: just dimension name; for others: view__dimension
-            param_value = opt.dimension if opt.view == fact_view else f"{opt.view}__{opt.dimension}"
-
-            # For fact view: use same-view reference (no view prefix)
-            # For joined views: use cross-view reference
-            if opt.view == fact_view:
-                # Strip view prefix from raw_ref: ${view.dim_raw} -> ${dim_raw}
-                raw_ref = opt.raw_ref.replace(f"${{{opt.view}.", "${")
-            else:
-                # Keep cross-view reference for joined views
-                raw_ref = opt.raw_ref
-
             allowed_values.append(
                 {
                     "label": opt.label,
-                    "value": param_value,
+                    "value": opt.parameter_value,  # SQL column name (e.g., "rental_created_at_utc")
                 }
             )
-            case_branches.append((param_value, raw_ref))
 
         # Use first option as default
-        default_value = date_options[0].dimension if date_options[0].view == fact_view else f"{date_options[0].view}__{date_options[0].dimension}"
+        default_value = date_options[0].parameter_value
 
         date_field_param: dict[str, Any] = {
             "name": "date_field",
-            "type": "string",
+            "type": "unquoted",  # unquoted so column name injects properly
             "label": "Analysis Date",
             "description": "Select which date field to use for calendar analysis",
             "view_label": " Calendar",  # Space prefix sorts to top
@@ -152,13 +134,9 @@ class CalendarRenderer:
             "allowed_values": allowed_values,
         }
 
-        # Build CASE statement for dynamic date expression using new case_branches
-        case_parts = [f"WHEN '{value}' THEN {ref}" for value, ref in case_branches]
-        case_statement = (
-            "CASE {% parameter date_field %}\n        "
-            + "\n        ".join(case_parts)
-            + "\n      END"
-        )
+        # Use direct parameter injection instead of CASE statement
+        # This allows Looker to inject the column name at runtime
+        calendar_sql = "${TABLE}.{% parameter date_field %}"
 
         dimension_group: dict[str, Any] = {
             "name": "calendar",
@@ -168,7 +146,7 @@ class CalendarRenderer:
             "description": "Dynamic date based on Analysis Date selection",
             "view_label": " Calendar",  # Space prefix sorts to top
             "timeframes": ["raw", "date", "week", "month", "quarter", "year"],
-            "sql": case_statement,
+            "sql": calendar_sql,  # Direct parameter injection
         }
 
         parameters = [date_field_param]
@@ -348,7 +326,7 @@ class CalendarRenderer:
 
                 # Handle dimensions with variants (UTC/local)
                 if dim.has_variants and dim.variants:
-                    for variant_name in dim.variants.keys():
+                    for variant_name, variant_expr in dim.variants.items():
                         # Dimension_group name is {dim_name}_{variant}
                         full_name = f"{dim_name}_{variant_name}"
                         variant_label = (
@@ -364,17 +342,20 @@ class CalendarRenderer:
                                 dimension=full_name,
                                 label=label,
                                 raw_ref=f"${{{model.name}.{full_name}_raw}}",
+                                expr=variant_expr,  # SQL column name
                             )
                         )
                 else:
                     # Simple dimension without variants
                     label = f"{view_title} {dim_title}"
+                    dim_expr = dim.expr or dim.name  # Fallback to name if no expr
                     options.append(
                         DateOption(
                             view=model.name,
                             dimension=dim_name,
                             label=label,
                             raw_ref=f"${{{model.name}.{dim_name}_raw}}",
+                            expr=dim_expr,  # SQL column name
                         )
                     )
 
