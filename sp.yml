@@ -2,54 +2,12 @@
 
 project: spothero-gold
 
-input: .
-output: ./lookml
-schema: gold
-
-model:
-  name: gold
-  connection: database
-
-explores:
-  - fact: rentals
-  - fact: facility_lifecycle
-
-output_options:
-  clean: clean
-  manifest: true
-
-options:
-  dialect: redshift
-  pop_strategy: dynamic
-  date_selector: true
-  convert_tz: false
-
-
-# Project name (used for output folder)
-# project: my_project
-
 input: ./semantic_models
 output: ./lookml
 schema: gold
+format: semantic-patterns
 
-# Looker model file settings
-model:
-  connection: database
-
-# Explores (optional - omit for views only)
-# explores:
-#   - fact: rentals
-#   - fact: orders
-#     label: Order Analysis
-#     join_exclusions:
-#       - some_model_to_skip
-
-# Output options
-output_options:
-  manifest: true
-  # clean: clean  # or 'warn' or 'ignore'
-
-# Generator options (defaults shown)
+# Generator options
 options:
   dialect: redshift
   pop_strategy: dynamic
@@ -58,12 +16,34 @@ options:
   # view_prefix: ""
   # explore_prefix: ""
 
-# Looker destination (optional - pushes to Git and syncs Looker dev)
-# looker:
-#   enabled: true
-#   repo: myorg/looker-models         # Git repo backing Looker project
-#   branch: sp-generated              # Branch for generated LookML
-#   path: lookml/                     # Path within repo (optional)
-#   base_url: https://mycompany.looker.com  # Looker instance (optional)
-#   project_id: my_project            # Looker project name (optional)
-#   sync_dev: true                    # Sync user's dev environment
+# Output options
+output_options:
+  manifest: true
+  clean: clean  # or 'warn' or 'ignore'
+
+# Looker destination (LookML generation + Git push + dev sync)
+looker:
+  enabled: false  # Set to true to enable LookML generation
+
+  # LookML model file settings
+  model:
+    name: gold
+    connection: database
+
+  # Explores (optional - omit for views only)
+  explores:
+    - fact: rentals
+    - fact: facility_lifecycle
+      # label: Custom Label
+      # joined_facts: []
+      # join_exclusions: []
+
+  # Git repository (required if enabled=true)
+  # repo: myorg/looker-models         # Git repo backing Looker project
+  # branch: sp-generated              # Branch for generated LookML
+  # path: lookml/                     # Path within repo (optional)
+
+  # Looker dev sync (optional)
+  # base_url: https://mycompany.looker.com  # Looker instance
+  # project_id: my_project            # Looker project name
+  # sync_dev: true                    # Sync user's dev environment

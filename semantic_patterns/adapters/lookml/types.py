@@ -35,35 +35,49 @@ class ExposeLevel(str, Enum):
     DIMENSIONS = "dimensions"  # dimensions only (safe default for incomplete FKs)
 
 
-class JoinOverride(BaseModel):
-    """Optional overrides for inferred joins."""
+class ExploreJoinConfig(BaseModel):
+    """Configuration for a join override in an explore."""
 
     model: str
-    expose: ExposeLevel | None = None
-    relationship: JoinRelationship | None = None
+    expose: str | None = None  # "all" or "dimensions"
+    relationship: str | None = None  # "one_to_one", "many_to_one", "one_to_many"
 
     model_config = {"frozen": True}
 
 
 class ExploreConfig(BaseModel):
-    """Explore configuration - LookML-specific authoring config."""
+    """Looker explore configuration."""
 
-    name: str
-    fact_model: str
+    fact: str  # Fact model name
+    name: str | None = None  # Explore name (defaults to fact model name)
     label: str | None = None
     description: str | None = None
-    join_overrides: list[JoinOverride] = Field(default_factory=list)
-    # Models to exclude from auto-join
+    joins: list[ExploreJoinConfig] = Field(default_factory=list)
     join_exclusions: list[str] = Field(default_factory=list)
+    joined_facts: list[str] = Field(default_factory=list)
 
     model_config = {"frozen": True}
 
-    def get_override(self, model_name: str) -> JoinOverride | None:
-        """Get override for a specific model if it exists."""
-        for override in self.join_overrides:
-            if override.model == model_name:
-                return override
+    @property
+    def effective_name(self) -> str:
+        """Get the explore name (defaults to fact model name)."""
+        return self.name or self.fact
+
+    @property
+    def fact_model(self) -> str:
+        """Alias for fact (backwards compatibility)."""
+        return self.fact
+
+    def get_join_config(self, model_name: str) -> ExploreJoinConfig | None:
+        """Get join config for a specific model if it exists."""
+        for join in self.joins:
+            if join.model == model_name:
+                return join
         return None
+
+    def get_override(self, model_name: str) -> ExploreJoinConfig | None:
+        """Alias for get_join_config (backwards compatibility)."""
+        return self.get_join_config(model_name)
 
     def is_excluded(self, model_name: str) -> bool:
         """Check if a model is excluded from auto-join."""
@@ -91,43 +105,3 @@ class InferredJoin(BaseModel):
         return f"{fact_ref} = {join_ref}"
 
 
-def build_explore_config(data: dict[str, Any]) -> ExploreConfig:
-    """Build ExploreConfig from dict (YAML parsing helper)."""
-    join_overrides = []
-    for jo in data.get("joins", []):
-        override = _build_join_override(jo)
-        join_overrides.append(override)
-
-    return ExploreConfig(
-        name=data["name"],
-        fact_model=data["fact_model"],
-        label=data.get("label"),
-        description=data.get("description"),
-        join_overrides=join_overrides,
-        join_exclusions=data.get("join_exclusions", []),
-    )
-
-
-def _build_join_override(data: dict[str, Any]) -> JoinOverride:
-    """Build JoinOverride from dict."""
-    expose = None
-    expose_str = data.get("expose")
-    if expose_str:
-        try:
-            expose = ExposeLevel(expose_str)
-        except ValueError:
-            pass
-
-    relationship = None
-    rel_str = data.get("relationship")
-    if rel_str:
-        try:
-            relationship = JoinRelationship(rel_str)
-        except ValueError:
-            pass
-
-    return JoinOverride(
-        model=data["model"],
-        expose=expose,
-        relationship=relationship,
-    )

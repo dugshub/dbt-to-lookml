@@ -10,9 +10,9 @@ from semantic_patterns.adapters.lookml import (
 )
 from semantic_patterns.adapters.lookml.types import (
     ExploreConfig,
+    ExploreJoinConfig,
     ExposeLevel,
     InferredJoin,
-    JoinOverride,
     JoinRelationship,
 )
 from semantic_patterns.domain import (
@@ -95,7 +95,7 @@ class TestCalendarRenderer:
 
         param = result["parameters"][0]
         assert param["name"] == "date_field"
-        assert param["type"] == "unquoted"
+        assert param["type"] == "string"
         assert param["label"] == "Analysis Date"
         assert param["view_label"] == " Calendar"  # Space prefix
         assert param["default_value"] == "rentals__created_at"
@@ -247,7 +247,7 @@ class TestExploreRenderer:
             ],
         )
 
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
         renderer = ExploreRenderer()
         result, includes = renderer.render(config, fact_model, {"rentals": fact_model})
 
@@ -273,7 +273,7 @@ class TestExploreRenderer:
         )
 
         models = {"rentals": fact_model, "facilities": dim_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         renderer = ExploreRenderer()
         result, includes = renderer.render(config, fact_model, models)
@@ -303,7 +303,7 @@ class TestExploreRenderer:
         )
 
         models = {"rentals": fact_model, "reviews": child_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         renderer = ExploreRenderer()
         result, includes = renderer.render(config, fact_model, models)
@@ -329,7 +329,7 @@ class TestExploreRenderer:
         )
 
         models = {"rentals": fact_model, "reviews": child_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         renderer = ExploreRenderer()
         result, includes = renderer.render(config, fact_model, models)
@@ -355,7 +355,7 @@ class TestExploreRenderer:
         )
 
         models = {"rentals": fact_model, "searches": child_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         renderer = ExploreRenderer()
         result, includes = renderer.render(config, fact_model, models)
@@ -384,9 +384,9 @@ class TestExploreRenderer:
         # Override to only expose dimensions even though complete=true
         config = ExploreConfig(
             name="rentals",
-            fact_model="rentals",
-            join_overrides=[
-                JoinOverride(model="reviews", expose=ExposeLevel.DIMENSIONS)
+            fact="rentals",
+            joins=[
+                ExploreJoinConfig(model="reviews", expose="dimensions")
             ],
         )
 
@@ -421,7 +421,7 @@ class TestExploreRenderer:
             "facilities": facilities,
             "customers": customers,
         }
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         renderer = ExploreRenderer()
         result, includes = renderer.render(config, fact_model, models)
@@ -445,7 +445,7 @@ class TestExploreRenderer:
         )
 
         models = {"rentals": fact_model, "facilities": dim_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         renderer = ExploreRenderer()
         joins = renderer.infer_joins(fact_model, models, config)
@@ -468,7 +468,7 @@ class TestExploreGenerator:
         )
 
         models = {"rentals": fact_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         generator = ExploreGenerator()
         files = generator.generate([config], models)
@@ -495,17 +495,17 @@ class TestExploreGenerator:
         )
 
         models = {"rentals": fact_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         generator = ExploreGenerator()
         files = generator.generate([config], models)
 
         assert "rentals.explore.lkml" in files
-        assert "rentals_explore_calendar.view.lkml" in files
-
-        calendar_content = files["rentals_explore_calendar.view.lkml"]
-        assert "view: rentals_explore_calendar" in calendar_content
-        assert "parameter: date_field" in calendar_content
+        # Calendar view is now embedded in the explore file
+        explore_content = files["rentals.explore.lkml"]
+        assert "view: rentals_explore_calendar" in explore_content
+        assert "parameter: date_field" in explore_content
+        assert "explore: rentals" in explore_content
 
     def test_skip_calendar_when_no_dates(self):
         fact_model = ProcessedModel(
@@ -517,13 +517,15 @@ class TestExploreGenerator:
         )
 
         models = {"rentals": fact_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         generator = ExploreGenerator()
         files = generator.generate([config], models)
 
         assert "rentals.explore.lkml" in files
-        assert "rentals_explore_calendar.view.lkml" not in files
+        # When no dates, calendar view should not be embedded in explore file
+        explore_content = files["rentals.explore.lkml"]
+        assert "view: rentals_explore_calendar" not in explore_content
 
     def test_generated_explore_is_valid_lookml(self):
         fact_model = ProcessedModel(
@@ -540,7 +542,7 @@ class TestExploreGenerator:
         )
 
         models = {"rentals": fact_model, "facilities": dim_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         generator = ExploreGenerator()
         files = generator.generate([config], models)
@@ -570,16 +572,18 @@ class TestExploreGenerator:
         )
 
         models = {"rentals": fact_model}
-        config = ExploreConfig(name="rentals", fact_model="rentals")
+        config = ExploreConfig(name="rentals", fact="rentals")
 
         generator = ExploreGenerator()
         files = generator.generate([config], models)
 
-        # Should be parseable LookML
-        content = files["rentals_explore_calendar.view.lkml"]
+        # Should be parseable LookML with embedded calendar view
+        content = files["rentals.explore.lkml"]
         parsed = lkml.load(content)
         assert "views" in parsed
+        assert "explores" in parsed
         assert parsed["views"][0]["name"] == "rentals_explore_calendar"
+        assert parsed["explores"][0]["name"] == "rentals"
 
     def test_skip_explore_when_fact_model_not_found(self):
         fact_model = ProcessedModel(
@@ -591,7 +595,7 @@ class TestExploreGenerator:
 
         models = {"rentals": fact_model}
         # Config references non-existent model
-        config = ExploreConfig(name="orders", fact_model="orders")
+        config = ExploreConfig(name="orders", fact="orders")
 
         generator = ExploreGenerator()
         files = generator.generate([config], models)
@@ -611,8 +615,8 @@ class TestExploreGenerator:
 
         models = {"rentals": rentals, "orders": orders}
         configs = [
-            ExploreConfig(name="rentals", fact_model="rentals"),
-            ExploreConfig(name="orders", fact_model="orders"),
+            ExploreConfig(name="rentals", fact="rentals"),
+            ExploreConfig(name="orders", fact="orders"),
         ]
 
         generator = ExploreGenerator()
@@ -647,23 +651,23 @@ class TestExploreConfig:
     def test_get_override_returns_matching_override(self):
         config = ExploreConfig(
             name="rentals",
-            fact_model="rentals",
-            join_overrides=[
-                JoinOverride(model="reviews", expose=ExposeLevel.DIMENSIONS),
-                JoinOverride(model="facilities", expose=ExposeLevel.ALL),
+            fact="rentals",
+            joins=[
+                ExploreJoinConfig(model="reviews", expose="dimensions"),
+                ExploreJoinConfig(model="facilities", expose="all"),
             ],
         )
 
         override = config.get_override("reviews")
         assert override is not None
-        assert override.expose == ExposeLevel.DIMENSIONS
+        assert override.expose == "dimensions"
 
     def test_get_override_returns_none_for_no_match(self):
         config = ExploreConfig(
             name="rentals",
-            fact_model="rentals",
-            join_overrides=[
-                JoinOverride(model="reviews", expose=ExposeLevel.DIMENSIONS),
+            fact="rentals",
+            joins=[
+                ExploreJoinConfig(model="reviews", expose="dimensions"),
             ],
         )
 

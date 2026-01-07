@@ -29,7 +29,16 @@ class DateOption:
 
     @property
     def parameter_value(self) -> str:
-        """Value for the parameter (uses __ instead of . for LookML safety)."""
+        """
+        Value for the parameter.
+
+        For same-view references: just dimension name (e.g., 'created_at')
+        For joined views: view__dimension (e.g., 'reviews__created_at')
+        """
+        # If it's the fact view (first in the list), just use dimension name
+        # Otherwise use view__dimension for joined models
+        # Note: This assumes the fact view is always first in date_options
+        # We'll handle this distinction in the calling code
         return f"{self.view}__{self.dimension}"
 
 
@@ -91,33 +100,51 @@ class CalendarRenderer:
         explore_name: str,
         date_options: list[DateOption],
         pop_config: PopCalendarConfig | None = None,
+        fact_view_name: str | None = None,
     ) -> dict[str, Any] | None:
         """
         Render calendar view dict for lkml serialization.
 
         Returns None if no date options provided.
+        Now renders as a view extension (+view_name) of the fact view.
         """
         if not date_options:
             return None
 
-        view_name = f"{explore_name}_explore_calendar"
+        # Determine fact view (first in list if not specified)
+        fact_view = fact_view_name or (date_options[0].view if date_options else None)
 
         # Build date_field parameter with allowed values
+        # Use simple names for fact view, prefixed for joined views
         allowed_values = []
+        case_branches = []
         for opt in date_options:
+            # For fact view: just dimension name; for others: view__dimension
+            param_value = opt.dimension if opt.view == fact_view else f"{opt.view}__{opt.dimension}"
+
+            # For fact view: use same-view reference (no view prefix)
+            # For joined views: use cross-view reference
+            if opt.view == fact_view:
+                # Strip view prefix from raw_ref: ${view.dim_raw} -> ${dim_raw}
+                raw_ref = opt.raw_ref.replace(f"${{{opt.view}.", "${")
+            else:
+                # Keep cross-view reference for joined views
+                raw_ref = opt.raw_ref
+
             allowed_values.append(
                 {
                     "label": opt.label,
-                    "value": opt.parameter_value,
+                    "value": param_value,
                 }
             )
+            case_branches.append((param_value, raw_ref))
 
         # Use first option as default
-        default_value = date_options[0].parameter_value
+        default_value = date_options[0].dimension if date_options[0].view == fact_view else f"{date_options[0].view}__{date_options[0].dimension}"
 
         date_field_param: dict[str, Any] = {
             "name": "date_field",
-            "type": "unquoted",
+            "type": "string",
             "label": "Analysis Date",
             "description": "Select which date field to use for calendar analysis",
             "view_label": " Calendar",  # Space prefix sorts to top
@@ -125,8 +152,13 @@ class CalendarRenderer:
             "allowed_values": allowed_values,
         }
 
-        # Build CASE statement for dynamic date expression
-        case_statement = self._build_date_case_statement(date_options)
+        # Build CASE statement for dynamic date expression using new case_branches
+        case_parts = [f"WHEN '{value}' THEN {ref}" for value, ref in case_branches]
+        case_statement = (
+            "CASE {% parameter date_field %}\n        "
+            + "\n        ".join(case_parts)
+            + "\n      END"
+        )
 
         dimension_group: dict[str, Any] = {
             "name": "calendar",
@@ -146,7 +178,7 @@ class CalendarRenderer:
         # Add PoP infrastructure if enabled
         if pop_config and pop_config.enabled:
             pop_elements = self._render_pop_infrastructure(
-                date_options, pop_config, view_name
+                date_options, pop_config, fact_view
             )
             if pop_elements.get("filter"):
                 filters.append(pop_elements["filter"])
@@ -155,8 +187,9 @@ class CalendarRenderer:
             if pop_elements.get("dimensions"):
                 dimensions.extend(pop_elements["dimensions"])
 
+        # Return as view refinement (+view_name) to extend the fact view
         result: dict[str, Any] = {
-            "name": view_name,
+            "name": f"+{fact_view}",  # View refinement syntax
             "parameters": parameters,
             "dimension_groups": [dimension_group],
         }

@@ -4,20 +4,30 @@ input: .
 output: ./lookml
 schema: gold
 
-model:
-  name: spothero
-  connection: database
-
-explores:
-  - fact: rentals
-  - fact: facility_lifecycle
-
-output_options:
-  clean: clean
-  manifest: true
-
 options:
   dialect: redshift
   pop_strategy: dynamic
   date_selector: true
   convert_tz: false
+
+output_options:
+  clean: clean
+  manifest: true
+
+looker:
+  enabled: true
+  repo: myorg/looker-models     # Update with your repo
+  branch: sp-generated
+
+  model:
+    name: spothero
+    connection: database
+
+  explores:
+    - fact: rentals
+    - fact: facility_lifecycle
+
+  # Optional: Looker dev sync
+  # base_url: https://mycompany.looker.com
+  # project_id: spothero
+  # sync_dev: true

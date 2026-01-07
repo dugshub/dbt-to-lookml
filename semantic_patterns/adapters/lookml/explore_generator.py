@@ -13,7 +13,7 @@ from semantic_patterns.adapters.lookml.renderers.calendar import (
     PopCalendarConfig,
 )
 from semantic_patterns.adapters.lookml.renderers.explore import ExploreRenderer
-from semantic_patterns.adapters.lookml.types import ExploreConfig, build_explore_config
+from semantic_patterns.adapters.lookml.types import ExploreConfig
 from semantic_patterns.domain import ProcessedModel
 
 if TYPE_CHECKING:
@@ -25,8 +25,7 @@ class ExploreGenerator:
     Generate explore files from configuration.
 
     Produces:
-    - {explore}.explore.lkml - Explore definition with joins
-    - {explore}_explore_calendar.view.lkml - Unified date selector (if has dates)
+    - {explore}.explore.lkml - Explore definition with joins (includes embedded calendar view if needed)
     """
 
     def __init__(self, dialect: Dialect | None = None) -> None:
@@ -73,8 +72,6 @@ class ExploreGenerator:
 
         # Render explore
         explore_dict, includes = self.explore_renderer.render(explore_config, fact_model, models)
-        explore_content = self._serialize_explore(explore_dict, includes)
-        files[f"{explore_config.name}.explore.lkml"] = explore_content
 
         # Collect joined models for calendar
         joined_models = self._get_joined_models(fact_model, models)
@@ -83,18 +80,25 @@ class ExploreGenerator:
         date_options = self.calendar_renderer.collect_date_options(
             fact_model, joined_models
         )
+        calendar_dict = None
         if date_options:
             # Detect PoP metrics to enable calendar PoP infrastructure
             all_explore_models = [fact_model] + joined_models
             pop_config = PopCalendarConfig.from_models(all_explore_models)
 
             calendar_dict = self.calendar_renderer.render(
-                explore_config.name, date_options, pop_config
+                explore_config.name, date_options, pop_config, fact_model.name
             )
-            if calendar_dict:
-                calendar_content = self._serialize_view(calendar_dict)
-                calendar_filename = f"{explore_config.name}_explore_calendar.view.lkml"
-                files[calendar_filename] = calendar_content
+
+        # Serialize explore (with calendar view embedded if present)
+        if calendar_dict:
+            explore_content = self._serialize_explore_with_calendar(
+                calendar_dict, explore_dict, includes
+            )
+        else:
+            explore_content = self._serialize_explore(explore_dict, includes)
+
+        files[f"{explore_config.name}.explore.lkml"] = explore_content
 
         return files
 
@@ -115,8 +119,6 @@ class ExploreGenerator:
 
         # Render explore
         explore_dict, includes = self.explore_renderer.render(explore_config, fact_model, models)
-        explore_content = self._serialize_explore(explore_dict, includes)
-        files[paths.explore_file_path(explore_config.name)] = explore_content
 
         # Collect joined models for calendar
         joined_models = self._get_joined_models(fact_model, models)
@@ -125,17 +127,25 @@ class ExploreGenerator:
         date_options = self.calendar_renderer.collect_date_options(
             fact_model, joined_models
         )
+        calendar_dict = None
         if date_options:
             # Detect PoP metrics to enable calendar PoP infrastructure
             all_explore_models = [fact_model] + joined_models
             pop_config = PopCalendarConfig.from_models(all_explore_models)
 
             calendar_dict = self.calendar_renderer.render(
-                explore_config.name, date_options, pop_config
+                explore_config.name, date_options, pop_config, fact_model.name
             )
-            if calendar_dict:
-                calendar_content = self._serialize_view(calendar_dict)
-                files[paths.calendar_file_path(explore_config.name)] = calendar_content
+
+        # Serialize explore (with calendar view embedded if present)
+        if calendar_dict:
+            explore_content = self._serialize_explore_with_calendar(
+                calendar_dict, explore_dict, includes
+            )
+        else:
+            explore_content = self._serialize_explore(explore_dict, includes)
+
+        files[paths.explore_file_path(explore_config.name)] = explore_content
 
         return files
 
@@ -244,6 +254,27 @@ class ExploreGenerator:
         # Combine includes and explore
         return f"{include_section}\n\n{explore_content}"
 
+    def _serialize_explore_with_calendar(
+        self, calendar_view: dict[str, Any], explore: dict[str, Any], includes: list[str]
+    ) -> str:
+        """Serialize explore with embedded calendar view (multiple top-level blocks)."""
+        # Build include statements
+        include_lines = [f'include: "{inc}"' for inc in includes]
+        include_section = "\n".join(include_lines)
+
+        # Serialize calendar view
+        calendar_lookml = {"views": [calendar_view]}
+        calendar_content = lkml.dump(calendar_lookml)
+        assert calendar_content is not None
+
+        # Serialize explore
+        explore_lookml = {"explores": [explore]}
+        explore_content = lkml.dump(explore_lookml)
+        assert explore_content is not None
+
+        # Combine: includes, calendar view, then explore
+        return f"{include_section}\n\n{calendar_content}\n{explore_content}"
+
     def _serialize_view(self, view: dict[str, Any]) -> str:
         """Serialize view dict to LookML string."""
         lookml_dict = {"views": [view]}
@@ -265,7 +296,7 @@ class ExploreGenerator:
         Returns:
             List of ExploreConfig with name=fact_model, no overrides
         """
-        return [ExploreConfig(name=name, fact_model=name) for name in fact_models]
+        return [ExploreConfig(fact=name, name=name) for name in fact_models]
 
     @staticmethod
     def configs_from_yaml(explore_dicts: list[dict[str, Any]]) -> list[ExploreConfig]:
@@ -281,4 +312,4 @@ class ExploreGenerator:
         Returns:
             List of ExploreConfig
         """
-        return [build_explore_config(e) for e in explore_dicts]
+        return [ExploreConfig.model_validate(e) for e in explore_dicts]

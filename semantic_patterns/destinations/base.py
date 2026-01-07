@@ -14,6 +14,7 @@ class WriteResult:
     Attributes:
         files_written: List of file paths that were written
         destination_url: Optional URL to the destination (e.g., GitHub commit URL)
+        looker_url: Optional URL to view files in Looker IDE
         message: Human-readable summary message
         commit_sha: Git commit SHA if applicable
         metadata: Additional metadata about the write operation
@@ -21,6 +22,7 @@ class WriteResult:
 
     files_written: list[str]
     destination_url: str | None = None
+    looker_url: str | None = None
     message: str | None = None
     commit_sha: str | None = None
     metadata: dict[str, str] = field(default_factory=dict)

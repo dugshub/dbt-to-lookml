@@ -7,9 +7,8 @@ import pytest
 import yaml
 
 from semantic_patterns.adapters.dialect import Dialect
+from semantic_patterns.adapters.lookml.types import ExploreConfig, ExploreJoinConfig
 from semantic_patterns.config import (
-    ExploreConfig,
-    ExploreJoinConfig,
     ModelConfig,
     OptionsConfig,
     SPConfig,
@@ -42,17 +41,6 @@ output: ./generated
 schema: analytics
 format: semantic-patterns
 
-model:
-  name: my_model
-  connection: redshift_prod
-  label: My Analytics Model
-
-explores:
-  - fact: orders
-  - fact: users
-    name: user_analytics
-    label: User Insights
-
 options:
   dialect: snowflake
   pop_strategy: native
@@ -60,6 +48,22 @@ options:
   convert_tz: true
   view_prefix: sm_
   explore_prefix: explore_
+
+looker:
+  enabled: true
+  repo: test/repo
+  branch: sp-generated
+
+  model:
+    name: my_model
+    connection: redshift_prod
+    label: My Analytics Model
+
+  explores:
+    - fact: orders
+    - fact: users
+      name: user_analytics
+      label: User Insights
 """
         config = SPConfig.from_yaml(content)
 
@@ -319,13 +323,17 @@ class TestExploreConfig:
 input: ./models
 output: ./lookml
 schema: gold
-explores:
-  - fact: orders
-    joins:
-      - model: users
-        expose: dimensions
-      - model: products
-        expose: all
+looker:
+  enabled: true
+  repo: test/repo
+  branch: sp-generated
+  explores:
+    - fact: orders
+      joins:
+        - model: users
+          expose: dimensions
+        - model: products
+          expose: all
 """
         config = SPConfig.from_yaml(content)
 

@@ -434,7 +434,11 @@ class TestConfigValidationErrors:
 input: ./models
 output: ./lookml
 schema: gold
-explores: "not a list"
+looker:
+  enabled: true
+  repo: test/repo
+  branch: sp-generated
+  explores: "not a list"
 """
         with pytest.raises(Exception):  # Pydantic ValidationError
             SPConfig.from_yaml(content)

@@ -147,9 +147,13 @@ class LookerDestination:
         if looker_synced:
             message += f" and synced Looker dev"
 
+        # Generate Looker IDE URL for first explore (if available)
+        looker_url = self._build_looker_explore_url(blobs)
+
         return WriteResult(
             files_written=[b["path"] for b in blobs],
             destination_url=commit_url,
+            looker_url=looker_url,
             message=message,
             commit_sha=commit_sha,
             metadata={
@@ -445,6 +449,34 @@ class LookerDestination:
 
         except httpx.HTTPError as e:
             raise LookerAPIError(f"Network error during Looker sync: {e}")
+
+    def _build_looker_explore_url(self, blobs: list[dict[str, str]]) -> str | None:
+        """Build Looker IDE URL for the first explore file.
+
+        URL format:
+        {base_url}/projects/{project_id}/files/{path}{relative_path}
+
+        Example:
+        https://spothero.looker.com/projects/analytics-dbt/files/semantic-patterns-generated/semantic-patterns/explores/sp_rentals.explore.lkml
+
+        Args:
+            blobs: List of blob dictionaries with 'path' keys
+
+        Returns:
+            URL to first explore file in Looker IDE, or None if no explores or Looker not configured
+        """
+        # Require base_url and project_id for Looker IDE links
+        if not self.config.base_url or not self.config.project_id:
+            return None
+
+        # Find first explore file
+        for blob in blobs:
+            if "/explores/" in blob["path"] and blob["path"].endswith(".explore.lkml"):
+                # URL-encode the path properly
+                file_path = blob["path"]
+                return f"{self.config.base_url}/projects/{self.config.project_id}/files/{file_path}"
+
+        return None
 
     # -------------------------------------------------------------------------
     # GitHub Operations

@@ -322,8 +322,12 @@ input: ./semantic_models
 output: ./lookml
 schema: gold
 
-explores:
-  - fact: nonexistent_model
+looker:
+  enabled: true
+  repo: test/repo
+  branch: sp-generated
+  explores:
+    - fact: nonexistent_model
 """
         model_content = """\
 semantic_models:

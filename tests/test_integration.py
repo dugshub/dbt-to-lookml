@@ -185,12 +185,13 @@ class TestIntegrationWithFixtures:
         generator = ExploreGenerator()
         files = generator.generate(explores, model_dict)
 
-        # Should have calendar view
-        assert "rentals_explore_calendar.view.lkml" in files
+        # Should have calendar view embedded in explore file
+        assert "rentals.explore.lkml" in files
 
-        content = files["rentals_explore_calendar.view.lkml"]
+        content = files["rentals.explore.lkml"]
         parsed = lkml.load(content)
 
+        assert "views" in parsed
         view = parsed["views"][0]
         assert view["name"] == "rentals_explore_calendar"
 
@@ -322,7 +323,7 @@ class TestViewPrefixBehavior:
         explore_configs = [
             LookMLExploreConfig(
                 name=f"{explore_prefix}rentals",
-                fact_model=f"{view_prefix}rentals",
+                fact=f"{view_prefix}rentals",
             )
         ]
 
@@ -358,7 +359,7 @@ class TestViewPrefixBehavior:
         explore_configs = [
             LookMLExploreConfig(
                 name=f"{explore_prefix}rentals",
-                fact_model=f"{view_prefix}rentals",
+                fact=f"{view_prefix}rentals",
             )
         ]
 
@@ -479,9 +480,10 @@ class TestGeneratedLookMLContent:
 
     def test_calendar_has_case_statement(self, generated_files):
         """Test calendar view has CASE statement for dynamic date selection."""
-        content = generated_files["rentals_explore_calendar.view.lkml"]
+        content = generated_files["rentals.explore.lkml"]
         parsed = lkml.load(content)
 
+        assert "views" in parsed
         view = parsed["views"][0]
         dim_groups = view.get("dimension_groups", [])
         calendar = next((d for d in dim_groups if d["name"] == "calendar"), None)

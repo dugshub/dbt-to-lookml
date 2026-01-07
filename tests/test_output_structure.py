@@ -64,18 +64,18 @@ class TestOutputPaths:
 
     def test_relative_view_include(self) -> None:
         paths = OutputPaths(project="myproject", base_path=Path("/output"))
-        assert paths.relative_view_include("orders") == "/views/orders/orders.view.lkml"
+        assert paths.relative_view_include("orders") == "views/orders/orders.view.lkml"
 
     def test_relative_view_include_with_suffix(self) -> None:
         paths = OutputPaths(project="myproject", base_path=Path("/output"))
         assert (
             paths.relative_view_include("orders", ".metrics")
-            == "/views/orders/orders.metrics.view.lkml"
+            == "views/orders/orders.metrics.view.lkml"
         )
 
     def test_relative_explore_include(self) -> None:
         paths = OutputPaths(project="myproject", base_path=Path("/output"))
-        assert paths.relative_explore_include("orders") == "/explores/orders.explore.lkml"
+        assert paths.relative_explore_include("orders") == "explores/orders.explore.lkml"
 
 
 class TestManifest:
@@ -296,7 +296,7 @@ semantic_models:
         runner.invoke(cli, ["build", "--config", str(sample_project / "sp.yml")])
         model_file = sample_project / "output/test_project/test_project.model.lkml"
         content = model_file.read_text()
-        assert "/views/orders/orders.view.lkml" in content
+        assert "views/orders/orders.view.lkml" in content
 
     def test_project_defaults_to_semantic_patterns(self, tmp_path: Path) -> None:
         """Test that project defaults to 'semantic-patterns' if not specified."""

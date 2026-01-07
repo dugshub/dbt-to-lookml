@@ -280,7 +280,9 @@ def _handle_looker_push(
         else:
             console.print(f"\n[bold green]{result.message}[/bold green]")
             if result.destination_url:
-                console.print(f"[dim]Commit:[/dim] {result.destination_url}")
+                console.print(f"[dim]Commit:[/dim] {result.destination_url}", overflow="ignore")
+            if result.looker_url:
+                console.print(f"[dim]Looker:[/dim] {result.looker_url}", overflow="ignore")
 
     except LookerAPIError as e:
         if debug:
@@ -517,11 +519,16 @@ def run_build(
                     if explore_prefix
                     else e.effective_name
                 ),
-                # Use prefixed fact_model name to match prefixed model names
-                fact_model=(f"{view_prefix}{e.fact}" if view_prefix else e.fact),
+                # Use prefixed fact name to match prefixed model names
+                fact=(f"{view_prefix}{e.fact}" if view_prefix else e.fact),
                 label=e.label,
                 description=e.description,
+                joins=e.joins,
                 join_exclusions=e.join_exclusions,
+                joined_facts=[
+                    f"{view_prefix}{fact}" if view_prefix else fact
+                    for fact in e.joined_facts
+                ],
             )
             for e in config.explores
         ]
@@ -550,16 +557,6 @@ def run_build(
         # Create domain folders for each model
         for model in models:
             paths.ensure_view_domain(model.name)
-
-        # Also create domain folders for calendar views
-        for e in config.explores:
-            explore_name = (
-                f"{explore_prefix}{e.effective_name}"
-                if explore_prefix
-                else e.effective_name
-            )
-            calendar_name = f"{explore_name}_calendar"
-            paths.ensure_view_domain(calendar_name)
 
         with Progress(
             SpinnerColumn(),

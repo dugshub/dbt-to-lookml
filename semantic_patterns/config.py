@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import Self
 
 from semantic_patterns.adapters.dialect import Dialect
+from semantic_patterns.adapters.lookml.types import ExploreConfig
 
 
 class OutputOptionsConfig(BaseModel):
@@ -23,44 +24,6 @@ class OutputOptionsConfig(BaseModel):
     manifest: bool = True  # Generate .sp-manifest.json
 
     model_config = {"frozen": True}
-
-
-class ExploreJoinConfig(BaseModel):
-    """Configuration for a join override in an explore."""
-
-    model: str
-    expose: str | None = None  # "all" or "dimensions"
-    relationship: str | None = None  # "one_to_one", "many_to_one", "one_to_many"
-
-    model_config = {"frozen": True}
-
-
-class ExploreConfig(BaseModel):
-    """Configuration for a single explore."""
-
-    fact: str
-    name: str | None = None  # Defaults to fact model name
-    label: str | None = None
-    description: str | None = None
-    joins: list[ExploreJoinConfig] = Field(default_factory=list)
-    # Models to exclude from auto-join
-    join_exclusions: list[str] = Field(default_factory=list)
-    # Child fact models that belong to this explore (for PoP calendar mapping)
-    joined_facts: list[str] = Field(default_factory=list)
-
-    model_config = {"frozen": True}
-
-    @property
-    def effective_name(self) -> str:
-        """Get the explore name (defaults to fact model name)."""
-        return self.name or self.fact
-
-    def get_join_config(self, model_name: str) -> ExploreJoinConfig | None:
-        """Get join config for a specific model if it exists."""
-        for join in self.joins:
-            if join.model == model_name:
-                return join
-        return None
 
 
 class ModelConfig(BaseModel):
@@ -109,17 +72,29 @@ class OptionsConfig(BaseModel):
 class LookerConfig(BaseModel):
     """Looker destination configuration.
 
-    Unified config for pushing LookML to a Git repository (backing the Looker project)
-    and optionally syncing the user's Looker dev environment.
+    Unified config for LookML generation, Git repository push, and dev environment sync.
 
     Example:
         looker:
           enabled: true
+
+          # LookML model configuration
+          model:
+            name: analytics
+            connection: redshift_prod
+
+          # Explores (optional - omit for views-only)
+          explores:
+            - fact: rentals
+            - fact: orders
+              label: Order Analysis
+
           # Git repository (backing Looker project)
           repo: myorg/looker-models
           branch: sp-generated
           path: lookml/
           commit_message: "semantic-patterns: Update LookML"
+
           # Looker instance (optional - for dev sync)
           base_url: https://mycompany.looker.com
           project_id: my_lookml_project
@@ -127,6 +102,10 @@ class LookerConfig(BaseModel):
     """
 
     enabled: bool = False
+
+    # LookML generation config
+    model: ModelConfig = Field(default_factory=ModelConfig)
+    explores: list[ExploreConfig] = Field(default_factory=list)
 
     # Git repository settings (backing the Looker project)
     repo: str = ""  # owner/repo format (required if enabled)
@@ -237,19 +216,6 @@ class SPConfig(BaseModel):
         schema: gold
         format: semantic-patterns  # or 'dbt'
 
-        model:
-          name: analytics
-          connection: redshift_prod
-
-        explores:
-          - fact: rentals
-          - fact: facility_monthly_status
-            label: Facility Monthly Status
-            joined_facts:
-              - facility_lifecycle  # Child fact - uses parent's calendar
-            join_exclusions:
-              - some_model_to_skip
-
         options:
           dialect: redshift
           view_prefix: sm_
@@ -258,9 +224,23 @@ class SPConfig(BaseModel):
           clean: clean  # or 'warn' or 'ignore'
           manifest: true
 
-        # Optional: Push to Looker (via Git + dev sync)
+        # Looker-specific configuration
         looker:
           enabled: true
+
+          model:
+            name: analytics
+            connection: redshift_prod
+
+          explores:
+            - fact: rentals
+            - fact: facility_monthly_status
+              label: Facility Monthly Status
+              joined_facts:
+                - facility_lifecycle
+              join_exclusions:
+                - some_model_to_skip
+
           repo: myorg/looker-models
           branch: sp-generated
           base_url: https://mycompany.looker.com
@@ -273,8 +253,6 @@ class SPConfig(BaseModel):
     format: str = "semantic-patterns"  # 'dbt' or 'semantic-patterns'
     project: str = "semantic-patterns"  # Project name (names output folder)
 
-    model: ModelConfig = Field(default_factory=ModelConfig)
-    explores: list[ExploreConfig] = Field(default_factory=list)
     options: OptionsConfig = Field(default_factory=OptionsConfig)
     output_options: OutputOptionsConfig = Field(default_factory=OutputOptionsConfig)
     looker: LookerConfig = Field(default_factory=LookerConfig)
@@ -293,6 +271,17 @@ class SPConfig(BaseModel):
         raise ValueError(f"format must be a string, got {type(v)}")
 
     model_config = {"frozen": True, "populate_by_name": True}
+
+    # Backwards compatibility: delegate to looker config
+    @property
+    def model(self) -> ModelConfig:
+        """Get model config (delegates to looker.model)."""
+        return self.looker.model
+
+    @property
+    def explores(self) -> list[ExploreConfig]:
+        """Get explores config (delegates to looker.explores)."""
+        return self.looker.explores
 
     @property
     def input_path(self) -> Path:

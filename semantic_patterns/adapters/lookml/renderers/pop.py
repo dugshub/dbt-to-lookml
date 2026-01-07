@@ -95,9 +95,9 @@ class LookerNativePopStrategy:
             "kind": OUTPUT_TO_LOOKML.get(params.output, "previous"),
         }
 
-        # Add scoped based_on_time reference to explore calendar
+        # Add based_on_time reference to calendar dimension (now in same view via refinement)
         if self.calendar_view_name:
-            result["based_on_time"] = f"{self.calendar_view_name}.calendar_date"
+            result["based_on_time"] = "calendar_date"
 
         # Generate label
         comparison_labels = {

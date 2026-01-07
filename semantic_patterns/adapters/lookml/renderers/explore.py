@@ -98,17 +98,7 @@ class ExploreRenderer:
             if join.model in all_models:
                 joined_models.append(all_models[join.model])
 
-        # Add calendar join if we have date options
-        date_options = self.calendar_renderer.collect_date_options(
-            fact_model, joined_models
-        )
-        if date_options:
-            calendar_view_name = get_calendar_view_name(explore_config.name)
-            calendar_join = self._render_calendar_join(calendar_view_name)
-            joins.append(calendar_join)
-
-            # Include calendar view
-            includes.append(f"/**/{calendar_view_name}.view.lkml")
+        # Note: Calendar is now part of the fact view (via view refinement), no join needed
 
         if joins:
             explore["joins"] = joins
@@ -239,13 +229,19 @@ class ExploreRenderer:
 
         Priority:
         1. Explicit override in explore config
-        2. `complete: true` on foreign entity → expose all
-        3. Default → expose dimensions only (safe)
+        2. Model is in joined_facts → expose all (child facts)
+        3. `complete: true` on foreign entity → expose all
+        4. Default → expose dimensions only (safe)
         """
         # Check for override
         override = explore_config.get_override(target_model.name)
         if override and override.expose:
             return override.expose
+
+        # Check if model is a joined fact (child fact in this explore)
+        # joined_facts are explicitly declared child facts that should expose all fields
+        if target_model.name in explore_config.joined_facts:
+            return ExposeLevel.ALL
 
         # Check complete flag on foreign entity
         if getattr(foreign_entity, "complete", False):
