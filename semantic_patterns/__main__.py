@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,7 +112,11 @@ def cli() -> None:
     help="Push to Looker without confirmation (when looker.enabled=true)",
 )
 def build(
-    config: Path | None, dry_run: bool, verbose: bool, debug: bool, push: bool
+    config: Path | None,
+    dry_run: bool,
+    verbose: bool,
+    debug: bool,
+    push: bool,
 ) -> None:
     """Generate LookML from semantic models.
 
@@ -782,6 +787,393 @@ def validate(config: Path | None, debug: bool) -> None:
         console.print(f"[green]Explores valid:[/green] {len(cfg.explores)} explores")
 
     console.print("\n[bold green]All checks passed[/bold green]")
+
+
+# ============================================================================
+# Auth Command Group
+# ============================================================================
+
+
+@cli.group()
+def auth() -> None:
+    """Manage authentication credentials."""
+    pass
+
+
+def _get_github_username(token: str) -> str:
+    """Fetch GitHub username from token.
+
+    Args:
+        token: GitHub personal access token
+
+    Returns:
+        The GitHub username
+
+    Raises:
+        Exception: If API call fails
+    """
+    import httpx
+
+    with httpx.Client(timeout=10.0) as client:
+        response = client.get(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+        response.raise_for_status()
+        data: dict[str, str] = response.json()
+        return data["login"]
+
+
+@auth.command()
+def status() -> None:
+    """Show configured credentials and their status."""
+    import httpx
+
+    from semantic_patterns.credentials import CredentialType, get_credential_store
+
+    store = get_credential_store(console)
+
+    console.print()
+    console.print("[bold]Credential Status[/bold]")
+    console.print()
+
+    # GitHub
+    github_token = store.get(CredentialType.GITHUB, prompt_if_missing=False)
+    if github_token:
+        # Try to fetch user info
+        try:
+            username = _get_github_username(github_token)
+            console.print(f"[green]✓[/green] GitHub:      Configured")
+            console.print(f"             User: @{username}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                console.print("[red]✗[/red] GitHub:      Invalid token")
+            else:
+                console.print(
+                    f"[yellow]⚠[/yellow] GitHub:      Error (HTTP {e.response.status_code})"
+                )
+        except httpx.TimeoutException:
+            console.print(
+                "[yellow]⚠[/yellow] GitHub:      Configured (network timeout during verification)"
+            )
+        except Exception:
+            console.print(
+                "[yellow]⚠[/yellow] GitHub:      Configured (unable to verify)"
+            )
+    else:
+        console.print("[dim]○[/dim] GitHub:      Not configured")
+
+    # Check env var override
+    if os.environ.get("GITHUB_TOKEN"):
+        console.print(
+            "             [yellow]Note: GITHUB_TOKEN env var will override keychain[/yellow]"
+        )
+
+    console.print()
+
+    # Looker
+    looker_client_id = store.get("looker-client-id", prompt_if_missing=False)
+    looker_client_secret = store.get(
+        "looker-client-secret", prompt_if_missing=False
+    )
+
+    if looker_client_id and looker_client_secret:
+        console.print("[green]✓[/green] Looker:      Configured")
+        console.print(f"             Client ID: {looker_client_id[:10]}...")
+    elif looker_client_id or looker_client_secret:
+        console.print(
+            "[yellow]⚠[/yellow] Looker:      Partially configured (missing ID or secret)"
+        )
+    else:
+        console.print("[dim]○[/dim] Looker:      Not configured")
+
+    # Check env var overrides
+    if os.environ.get("LOOKER_CLIENT_ID") or os.environ.get("LOOKER_CLIENT_SECRET"):
+        console.print(
+            "             [yellow]Note: LOOKER_* env vars will override keychain[/yellow]"
+        )
+
+    console.print()
+
+
+@auth.command()
+@click.argument("service", type=click.Choice(["github", "looker", "all"]))
+@click.option("--force", is_flag=True, help="Skip confirmation prompt")
+def clear(service: str, force: bool) -> None:
+    """Clear stored credentials.
+
+    SERVICE: Which credentials to clear (github, looker, or all)
+
+    Examples:
+
+        # Clear GitHub token
+        sp auth clear github
+
+        # Clear all credentials
+        sp auth clear all
+    """
+    from semantic_patterns.credentials import CredentialType, get_credential_store
+
+    store = get_credential_store(console)
+
+    # Determine what to clear
+    to_clear: list[tuple[str, str]] = []
+    if service == "github" or service == "all":
+        to_clear.append((CredentialType.GITHUB.value, "GitHub token"))
+    if service == "looker" or service == "all":
+        to_clear.append(("looker-client-id", "Looker client ID"))
+        to_clear.append(("looker-client-secret", "Looker client secret"))
+
+    # Confirm
+    if not force:
+        console.print()
+        console.print("This will clear:")
+        for _, label in to_clear:
+            console.print(f"  • {label}")
+        console.print()
+
+        if not click.confirm("Continue?", default=False):
+            console.print("[yellow]Cancelled[/yellow]")
+            return
+
+    # Clear credentials
+    for key, label in to_clear:
+        if store.delete(key):
+            console.print(f"[green]✓[/green] Cleared {label}")
+        else:
+            console.print(f"[dim]○[/dim] {label} was not set")
+
+    console.print()
+    console.print("[dim]Run 'sp build' to re-authenticate[/dim]")
+
+
+@auth.command()
+@click.argument("service", type=click.Choice(["github", "looker"]))
+@click.option("--debug", is_flag=True, help="Show detailed error messages")
+def test(service: str, debug: bool) -> None:
+    """Test if credentials are valid.
+
+    SERVICE: Which credentials to test (github or looker)
+
+    Examples:
+
+        # Test GitHub token
+        sp auth test github
+
+        # Test Looker credentials
+        sp auth test looker
+    """
+    import httpx
+
+    from semantic_patterns.credentials import CredentialType, get_credential_store
+
+    store = get_credential_store(console)
+
+    console.print()
+
+    if service == "github":
+        token = store.get(CredentialType.GITHUB, prompt_if_missing=False)
+        if not token:
+            console.print("[red]✗[/red] No GitHub token configured")
+            console.print()
+            console.print("[dim]Run 'sp build' to authenticate[/dim]")
+            return
+
+        console.print("Testing GitHub credentials...")
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                # Get user info
+                user_response = client.get(
+                    "https://api.github.com/user",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github+json",
+                    },
+                )
+
+                if user_response.status_code != 200:
+                    console.print(
+                        f"[red]✗[/red] Invalid token (HTTP {user_response.status_code})"
+                    )
+                    if debug:
+                        console.print(f"[dim]{user_response.text}[/dim]")
+                    return
+
+                user_data = user_response.json()
+                username = user_data.get("login", "unknown")
+
+                console.print(f"[green]✓[/green] Token is valid")
+                console.print(f"[green]✓[/green] User: @{username}")
+
+                # Check token scopes
+                scopes = user_response.headers.get("x-oauth-scopes", "")
+                if scopes:
+                    console.print(f"[green]✓[/green] Scopes: {scopes}")
+
+                    if "repo" not in scopes:
+                        console.print(
+                            f"[yellow]⚠[/yellow] Warning: 'repo' scope required for pushing"
+                        )
+
+        except Exception as e:
+            console.print(f"[red]✗[/red] Test failed: {e}")
+            if debug:
+                console.print(traceback.format_exc())
+
+    elif service == "looker":
+        # Load config to get base_url
+        try:
+            client_id = store.get("looker-client-id", prompt_if_missing=False)
+            client_secret = store.get("looker-client-secret", prompt_if_missing=False)
+
+            if not client_id or not client_secret:
+                console.print("[red]✗[/red] Looker credentials not configured")
+                console.print()
+                console.print(
+                    "[dim]Run 'sp build --push' to configure Looker credentials[/dim]"
+                )
+                return
+
+            config_path = find_config()
+            if not config_path:
+                console.print(
+                    "[yellow]⚠[/yellow] No sp.yml found (cannot determine Looker instance)"
+                )
+                console.print()
+
+            config = load_config(config_path) if config_path else None
+
+            if not config or not config.looker.base_url:
+                console.print(
+                    "[yellow]⚠[/yellow] Credentials found but not tested"
+                )
+                console.print(
+                    "[dim]Cannot test without looker.base_url in sp.yml[/dim]"
+                )
+                console.print()
+                console.print(
+                    "[dim]Credential files exist in keychain only[/dim]"
+                )
+                return
+
+            console.print(
+                f"Testing Looker credentials for {config.looker.base_url}..."
+            )
+
+            with httpx.Client(timeout=10.0) as client:
+                # Attempt login
+                response = client.post(
+                    f"{config.looker.base_url}/api/4.0/login",
+                    data={
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                    },
+                )
+
+                if response.status_code != 200:
+                    console.print(
+                        f"[red]✗[/red] Authentication failed (HTTP {response.status_code})"
+                    )
+                    if debug:
+                        console.print(f"[dim]{response.text}[/dim]")
+                    return
+
+                data = response.json()
+                access_token = data.get("access_token")
+
+                console.print(f"[green]✓[/green] Authentication successful")
+
+                # Get current user
+                me_response = client.get(
+                    f"{config.looker.base_url}/api/4.0/user",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+
+                if me_response.status_code == 200:
+                    user_data = me_response.json()
+                    email = user_data.get("email", "unknown")
+                    console.print(f"[green]✓[/green] User: {email}")
+
+                # Check project access (if configured)
+                if config.looker.project_id:
+                    project_response = client.get(
+                        f"{config.looker.base_url}/api/4.0/projects/{config.looker.project_id}",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    )
+
+                    if project_response.status_code == 200:
+                        console.print(
+                            f"[green]✓[/green] Project '{config.looker.project_id}': Access confirmed"
+                        )
+                    else:
+                        console.print(
+                            f"[yellow]⚠[/yellow] Project '{config.looker.project_id}': Access denied"
+                        )
+
+        except Exception as e:
+            console.print(f"[red]✗[/red] Test failed: {e}")
+            if debug:
+                console.print(traceback.format_exc())
+
+    console.print()
+
+
+@auth.command()
+@click.option("--force", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def reset(ctx: click.Context, force: bool) -> None:
+    """Clear all stored credentials (fresh start).
+
+    Examples:
+
+        # Clear all credentials
+        sp auth reset
+    """
+    # Invoke the clear command with service="all"
+    ctx.invoke(clear, service="all", force=force)
+
+
+@auth.command()
+def whoami() -> None:
+    """Show current authenticated user identity.
+
+    Examples:
+
+        # Show who you're authenticated as
+        sp auth whoami
+    """
+    from semantic_patterns.credentials import CredentialType, get_credential_store
+
+    store = get_credential_store(console)
+
+    console.print()
+    console.print("[bold]Current Identity[/bold]")
+    console.print()
+
+    # GitHub
+    github_token = store.get(CredentialType.GITHUB, prompt_if_missing=False)
+    if github_token:
+        try:
+            username = _get_github_username(github_token)
+            console.print(f"GitHub:  @{username}")
+        except Exception:
+            console.print(
+                "GitHub:  [yellow]Unable to verify (token may be invalid)[/yellow]"
+            )
+    else:
+        console.print("GitHub:  [dim]Not authenticated[/dim]")
+
+    # Looker
+    looker_client_id = store.get("looker-client-id", prompt_if_missing=False)
+    if looker_client_id:
+        console.print(f"Looker:  {looker_client_id[:10]}...")
+    else:
+        console.print("Looker:  [dim]Not authenticated[/dim]")
+
+    console.print()
 
 
 if __name__ == "__main__":

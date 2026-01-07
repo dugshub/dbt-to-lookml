@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -406,3 +406,179 @@ class TestCLIVersionAndHelp:
         assert result.exit_code == 0
         # Should show some version info
         assert "version" in result.output.lower() or "." in result.output
+
+
+class TestCLIAuth:
+    """Tests for the 'sp auth' command group."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    def test_auth_help(self, runner: CliRunner) -> None:
+        """Test auth --help shows available commands."""
+        result = runner.invoke(cli, ["auth", "--help"])
+
+        assert result.exit_code == 0
+        assert "Manage authentication credentials" in result.output
+        assert "status" in result.output
+        assert "clear" in result.output
+        assert "test" in result.output
+        assert "reset" in result.output
+        assert "whoami" in result.output
+
+    @patch("semantic_patterns.credentials.get_credential_store")
+    def test_auth_status_no_credentials(self, mock_store_fn, runner: CliRunner) -> None:
+        """Test auth status shows 'not configured' when no credentials set."""
+        mock_store = MagicMock()
+        mock_store.get.return_value = None
+        mock_store_fn.return_value = mock_store
+
+        with patch.dict(os.environ, {}, clear=True):
+            result = runner.invoke(cli, ["auth", "status"])
+
+            assert result.exit_code == 0
+            assert "Not configured" in result.output
+            assert "GitHub" in result.output
+            assert "Looker" in result.output
+
+    @patch("semantic_patterns.credentials.get_credential_store")
+    def test_auth_status_with_github_env(self, mock_store_fn, runner: CliRunner) -> None:
+        """Test auth status shows GitHub env var override."""
+        mock_store = MagicMock()
+        mock_store.get.return_value = None
+        mock_store_fn.return_value = mock_store
+
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}):
+            result = runner.invoke(cli, ["auth", "status"])
+
+            assert result.exit_code == 0
+            assert "GITHUB_TOKEN env var will override keychain" in result.output
+
+    def test_auth_clear_github_with_force(self, runner: CliRunner) -> None:
+        """Test auth clear github --force doesn't prompt."""
+        result = runner.invoke(cli, ["auth", "clear", "github", "--force"])
+
+        # Should complete without prompting
+        assert result.exit_code == 0
+        assert "Cancelled" not in result.output
+
+    def test_auth_clear_looker_with_force(self, runner: CliRunner) -> None:
+        """Test auth clear looker --force doesn't prompt."""
+        result = runner.invoke(cli, ["auth", "clear", "looker", "--force"])
+
+        assert result.exit_code == 0
+
+    def test_auth_clear_all_with_force(self, runner: CliRunner) -> None:
+        """Test auth clear all --force clears all credentials."""
+        result = runner.invoke(cli, ["auth", "clear", "all", "--force"])
+
+        assert result.exit_code == 0
+        assert "Looker client ID" in result.output
+        assert "Looker client secret" in result.output
+        assert "GitHub token" in result.output
+
+    def test_auth_clear_cancellation(self, runner: CliRunner) -> None:
+        """Test auth clear prompts and respects cancellation."""
+        result = runner.invoke(cli, ["auth", "clear", "github"], input="n\n")
+
+        assert result.exit_code == 0
+        assert "Cancelled" in result.output
+
+    def test_auth_clear_confirmation(self, runner: CliRunner) -> None:
+        """Test auth clear prompts and respects confirmation."""
+        result = runner.invoke(cli, ["auth", "clear", "all"], input="y\n")
+
+        assert result.exit_code == 0
+        assert "Continue?" in result.output
+
+    def test_auth_reset_with_force(self, runner: CliRunner) -> None:
+        """Test auth reset --force clears all credentials."""
+        result = runner.invoke(cli, ["auth", "reset", "--force"])
+
+        assert result.exit_code == 0
+
+    def test_auth_reset_without_force_prompts(self, runner: CliRunner) -> None:
+        """Test auth reset without --force prompts for confirmation."""
+        result = runner.invoke(cli, ["auth", "reset"], input="n\n")
+
+        assert result.exit_code == 0
+        assert "Continue?" in result.output
+
+    @patch("semantic_patterns.credentials.get_credential_store")
+    def test_auth_test_github_no_credentials(self, mock_store_fn, runner: CliRunner) -> None:
+        """Test auth test github shows error when no credentials configured."""
+        mock_store = MagicMock()
+        mock_store.get.return_value = None
+        mock_store_fn.return_value = mock_store
+
+        result = runner.invoke(cli, ["auth", "test", "github"])
+
+        assert result.exit_code == 0
+        assert "No GitHub token configured" in result.output
+
+    @patch("semantic_patterns.credentials.get_credential_store")
+    def test_auth_test_looker_no_credentials(self, mock_store_fn, runner: CliRunner) -> None:
+        """Test auth test looker shows error when no credentials configured."""
+        mock_store = MagicMock()
+        mock_store.get.return_value = None
+        mock_store_fn.return_value = mock_store
+
+        result = runner.invoke(cli, ["auth", "test", "looker"])
+
+        assert result.exit_code == 0
+        assert "Looker credentials not configured" in result.output
+
+    @patch("semantic_patterns.credentials.get_credential_store")
+    def test_auth_whoami_no_credentials(self, mock_store_fn, runner: CliRunner) -> None:
+        """Test auth whoami shows 'not authenticated' when no credentials."""
+        mock_store = MagicMock()
+        mock_store.get.return_value = None
+        mock_store_fn.return_value = mock_store
+
+        result = runner.invoke(cli, ["auth", "whoami"])
+
+        assert result.exit_code == 0
+        assert "Not authenticated" in result.output
+        assert "GitHub" in result.output
+        assert "Looker" in result.output
+
+    def test_auth_clear_help(self, runner: CliRunner) -> None:
+        """Test auth clear --help shows usage information."""
+        result = runner.invoke(cli, ["auth", "clear", "--help"])
+
+        assert result.exit_code == 0
+        assert "SERVICE" in result.output
+        assert "github" in result.output.lower()
+        assert "looker" in result.output.lower()
+        assert "all" in result.output.lower()
+
+    def test_auth_test_help(self, runner: CliRunner) -> None:
+        """Test auth test --help shows usage information."""
+        result = runner.invoke(cli, ["auth", "test", "--help"])
+
+        assert result.exit_code == 0
+        assert "SERVICE" in result.output
+        assert "github" in result.output.lower()
+        assert "looker" in result.output.lower()
+        assert "--debug" in result.output
+
+    def test_auth_status_help(self, runner: CliRunner) -> None:
+        """Test auth status --help shows usage information."""
+        result = runner.invoke(cli, ["auth", "status", "--help"])
+
+        assert result.exit_code == 0
+
+    def test_auth_reset_help(self, runner: CliRunner) -> None:
+        """Test auth reset --help shows usage information."""
+        result = runner.invoke(cli, ["auth", "reset", "--help"])
+
+        assert result.exit_code == 0
+        assert "--force" in result.output
+
+    def test_auth_whoami_help(self, runner: CliRunner) -> None:
+        """Test auth whoami --help shows usage information."""
+        result = runner.invoke(cli, ["auth", "whoami", "--help"])
+
+        assert result.exit_code == 0

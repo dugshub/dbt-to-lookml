@@ -333,12 +333,44 @@ class LookerDestination:
                     access_token: str = data["access_token"]
                     return access_token
                 else:
+                    # Print helpful error message for user
+                    self.console.print()
+                    self.console.print("[red]✗[/red] Looker authentication failed")
+                    self.console.print()
+                    self.console.print(
+                        "Your Looker credentials may be invalid or expired."
+                    )
+                    self.console.print()
+                    self.console.print("To fix this:")
+                    self.console.print(
+                        "  1. Clear your credentials: [bold]sp auth clear looker[/bold]"
+                    )
+                    self.console.print(
+                        "  2. Re-authenticate: [bold]sp build --push[/bold]"
+                    )
+                    self.console.print()
+                    self.console.print(
+                        "Or test your credentials: [bold]sp auth test looker --debug[/bold]"
+                    )
+                    self.console.print()
+
+                    # Raise exception with minimal message (detailed output already printed)
                     raise LookerAPIError(
-                        f"Looker authentication failed: {response.text}",
+                        "Authentication failed",
                         status_code=response.status_code,
                     )
         except httpx.HTTPError as e:
-            raise LookerAPIError(f"Network error during Looker auth: {e}")
+            # Print helpful error message for user
+            self.console.print()
+            self.console.print(f"[red]✗[/red] Network error: {e}")
+            self.console.print()
+            self.console.print(
+                f"Cannot reach Looker instance at {self.config.base_url}"
+            )
+            self.console.print()
+
+            # Raise exception with minimal message (detailed output already printed)
+            raise LookerAPIError("Network error")
 
     # -------------------------------------------------------------------------
     # Looker Dev Sync
@@ -390,6 +422,122 @@ class LookerDestination:
                         status_code=session_response.status_code,
                     )
 
+                # Step 1.5: Check for validation errors on current branch
+                # This prevents "cannot switch branches with errors" issue
+                validation_response = client.get(
+                    f"/projects/{self.config.project_id}/validate"
+                )
+
+                has_errors = False
+                if validation_response.status_code == 200:
+                    validation_data = validation_response.json()
+                    errors = validation_data.get("errors", [])
+                    has_errors = len(errors) > 0
+
+                    if has_errors:
+                        # Group errors by message to match Looker's UI display
+                        from collections import defaultdict
+
+                        error_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+                        for error in errors:
+                            message = error.get("message", "Unknown error")
+                            error_groups[message].append(error)
+
+                        unique_count = len(error_groups)
+                        total_count = len(errors)
+
+                        # Current branch has validation errors - Looker won't allow checkout
+                        self.console.print()
+                        self.console.print(
+                            f"[red]⚠ WARNING[/red] LookML Errors ({unique_count})"
+                        )
+                        if total_count != unique_count:
+                            self.console.print(
+                                f"[dim]{total_count} total occurrences[/dim]"
+                            )
+                        self.console.print()
+
+                        # Show first 3 unique error types with occurrence counts
+                        for i, (message, occurrences) in enumerate(
+                            list(error_groups.items())[:3], 1
+                        ):
+                            count = len(occurrences)
+                            if count > 1:
+                                self.console.print(
+                                    f"  {i}. {message} [dim]({count} occurrences)[/dim]"
+                                )
+                            else:
+                                self.console.print(f"  {i}. {message}")
+
+                            # Show first location for this error type
+                            first_error = occurrences[0]
+                            file_path = first_error.get("file_path", "")
+                            line = first_error.get("line_number", "")
+                            if file_path:
+                                location = (
+                                    f"{file_path}:{line}" if line else file_path
+                                )
+                                self.console.print(f"     [dim]{location}[/dim]")
+
+                        if unique_count > 3:
+                            self.console.print(
+                                f"  ... and {unique_count - 3} more error type(s)"
+                            )
+
+                        self.console.print()
+                        self.console.print(
+                            "Looker won't allow branch switching with validation errors in your workspace."
+                        )
+                        self.console.print()
+                        self.console.print(
+                            "[bold red]This will DISCARD all uncommitted changes in your Looker dev workspace.[/bold red]"
+                        )
+                        self.console.print()
+                        self.console.print(
+                            "Any LookML edits you haven't committed and pushed will be PERMANENTLY LOST."
+                        )
+                        self.console.print()
+
+                        import click
+                        if not click.confirm("Discard all uncommitted changes and reset workspace?", default=False):
+                            self.console.print("[yellow]Sync cancelled[/yellow]")
+                            self.console.print()
+                            self.console.print(
+                                f"[dim]Note: GitHub push succeeded. Your changes are in "
+                                f"{self.config.repo}@{self.config.branch}[/dim]"
+                            )
+                            return
+
+                        # User agreed to hard reset - reset current branch to remote first
+                        self.console.print()
+                        self.console.print(
+                            "[dim]Resetting current branch to remote...[/dim]"
+                        )
+
+                        reset_current_response = client.post(
+                            f"/projects/{self.config.project_id}/reset_to_remote"
+                        )
+
+                        if reset_current_response.status_code not in (200, 204):
+                            # Reset failed - try to provide helpful error
+                            error_msg = reset_current_response.text
+                            self.console.print(
+                                f"[yellow]⚠[/yellow] Reset failed: {error_msg}"
+                            )
+                            self.console.print()
+                            self.console.print(
+                                "[dim]You may need to manually reset in Looker IDE: "
+                                "Development → Reset to Production[/dim]"
+                            )
+                            raise LookerAPIError(
+                                "Failed to reset workspace to remote",
+                                status_code=reset_current_response.status_code,
+                            )
+
+                        self.console.print(
+                            "[green]✓[/green] Workspace reset to remote"
+                        )
+
                 # Step 2: Check if branch exists in Looker
                 branch_response = client.get(
                     f"/projects/{self.config.project_id}/git_branch/{self.config.branch}"
@@ -418,37 +566,85 @@ class LookerDestination:
                         status_code=branch_response.status_code,
                     )
 
-                # Step 3: Switch to the branch (non-destructive checkout)
-                # Using only 'name' parameter does a checkout, not a hard reset
+                # Step 3: Switch to the branch
+                self.console.print(
+                    f"[dim]Switching to branch '{self.config.branch}'...[/dim]"
+                )
+
                 switch_response = client.put(
                     f"/projects/{self.config.project_id}/git_branch",
                     json={"name": self.config.branch},
                 )
 
                 if switch_response.status_code != 200:
+                    # Branch switch failed - provide helpful error
+                    error_text = switch_response.text
+                    self.console.print()
+                    self.console.print(
+                        f"[red]✗[/red] Failed to switch to branch '{self.config.branch}'"
+                    )
+                    self.console.print()
+                    self.console.print(f"[dim]Error: {error_text}[/dim]")
+                    self.console.print()
+                    self.console.print(
+                        "[dim]You may need to manually switch branches in Looker IDE[/dim]"
+                    )
+
                     raise LookerAPIError(
-                        f"Failed to switch branch: {switch_response.text}",
+                        "Failed to switch branch",
                         status_code=switch_response.status_code,
                     )
 
-                # Step 4: Reset to remote (pull latest)
-                # This fetches the latest from origin and resets to it
+                # Step 4: Reset to remote (pull latest from origin)
+                self.console.print(
+                    f"[dim]Pulling latest changes from origin/{self.config.branch}...[/dim]"
+                )
+
                 reset_response = client.post(
                     f"/projects/{self.config.project_id}/reset_to_remote"
                 )
 
                 if reset_response.status_code not in (200, 204):
-                    raise LookerAPIError(
-                        f"Failed to reset to remote: {reset_response.text}",
-                        status_code=reset_response.status_code,
+                    error_text = reset_response.text
+                    self.console.print()
+                    self.console.print(
+                        f"[yellow]⚠[/yellow] Failed to pull latest changes: {error_text}"
+                    )
+                    self.console.print()
+                    self.console.print(
+                        f"[dim]Branch switched, but workspace may not be up to date[/dim]"
+                    )
+                    # Don't raise - branch switch succeeded, just pull failed
+                else:
+                    self.console.print(
+                        f"[green]✓[/green] Looker dev synced to branch '{self.config.branch}'"
                     )
 
-                self.console.print(
-                    f"[green]✓[/green] Looker dev synced to branch '{self.config.branch}'"
-                )
-
+        except httpx.TimeoutException:
+            self.console.print()
+            self.console.print(
+                "[yellow]⚠[/yellow] Looker sync timed out (Looker instance may be slow)"
+            )
+            self.console.print()
+            self.console.print(
+                f"[dim]Note: GitHub push succeeded. Your changes are in "
+                f"{self.config.repo}@{self.config.branch}[/dim]"
+            )
+            self.console.print()
+            self.console.print(
+                "[dim]Try manually syncing in Looker IDE: "
+                "Development → Configure Git → Reset to Remote[/dim]"
+            )
+            raise LookerAPIError("Looker sync timed out")
         except httpx.HTTPError as e:
-            raise LookerAPIError(f"Network error during Looker sync: {e}")
+            self.console.print()
+            self.console.print(f"[red]✗[/red] Network error during Looker sync: {e}")
+            self.console.print()
+            self.console.print(
+                f"[dim]Note: GitHub push succeeded. Your changes are in "
+                f"{self.config.repo}@{self.config.branch}[/dim]"
+            )
+            raise LookerAPIError("Network error during Looker sync")
 
     def _build_looker_explore_url(self, blobs: list[dict[str, str]]) -> str | None:
         """Build Looker IDE URL for the first explore file.
