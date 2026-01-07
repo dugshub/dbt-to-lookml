@@ -43,8 +43,8 @@ class ModelSummary(BaseModel):
     model_config = {"frozen": True}
 
 
-class GitHubPushInfo(BaseModel):
-    """Information about a GitHub push operation."""
+class LookerPushInfo(BaseModel):
+    """Information about a Looker push/sync operation."""
 
     repo: str  # owner/repo format
     branch: str
@@ -52,6 +52,8 @@ class GitHubPushInfo(BaseModel):
     pushed_at: str  # ISO timestamp
     files_pushed: int
     commit_url: str | None = None
+    looker_synced: bool = False  # Whether Looker dev was synced
+    looker_project: str | None = None  # Looker project ID if synced
 
     model_config = {"frozen": True}
 
@@ -62,8 +64,10 @@ class GitHubPushInfo(BaseModel):
         branch: str,
         commit_sha: str,
         files_pushed: int,
-    ) -> GitHubPushInfo:
-        """Create a new GitHubPushInfo with current timestamp."""
+        looker_synced: bool = False,
+        looker_project: str | None = None,
+    ) -> LookerPushInfo:
+        """Create a new LookerPushInfo with current timestamp."""
         return cls(
             repo=repo,
             branch=branch,
@@ -71,6 +75,8 @@ class GitHubPushInfo(BaseModel):
             pushed_at=datetime.now(timezone.utc).isoformat(),
             files_pushed=files_pushed,
             commit_url=f"https://github.com/{repo}/commit/{commit_sha}",
+            looker_synced=looker_synced,
+            looker_project=looker_project,
         )
 
 
@@ -84,7 +90,7 @@ class SPManifest(BaseModel):
     sources: list[SourceInfo] = Field(default_factory=list)
     outputs: list[OutputInfo] = Field(default_factory=list)
     models: list[ModelSummary] = Field(default_factory=list)
-    github_push: GitHubPushInfo | None = None
+    looker_push: LookerPushInfo | None = None
 
     model_config = {"frozen": True}
 
@@ -96,7 +102,7 @@ class SPManifest(BaseModel):
         sources: list[SourceInfo] | None = None,
         outputs: list[OutputInfo] | None = None,
         models: list[ModelSummary] | None = None,
-        github_push: GitHubPushInfo | None = None,
+        looker_push: LookerPushInfo | None = None,
     ) -> SPManifest:
         """Create a new manifest with current timestamp."""
         return cls(
@@ -106,7 +112,7 @@ class SPManifest(BaseModel):
             sources=sources or [],
             outputs=outputs or [],
             models=models or [],
-            github_push=github_push,
+            looker_push=looker_push,
         )
 
     def to_json(self) -> str:

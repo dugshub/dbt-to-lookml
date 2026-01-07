@@ -106,27 +106,39 @@ class OptionsConfig(BaseModel):
         return Dialect(v)
 
 
-class GitHubConfig(BaseModel):
-    """GitHub destination configuration.
+class LookerConfig(BaseModel):
+    """Looker destination configuration.
+
+    Unified config for pushing LookML to a Git repository (backing the Looker project)
+    and optionally syncing the user's Looker dev environment.
 
     Example:
-        github:
+        looker:
           enabled: true
+          # Git repository (backing Looker project)
           repo: myorg/looker-models
-          branch: semantic-patterns/dev
+          branch: sp-generated
           path: lookml/
-          protected_branches:
-            - production
-            - release
-          commit_message: "Update LookML from dbt models"
+          commit_message: "semantic-patterns: Update LookML"
+          # Looker instance (optional - for dev sync)
+          base_url: https://mycompany.looker.com
+          project_id: my_lookml_project
+          sync_dev: true
     """
 
     enabled: bool = False
+
+    # Git repository settings (backing the Looker project)
     repo: str = ""  # owner/repo format (required if enabled)
     branch: str = ""  # Target branch (required if enabled)
     path: str = ""  # Path within repo (default: repo root)
     protected_branches: list[str] = Field(default_factory=list)
     commit_message: str = "semantic-patterns: Update LookML"
+
+    # Looker instance settings (optional - for dev environment sync)
+    base_url: str = ""  # e.g., https://mycompany.looker.com
+    project_id: str = ""  # Looker project name
+    sync_dev: bool = True  # Sync user's dev environment after push
 
     model_config = {"frozen": True}
 
@@ -155,8 +167,24 @@ class GitHubConfig(BaseModel):
         if v.lower() in cls.ALWAYS_PROTECTED:
             raise ValueError(
                 f"Cannot push to '{v}' - this is a protected branch. "
-                f"Use a feature branch like 'semantic-patterns/dev' instead."
+                f"Use a feature branch like 'sp-generated' instead."
             )
+        return v
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, v: str) -> str:
+        """Validate and normalize Looker base URL."""
+        if not v:
+            return v
+        # Remove trailing slash
+        v = v.rstrip("/")
+        # Ensure https
+        if not v.startswith("https://"):
+            if v.startswith("http://"):
+                v = v.replace("http://", "https://", 1)
+            else:
+                v = f"https://{v}"
         return v
 
     @model_validator(mode="after")
@@ -164,14 +192,19 @@ class GitHubConfig(BaseModel):
         """Validate required fields when enabled."""
         if self.enabled:
             if not self.repo:
-                raise ValueError("github.repo is required when github.enabled is true")
+                raise ValueError("looker.repo is required when looker.enabled is true")
             if not self.branch:
                 raise ValueError(
-                    "github.branch is required when github.enabled is true"
+                    "looker.branch is required when looker.enabled is true"
                 )
             if self.branch in self.protected_branches:
                 raise ValueError(
                     f"Branch '{self.branch}' is in protected_branches list"
+                )
+            # If sync_dev is true, require Looker instance settings
+            if self.sync_dev and self.base_url and not self.project_id:
+                raise ValueError(
+                    "looker.project_id is required when looker.base_url is set"
                 )
         return self
 
@@ -184,6 +217,11 @@ class GitHubConfig(BaseModel):
     def repo_url(self) -> str:
         """Get the full GitHub repo URL."""
         return f"https://github.com/{self.repo}" if self.repo else ""
+
+    @property
+    def looker_sync_enabled(self) -> bool:
+        """Check if Looker dev sync is configured and enabled."""
+        return self.sync_dev and bool(self.base_url) and bool(self.project_id)
 
 
 class SPConfig(BaseModel):
@@ -220,11 +258,13 @@ class SPConfig(BaseModel):
           clean: clean  # or 'warn' or 'ignore'
           manifest: true
 
-        # Optional: Push to GitHub
-        github:
+        # Optional: Push to Looker (via Git + dev sync)
+        looker:
           enabled: true
           repo: myorg/looker-models
-          branch: semantic-patterns/dev
+          branch: sp-generated
+          base_url: https://mycompany.looker.com
+          project_id: my_lookml_project
     """
 
     input: str
@@ -237,7 +277,7 @@ class SPConfig(BaseModel):
     explores: list[ExploreConfig] = Field(default_factory=list)
     options: OptionsConfig = Field(default_factory=OptionsConfig)
     output_options: OutputOptionsConfig = Field(default_factory=OutputOptionsConfig)
-    github: GitHubConfig = Field(default_factory=GitHubConfig)
+    looker: LookerConfig = Field(default_factory=LookerConfig)
 
     @field_validator("format", mode="before")
     @classmethod

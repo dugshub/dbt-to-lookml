@@ -108,7 +108,7 @@ def cli() -> None:
 @click.option(
     "--push",
     is_flag=True,
-    help="Push to GitHub without confirmation (when github.enabled=true)",
+    help="Push to Looker without confirmation (when looker.enabled=true)",
 )
 def build(
     config: Path | None, dry_run: bool, verbose: bool, debug: bool, push: bool
@@ -121,8 +121,8 @@ def build(
     - Explore files (.explore.lkml) if explores configured
     - Calendar views for date selection
 
-    If github.enabled=true in config, prompts to push to GitHub after build.
-    Use --push to skip confirmation.
+    If looker.enabled=true in config, prompts to push to Git and sync Looker
+    dev environment after build. Use --push to skip confirmation.
 
     Examples:
 
@@ -135,7 +135,7 @@ def build(
         # Use specific config file
         sp build --config ./configs/sp.yml
 
-        # Build and push to GitHub (skip confirmation)
+        # Build and push to Looker (skip confirmation)
         sp build --push
 
         # Show full stacktraces for debugging
@@ -208,9 +208,9 @@ explores:
             tree = _build_file_tree(files, project_path)
             console.print(tree)
 
-        # GitHub push if enabled
-        if cfg.github.enabled:
-            _handle_github_push(cfg, all_files, push=push, dry_run=dry_run, debug=debug)
+        # Looker push/sync if enabled
+        if cfg.looker.enabled:
+            _handle_looker_push(cfg, all_files, push=push, dry_run=dry_run, debug=debug)
 
     except FileNotFoundError as e:
         if debug:
@@ -229,7 +229,7 @@ explores:
         raise click.ClickException(str(e))
 
 
-def _handle_github_push(
+def _handle_looker_push(
     config: SPConfig,
     all_files: dict[Path, str],
     *,
@@ -237,7 +237,7 @@ def _handle_github_push(
     dry_run: bool,
     debug: bool,
 ) -> None:
-    """Handle GitHub push after build completes.
+    """Handle Looker push/sync after build completes.
 
     Args:
         config: Parsed configuration
@@ -246,28 +246,33 @@ def _handle_github_push(
         dry_run: If True, simulate without pushing
         debug: If True, show full stacktraces
     """
-    from semantic_patterns.destinations import GitHubDestination
-    from semantic_patterns.destinations.github import GitHubAPIError
+    from semantic_patterns.destinations import LookerAPIError, LookerDestination
 
-    github_cfg = config.github
+    looker_cfg = config.looker
 
     # Show what will be pushed
     console.print()
-    console.print("[bold]GitHub Push[/bold]")
-    console.print(f"  [dim]Repo:[/dim]   {github_cfg.repo}")
-    console.print(f"  [dim]Branch:[/dim] {github_cfg.branch}")
+    console.print("[bold]Looker Push[/bold]")
+    console.print(f"  [dim]Repo:[/dim]   {looker_cfg.repo}")
+    console.print(f"  [dim]Branch:[/dim] {looker_cfg.branch}")
     console.print(f"  [dim]Files:[/dim]  {len(all_files)}")
+    if looker_cfg.looker_sync_enabled:
+        console.print(f"  [dim]Looker:[/dim] {looker_cfg.base_url} ({looker_cfg.project_id})")
 
     # Confirm unless --push flag or dry-run
     if not push and not dry_run:
         console.print()
-        if not click.confirm("Push to GitHub?", default=True):
+        prompt = "Push to Git"
+        if looker_cfg.looker_sync_enabled:
+            prompt += " and sync Looker dev"
+        prompt += "?"
+        if not click.confirm(prompt, default=True):
             console.print("[yellow]Push skipped[/yellow]")
             return
 
     # Create destination and push
     try:
-        dest = GitHubDestination(github_cfg, config.project, console=console)
+        dest = LookerDestination(looker_cfg, config.project, console=console)
         result = dest.write(all_files, dry_run=dry_run)
 
         if dry_run:
@@ -277,15 +282,15 @@ def _handle_github_push(
             if result.destination_url:
                 console.print(f"[dim]Commit:[/dim] {result.destination_url}")
 
-    except GitHubAPIError as e:
+    except LookerAPIError as e:
         if debug:
             console.print(traceback.format_exc())
-        console.print(f"\n[red]GitHub push failed:[/red] {e}")
+        console.print(f"\n[red]Looker push failed:[/red] {e}")
         raise click.ClickException(str(e))
     except Exception as e:
         if debug:
             console.print(traceback.format_exc())
-        console.print(f"\n[red]GitHub push failed:[/red] {e}")
+        console.print(f"\n[red]Looker push failed:[/red] {e}")
         raise click.ClickException(str(e))
 
 
@@ -647,13 +652,15 @@ options:
   # view_prefix: ""
   # explore_prefix: ""
 
-# GitHub destination (optional)
-# github:
+# Looker destination (optional - pushes to Git and syncs Looker dev)
+# looker:
 #   enabled: true
-#   repo: myorg/looker-models
-#   branch: semantic-patterns/dev    # Cannot be main or master
+#   repo: myorg/looker-models         # Git repo backing Looker project
+#   branch: sp-generated              # Branch for generated LookML
 #   path: lookml/                     # Path within repo (optional)
-#   commit_message: "semantic-patterns: Update LookML"
+#   base_url: https://mycompany.looker.com  # Looker instance (optional)
+#   project_id: my_project            # Looker project name (optional)
+#   sync_dev: true                    # Sync user's dev environment
 """
 
     config_path.write_text(template, encoding="utf-8")

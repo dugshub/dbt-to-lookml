@@ -39,34 +39,40 @@ SERVICE_NAME = "semantic-patterns"
 
 
 class CredentialType(str, Enum):
-    """Known credential types with their environment variable names."""
+    """Core credential types. Destinations can use string keys for additional types."""
 
     GITHUB = "github"
-    LOOKER_CLIENT_ID = "looker-client-id"
-    LOOKER_CLIENT_SECRET = "looker-client-secret"
 
     @property
     def env_var(self) -> str:
         """Environment variable name for this credential type."""
-        return f"SP_{self.value.upper().replace('-', '_')}"
+        return ENV_VAR_MAPPING.get(self.value, f"SP_{self.value.upper().replace('-', '_')}")
 
     @property
     def display_name(self) -> str:
         """Human-readable name for prompts."""
         names = {
             "github": "GitHub Token",
-            "looker-client-id": "Looker Client ID",
-            "looker-client-secret": "Looker Client Secret",
         }
         return names.get(self.value, self.value)
 
 
-# Environment variable mappings (can be extended)
+# Environment variable mappings - destinations can register additional mappings
 ENV_VAR_MAPPING: dict[str, str] = {
     "github": "GITHUB_TOKEN",  # Standard GitHub env var
-    "looker-client-id": "LOOKER_CLIENT_ID",
-    "looker-client-secret": "LOOKER_CLIENT_SECRET",
 }
+
+
+def register_credential_env_var(key: str, env_var: str) -> None:
+    """Register an environment variable mapping for a credential key.
+
+    Destinations should call this to register their credential env vars.
+
+    Args:
+        key: Credential key (e.g., "looker-client-id")
+        env_var: Environment variable name (e.g., "LOOKER_CLIENT_ID")
+    """
+    ENV_VAR_MAPPING[key] = env_var
 
 
 def github_device_flow(console: Console) -> str | None:
@@ -439,3 +445,5 @@ def get_github_token(
         ),
         validator=lambda t: len(t) >= 20,  # Basic length check
     )
+
+

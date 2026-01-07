@@ -282,8 +282,9 @@ class TestExploreRenderer:
         join = next(j for j in result["joins"] if j["name"] == "facilities")
         assert join["relationship"] == "many_to_one"
         assert join["type"] == "left_outer"
-        assert "${rentals.facility_sk}" in join["sql_on"]
-        assert "${facilities.facility_sk}" in join["sql_on"]
+        # sql_on uses entity names (dimension names), not expressions
+        assert "${rentals.facility}" in join["sql_on"]
+        assert "${facilities.facility}" in join["sql_on"]
 
     def test_one_to_many_relationship(self):
         fact_model = ProcessedModel(
@@ -630,12 +631,12 @@ class TestInferredJoin:
             entity="facility",
             relationship=JoinRelationship.MANY_TO_ONE,
             expose=ExposeLevel.ALL,
-            fact_entity_expr="facility_sk",
-            joined_entity_expr="facility_sk",
+            fact_entity_name="facility",
+            joined_entity_name="facility",
         )
 
         # sql_on is a template with ${FACT} placeholder
-        assert "facility_sk" in join.sql_on
+        assert "facility" in join.sql_on
         assert "${FACT}" in join.sql_on
         assert "${facilities}" in join.sql_on
 

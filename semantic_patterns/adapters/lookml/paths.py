@@ -86,10 +86,11 @@ class OutputPaths:
         """
         Get path relative to project root for include statements.
 
-        Returns: "{relative_path}" format for LookML includes (no leading slash)
+        Returns: "/{relative_path}" format for LookML includes (with leading slash
+        for project-root absolute paths)
         """
         rel = full_path.relative_to(self.project_path)
-        return str(rel)
+        return f"/{rel}"
 
     def relative_view_include(self, model_name: str, suffix: str = "") -> str:
         """

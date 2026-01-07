@@ -215,8 +215,9 @@ class TestIntegrationWithFixtures:
         assert gov_metric is not None
         assert gov_metric.has_pop
 
-        # Generate and check pop file
-        generator = LookMLGenerator()
+        # Generate with model_to_explore mapping (required for PoP to know which calendar to reference)
+        model_to_explore = {"rentals": "rentals"}
+        generator = LookMLGenerator(model_to_explore=model_to_explore)
         files = generator.generate(models)
 
         assert "rentals.pop.view.lkml" in files

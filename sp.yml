@@ -58,10 +58,12 @@ options:
   # view_prefix: ""
   # explore_prefix: ""
 
-# GitHub destination (optional)
-# github:
+# Looker destination (optional - pushes to Git and syncs Looker dev)
+# looker:
 #   enabled: true
-#   repo: myorg/looker-models
-#   branch: semantic-patterns/dev    # Cannot be main or master
+#   repo: myorg/looker-models         # Git repo backing Looker project
+#   branch: sp-generated              # Branch for generated LookML
 #   path: lookml/                     # Path within repo (optional)
-#   commit_message: "semantic-patterns: Update LookML"
+#   base_url: https://mycompany.looker.com  # Looker instance (optional)
+#   project_id: my_project            # Looker project name (optional)
+#   sync_dev: true                    # Sync user's dev environment
