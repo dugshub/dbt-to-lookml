@@ -177,6 +177,27 @@ class TestMapDimension:
         # subject alone should become group
         assert result["group"] == "Date Dimensions"
 
+    def test_map_dimension_with_group_category(self) -> None:
+        """Test mapping dimension with group + category (new convention)."""
+        dbt_dim = {
+            "name": "month_end_date",
+            "label": "Month End Date",
+            "type": "time",
+            "type_params": {"time_granularity": "day"},
+            "expr": "month_end_date",
+            "config": {
+                "meta": {
+                    "group": "Date Dimensions",
+                    "category": "Month End",
+                    "bi_field": True,
+                }
+            },
+        }
+        result = map_dimension(dbt_dim)
+
+        # group + category should be combined with dot notation
+        assert result["group"] == "Date Dimensions.Month End"
+
 
 class TestMapMeasure:
     """Tests for map_measure function."""

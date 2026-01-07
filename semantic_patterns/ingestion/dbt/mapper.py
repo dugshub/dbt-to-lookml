@@ -103,8 +103,9 @@ def _extract_meta(dbt_obj: dict[str, Any]) -> dict[str, Any]:
     2. Flat (legacy): config.meta.* directly
 
     Also maps legacy field names to our standard names:
+    - group + category -> group (as "group.category" dot notation)
     - subject + category -> group (as "subject.category" dot notation)
-    - subject alone -> group
+    - group or subject alone -> group
     - primary_entity -> entity
     - bi_field: false -> hidden: true
 
@@ -121,18 +122,18 @@ def _extract_meta(dbt_obj: dict[str, Any]) -> dict[str, Any]:
     # Fall back to flat meta structure - extract and normalize fields
     result: dict[str, Any] = {}
 
-    # Map subject + category -> group with dot notation for hierarchical labels
-    # subject becomes view_label, category becomes group_label
-    if "group" in meta:
-        result["group"] = meta["group"]
-    elif "subject" in meta:
-        subject = meta["subject"]
-        category = meta.get("category")
+    # Map group/subject + category -> group with dot notation for hierarchical labels
+    # group/subject becomes view_label, category becomes group_label
+    # Support both conventions: "group + category" and "subject + category"
+    view_label_field = meta.get("group") or meta.get("subject")
+    category = meta.get("category")
+
+    if view_label_field:
         if category:
-            # Combine into dot notation: "Subject.Category"
-            result["group"] = f"{subject}.{category}"
+            # Combine into dot notation: "ViewLabel.Category"
+            result["group"] = f"{view_label_field}.{category}"
         else:
-            result["group"] = subject
+            result["group"] = view_label_field
 
     # Map primary_entity -> entity (or use entity directly)
     if "entity" in meta:
