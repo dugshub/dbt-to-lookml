@@ -131,11 +131,11 @@ class CalendarRenderer:
         dimension_group: dict[str, Any] = {
             "name": "calendar",
             "type": "time",
+            "datatype": "datetime",
             "label": "Calendar",
             "description": "Dynamic date based on Analysis Date selection",
             "view_label": " Calendar",  # Space prefix sorts to top
-            "timeframes": ["date", "week", "month", "quarter", "year"],
-            "convert_tz": "no",
+            "timeframes": ["raw", "date", "week", "month", "quarter", "year"],
             "sql": case_statement,
         }
 
@@ -220,18 +220,19 @@ class CalendarRenderer:
             "allowed_values": comparison_allowed_values,
         }
 
-        # Build the dynamic date expression for period classification
-        date_case_expr = self._build_date_case_statement(date_options)
+        # Reference the calendar dimension_group's raw timeframe
+        # This avoids duplicating the CASE statement in each period dimension
+        calendar_raw_ref = "${calendar_raw}"
 
         # is_selected_period - TRUE if date falls within selected date_range
         is_selected_sql = (
-            f"{{% condition date_range %}} {date_case_expr} {{% endcondition %}}"
+            f"{{% condition date_range %}} {calendar_raw_ref} {{% endcondition %}}"
         )
 
         # is_comparison_period - TRUE if date falls within the offset period
         # Uses dialect-specific DATEADD to shift the date forward by comparison period
         # Then checks if the shifted date falls within the selected range
-        dateadd_expr = self._build_comparison_dateadd(date_case_expr)
+        dateadd_expr = self._build_comparison_dateadd(calendar_raw_ref)
         is_comparison_sql = f"""{{% condition date_range %}}
           {dateadd_expr}
         {{% endcondition %}}"""
@@ -306,12 +307,35 @@ class CalendarRenderer:
 
             for dim_name in model.date_selector.dimensions:
                 dim = model.get_dimension(dim_name)
-                if dim:
-                    # Generate label from view and dimension
-                    view_title = _smart_title(model.name)
-                    dim_title = dim.label or _smart_title(dim_name)
-                    label = f"{view_title} {dim_title}"
+                if not dim:
+                    continue
 
+                view_title = _smart_title(model.name)
+                dim_title = dim.label or _smart_title(dim_name)
+
+                # Handle dimensions with variants (UTC/local)
+                if dim.has_variants and dim.variants:
+                    for variant_name in dim.variants.keys():
+                        # Dimension_group name is {dim_name}_{variant}
+                        full_name = f"{dim_name}_{variant_name}"
+                        variant_label = (
+                            variant_name.upper()
+                            if variant_name == "utc"
+                            else variant_name.title()
+                        )
+                        label = f"{view_title} {dim_title} ({variant_label})"
+
+                        options.append(
+                            DateOption(
+                                view=model.name,
+                                dimension=full_name,
+                                label=label,
+                                raw_ref=f"${{{model.name}.{full_name}_raw}}",
+                            )
+                        )
+                else:
+                    # Simple dimension without variants
+                    label = f"{view_title} {dim_title}"
                     options.append(
                         DateOption(
                             view=model.name,

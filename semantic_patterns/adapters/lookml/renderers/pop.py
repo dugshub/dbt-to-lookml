@@ -28,11 +28,11 @@ COMPARISON_TO_LOOKML: dict[PopComparison, str] = {
     PopComparison.PRIOR_WEEK: "week",
 }
 
-# Map PopOutput to Looker's period_over_period output
+# Map PopOutput to Looker's period_over_period kind
 OUTPUT_TO_LOOKML: dict[PopOutput, str] = {
-    PopOutput.PREVIOUS: "value",
+    PopOutput.PREVIOUS: "previous",
     PopOutput.CHANGE: "difference",
-    PopOutput.PERCENT_CHANGE: "percent_difference",
+    PopOutput.PERCENT_CHANGE: "relative_change",
 }
 
 
@@ -56,15 +56,24 @@ class LookerNativePopStrategy:
         measure: gmv_py {
             type: period_over_period
             based_on: gmv
-            comparison_period: year
-            output: value
+            based_on_time: {explore}_explore_calendar.calendar_date
+            period: year
+            kind: previous
         }
 
-    Limitations:
-    - Only works with time-based data
-    - Requires a proper date dimension
-    - Some complex scenarios may not work
+    Requires:
+    - Calendar view with dimension_group: calendar (provides calendar_date)
+    - Calendar view joined to explore (cross join)
     """
+
+    def __init__(self, calendar_view_name: str | None = None) -> None:
+        """
+        Initialize with calendar view name for scoped based_on_time references.
+
+        Args:
+            calendar_view_name: Name of the explore calendar view (e.g., "rentals_explore_calendar")
+        """
+        self.calendar_view_name = calendar_view_name
 
     def render(
         self,
@@ -82,9 +91,13 @@ class LookerNativePopStrategy:
             "name": name,
             "type": "period_over_period",
             "based_on": metric.name,
-            "comparison_period": COMPARISON_TO_LOOKML.get(params.comparison, "year"),
-            "output": OUTPUT_TO_LOOKML.get(params.output, "value"),
+            "period": COMPARISON_TO_LOOKML.get(params.comparison, "year"),
+            "kind": OUTPUT_TO_LOOKML.get(params.output, "previous"),
         }
+
+        # Add scoped based_on_time reference to explore calendar
+        if self.calendar_view_name:
+            result["based_on_time"] = f"{self.calendar_view_name}.calendar_date"
 
         # Generate label
         comparison_labels = {

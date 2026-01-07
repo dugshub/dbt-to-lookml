@@ -14,6 +14,9 @@ semantic_models:
     model: reviews
     time_dimension: created_at
 
+    date_selector:
+      dimensions: [created_at]
+
     entities:
       - name: review
         type: primary

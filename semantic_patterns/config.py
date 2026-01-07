@@ -45,6 +45,8 @@ class ExploreConfig(BaseModel):
     joins: list[ExploreJoinConfig] = Field(default_factory=list)
     # Models to exclude from auto-join
     join_exclusions: list[str] = Field(default_factory=list)
+    # Child fact models that belong to this explore (for PoP calendar mapping)
+    joined_facts: list[str] = Field(default_factory=list)
 
     model_config = {"frozen": True}
 
@@ -203,8 +205,10 @@ class SPConfig(BaseModel):
 
         explores:
           - fact: rentals
-          - fact: orders
-            label: Order Analysis
+          - fact: facility_monthly_status
+            label: Facility Monthly Status
+            joined_facts:
+              - facility_lifecycle  # Child fact - uses parent's calendar
             join_exclusions:
               - some_model_to_skip
 

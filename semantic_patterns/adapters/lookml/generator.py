@@ -32,9 +32,10 @@ class LookMLGenerator:
         self,
         dialect: Dialect | None = None,
         pop_strategy: PopStrategy | None = None,
+        model_to_explore: dict[str, str] | None = None,
     ) -> None:
         self.dialect = dialect or get_default_dialect()
-        self.view_renderer = ViewRenderer(self.dialect, pop_strategy)
+        self.view_renderer = ViewRenderer(self.dialect, pop_strategy, model_to_explore)
 
     def generate(self, models: list[ProcessedModel]) -> dict[str, str]:
         """
@@ -60,15 +61,17 @@ class LookMLGenerator:
         files[f"{model.name}.view.lkml"] = base_content
 
         # Metrics refinement (if has metrics)
-        metrics_view = self.view_renderer.render_metrics_refinement(model)
-        if metrics_view:
-            metrics_content = self._serialize_view(metrics_view)
+        metrics_result = self.view_renderer.render_metrics_refinement(model)
+        if metrics_result:
+            metrics_view, metrics_includes = metrics_result
+            metrics_content = self._serialize_view_with_includes(metrics_view, metrics_includes)
             files[f"{model.name}.metrics.view.lkml"] = metrics_content
 
         # PoP refinement (if has PoP variants)
-        pop_view = self.view_renderer.render_pop_refinement(model)
-        if pop_view:
-            pop_content = self._serialize_view(pop_view)
+        pop_result = self.view_renderer.render_pop_refinement(model)
+        if pop_result:
+            pop_view, pop_includes = pop_result
+            pop_content = self._serialize_view_with_includes(pop_view, pop_includes)
             files[f"{model.name}.pop.view.lkml"] = pop_content
 
         return files
@@ -99,15 +102,17 @@ class LookMLGenerator:
         files[paths.view_file_path(model.name)] = base_content
 
         # Metrics refinement (if has metrics)
-        metrics_view = self.view_renderer.render_metrics_refinement(model)
-        if metrics_view:
-            metrics_content = self._serialize_view(metrics_view)
+        metrics_result = self.view_renderer.render_metrics_refinement(model)
+        if metrics_result:
+            metrics_view, metrics_includes = metrics_result
+            metrics_content = self._serialize_view_with_includes(metrics_view, metrics_includes)
             files[paths.view_file_path(model.name, ".metrics")] = metrics_content
 
         # PoP refinement (if has PoP variants)
-        pop_view = self.view_renderer.render_pop_refinement(model)
-        if pop_view:
-            pop_content = self._serialize_view(pop_view)
+        pop_result = self.view_renderer.render_pop_refinement(model)
+        if pop_result:
+            pop_view, pop_includes = pop_result
+            pop_content = self._serialize_view_with_includes(pop_view, pop_includes)
             files[paths.view_file_path(model.name, ".pop")] = pop_content
 
         return files
@@ -160,3 +165,19 @@ class LookMLGenerator:
         result = lkml.dump(lookml_dict)
         assert result is not None
         return result
+
+    def _serialize_view_with_includes(
+        self, view: dict[str, Any], includes: list[str]
+    ) -> str:
+        """Serialize view dict to LookML string with includes."""
+        # Build include statements
+        include_lines = [f'include: "{inc}"' for inc in includes]
+        include_section = "\n".join(include_lines)
+
+        # Serialize view
+        lookml_dict = {"views": [view]}
+        view_content = lkml.dump(lookml_dict)
+        assert view_content is not None
+
+        # Combine includes and view
+        return f"{include_section}\n\n{view_content}"

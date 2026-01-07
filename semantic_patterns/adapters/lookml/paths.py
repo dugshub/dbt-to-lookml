@@ -65,9 +65,13 @@ class OutputPaths:
         filename = f"{model_name}{suffix}.view.lkml"
         return self.view_domain_path(model_name) / filename
 
+    def calendar_view_name(self, explore_name: str) -> str:
+        """Get standardized calendar view name for an explore."""
+        return f"{explore_name}_explore_calendar"
+
     def calendar_file_path(self, explore_name: str) -> Path:
-        """Path for calendar view in views/{explore}_calendar/ folder."""
-        calendar_name = f"{explore_name}_calendar"
+        """Path for calendar view in views/{explore}_explore_calendar/ folder."""
+        calendar_name = self.calendar_view_name(explore_name)
         return self.view_domain_path(calendar_name) / f"{calendar_name}.view.lkml"
 
     def explore_file_path(self, explore_name: str) -> Path:
@@ -82,10 +86,10 @@ class OutputPaths:
         """
         Get path relative to project root for include statements.
 
-        Returns: "/{relative_path}" format for LookML includes
+        Returns: "{relative_path}" format for LookML includes (no leading slash)
         """
         rel = full_path.relative_to(self.project_path)
-        return f"/{rel}"
+        return str(rel)
 
     def relative_view_include(self, model_name: str, suffix: str = "") -> str:
         """
@@ -108,9 +112,9 @@ class OutputPaths:
         """
         Generate include path for calendar view.
 
-        Returns: "/views/{explore}_calendar/{explore}_calendar.view.lkml"
+        Returns: "/views/{explore}_explore_calendar/{explore}_explore_calendar.view.lkml"
         """
-        calendar_name = f"{explore_name}_calendar"
+        calendar_name = self.calendar_view_name(explore_name)
         return f"/views/{calendar_name}/{calendar_name}.view.lkml"
 
     def ensure_directories(self) -> None:

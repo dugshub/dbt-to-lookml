@@ -126,7 +126,7 @@ class TestCalendarRenderer:
         assert dim_group["name"] == "calendar"
         assert dim_group["type"] == "time"
         assert dim_group["view_label"] == " Calendar"
-        assert dim_group["convert_tz"] == "no"
+        assert "convert_tz" not in dim_group  # Removed - not needed
         assert "date" in dim_group["timeframes"]
         assert "{% parameter date_field %}" in dim_group["sql"]
         assert "rentals__created_at" in dim_group["sql"]

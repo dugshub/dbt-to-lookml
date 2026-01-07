@@ -19,6 +19,15 @@ from semantic_patterns.adapters.lookml.types import (
 from semantic_patterns.domain import ProcessedModel
 
 
+def get_calendar_view_name(explore_name: str) -> str:
+    """
+    Get standardized calendar view name for an explore.
+
+    Centralized naming convention - must match OutputPaths.calendar_view_name()
+    """
+    return f"{explore_name}_explore_calendar"
+
+
 def _smart_title(name: str) -> str:
     """Convert snake_case to Title Case."""
     return " ".join(word.capitalize() for word in name.replace("_", " ").split())
@@ -35,9 +44,9 @@ class ExploreRenderer:
         explore_config: ExploreConfig,
         fact_model: ProcessedModel,
         all_models: dict[str, ProcessedModel],
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], list[str]]:
         """
-        Render explore dict for lkml serialization.
+        Render explore dict and required includes for lkml serialization.
 
         Args:
             explore_config: Configuration for this explore
@@ -45,8 +54,14 @@ class ExploreRenderer:
             all_models: Dict of all models by name (for join inference)
 
         Returns:
-            Dict ready for lkml.dump() in explores format
+            Tuple of (explore dict, list of include paths)
         """
+        # Track all views that need to be included
+        includes: list[str] = []
+
+        # Include fact model view (using wildcard for all refinements)
+        includes.append(f"/**/{fact_model.name}.view.lkml")
+
         explore: dict[str, Any] = {
             "name": explore_config.name,
         }
@@ -76,6 +91,9 @@ class ExploreRenderer:
             join_dict = self._render_join(join, fact_model.name)
             joins.append(join_dict)
 
+            # Include joined view (using wildcard for all refinements)
+            includes.append(f"/**/{join.model}.view.lkml")
+
             # Track joined model for calendar
             if join.model in all_models:
                 joined_models.append(all_models[join.model])
@@ -85,14 +103,17 @@ class ExploreRenderer:
             fact_model, joined_models
         )
         if date_options:
-            calendar_view_name = f"{explore_config.name}_explore_calendar"
+            calendar_view_name = get_calendar_view_name(explore_config.name)
             calendar_join = self._render_calendar_join(calendar_view_name)
             joins.append(calendar_join)
+
+            # Include calendar view
+            includes.append(f"/**/{calendar_view_name}.view.lkml")
 
         if joins:
             explore["joins"] = joins
 
-        return explore
+        return explore, includes
 
     def infer_joins(
         self,
@@ -151,8 +172,8 @@ class ExploreRenderer:
                     entity=foreign_entity.name,
                     relationship=relationship,
                     expose=expose,
-                    fact_entity_expr=foreign_entity.expr,
-                    joined_entity_expr=target_entity.expr,
+                    fact_entity_name=foreign_entity.name,
+                    joined_entity_name=target_entity.name,
                 )
             )
 
@@ -175,16 +196,15 @@ class ExploreRenderer:
                         expose = self._determine_expose_level(
                             entity, model, explore_config
                         )
-                        # Find the matching entity expr on the joined model
-                        joined_expr = entity.expr
+                        # Use entity names (not expressions) for dimension references
                         joins.append(
                             InferredJoin(
                                 model=model.name,
                                 entity=fact_entity_name,
                                 relationship=relationship,
                                 expose=expose,
-                                fact_entity_expr=fact_model.primary_entity.expr,
-                                joined_entity_expr=joined_expr,
+                                fact_entity_name=fact_model.primary_entity.name,
+                                joined_entity_name=entity.name,
                             )
                         )
 
@@ -245,8 +265,8 @@ class ExploreRenderer:
             "type": "left_outer",
             "relationship": join.relationship.value,
             "sql_on": (
-                f"${{{fact_view_name}.{join.fact_entity_expr}}} = "
-                f"${{{join.model}.{join.joined_entity_expr}}}"
+                f"${{{fact_view_name}.{join.fact_entity_name}}} = "
+                f"${{{join.model}.{join.joined_entity_name}}}"
             ),
         }
 
@@ -260,8 +280,8 @@ class ExploreRenderer:
         """Render the calendar view join."""
         return {
             "name": calendar_view_name,
+            "type": "cross",
             "relationship": "one_to_one",
-            "sql": "",  # Empty SQL for virtual view
         }
 
     def get_calendar_view(

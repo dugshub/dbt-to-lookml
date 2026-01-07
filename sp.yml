@@ -1,0 +1,67 @@
+# semantic-patterns configuration
+
+project: spothero-gold
+
+input: .
+output: ./lookml
+schema: gold
+
+model:
+  name: gold
+  connection: database
+
+explores:
+  - fact: rentals
+  - fact: facility_lifecycle
+
+output_options:
+  clean: clean
+  manifest: true
+
+options:
+  dialect: redshift
+  pop_strategy: dynamic
+  date_selector: true
+  convert_tz: false
+
+
+# Project name (used for output folder)
+# project: my_project
+
+input: ./semantic_models
+output: ./lookml
+schema: gold
+
+# Looker model file settings
+model:
+  connection: database
+
+# Explores (optional - omit for views only)
+# explores:
+#   - fact: rentals
+#   - fact: orders
+#     label: Order Analysis
+#     join_exclusions:
+#       - some_model_to_skip
+
+# Output options
+output_options:
+  manifest: true
+  # clean: clean  # or 'warn' or 'ignore'
+
+# Generator options (defaults shown)
+options:
+  dialect: redshift
+  pop_strategy: dynamic
+  date_selector: true
+  convert_tz: false
+  # view_prefix: ""
+  # explore_prefix: ""
+
+# GitHub destination (optional)
+# github:
+#   enabled: true
+#   repo: myorg/looker-models
+#   branch: semantic-patterns/dev    # Cannot be main or master
+#   path: lookml/                     # Path within repo (optional)
+#   commit_message: "semantic-patterns: Update LookML"

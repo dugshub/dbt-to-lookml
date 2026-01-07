@@ -9,7 +9,11 @@ import httpx
 from rich.console import Console
 
 from semantic_patterns.config import GitHubConfig
-from semantic_patterns.credentials import CredentialType, get_credential_store
+from semantic_patterns.credentials import (
+    CredentialType,
+    get_credential_store,
+    github_device_flow,
+)
 from semantic_patterns.destinations.base import WriteResult
 
 
@@ -146,7 +150,7 @@ class GitHubDestination:
         return errors
 
     def _get_token(self) -> str | None:
-        """Get GitHub token from env, keychain, or prompt.
+        """Get GitHub token from env, keychain, or device flow.
 
         Returns:
             GitHub token or None if not available
@@ -155,21 +159,64 @@ class GitHubDestination:
             return self._token
 
         store = get_credential_store(self.console)
-        token = store.get(
-            CredentialType.GITHUB,
-            prompt_if_missing=True,
-            prompt_instructions=(
-                f"To push LookML to [bold]{self.config.repo}[/bold], "
-                "you need a GitHub Personal Access Token:\n\n"
-                "1. Go to: [link]https://github.com/settings/tokens/new[/link]\n"
-                "2. Create a token with [bold]repo[/bold] scope\n"
-                "3. Paste your token below"
-            ),
-            validator=lambda t: len(t) >= 20,
-        )
 
-        self._token = token
-        return token
+        # Check env/keychain first
+        token = store.get(CredentialType.GITHUB, prompt_if_missing=False)
+        if token:
+            self._token = token
+            return token
+
+        # No token found - offer device flow or manual token entry
+        self.console.print()
+        self.console.print("[bold]GitHub Authentication Required[/bold]")
+        self.console.print()
+        self.console.print(
+            f"To push LookML to [bold]{self.config.repo}[/bold], "
+            "you need to authenticate with GitHub."
+        )
+        self.console.print()
+        self.console.print("Choose authentication method:")
+        self.console.print("  [bold]1.[/bold] Browser login (recommended)")
+        self.console.print("  [bold]2.[/bold] Personal Access Token (PAT)")
+        self.console.print()
+
+        choice = self.console.input("Select [1-2]: ").strip()
+
+        if choice == "1" or choice == "":
+            # Device flow authentication
+            token = github_device_flow(self.console)
+            if token:
+                # Save to keychain
+                if store.set(CredentialType.GITHUB, token):
+                    self.console.print(
+                        "[green]Saved token to keychain[/green] "
+                        "[dim](semantic-patterns/github)[/dim]"
+                    )
+                self._token = token
+                return token
+            else:
+                # Device flow failed/cancelled
+                return None
+
+        elif choice == "2":
+            # Manual token entry (legacy method)
+            token = store.get(
+                CredentialType.GITHUB,
+                prompt_if_missing=True,
+                prompt_instructions=(
+                    "Create a Personal Access Token:\n\n"
+                    "1. Go to: [link]https://github.com/settings/tokens/new[/link]\n"
+                    "2. Create a token with [bold]repo[/bold] scope\n"
+                    "3. Paste your token below"
+                ),
+                validator=lambda t: len(t) >= 20,
+            )
+            self._token = token
+            return token
+
+        else:
+            self.console.print("[red]Invalid choice[/red]")
+            return None
 
     def _prepare_blobs(self, files: dict[Path, str]) -> list[dict[str, str]]:
         """Transform local file paths to GitHub blob format.
@@ -214,6 +261,79 @@ class GitHubDestination:
 
         return blobs
 
+    def _get_or_create_branch(self, client: httpx.Client, base_url: str) -> str:
+        """Get branch SHA, creating the branch if it doesn't exist.
+
+        Args:
+            client: Configured httpx client
+            base_url: Base API URL for the repo
+
+        Returns:
+            The branch HEAD commit SHA
+
+        Raises:
+            GitHubAPIError: If the API request fails
+        """
+        # Try to get the branch
+        ref_response = client.get(f"{base_url}/git/ref/heads/{self.config.branch}")
+
+        # If branch exists, return its SHA
+        if ref_response.status_code == 200:
+            sha: str = ref_response.json()["object"]["sha"]
+            return sha
+
+        # If not 404, it's an unexpected error
+        if ref_response.status_code != 404:
+            self._check_response(ref_response, "get branch ref")
+
+        # Branch doesn't exist - prompt to create it from default branch
+        self.console.print()
+        self.console.print(
+            f"[yellow]Branch '{self.config.branch}' does not exist[/yellow]"
+        )
+
+        # Get the repository's default branch first to show user
+        repo_response = client.get(base_url)
+        self._check_response(repo_response, "get repository info")
+        default_branch = repo_response.json()["default_branch"]
+
+        # Import click here to avoid circular dependency
+        import click
+
+        if not click.confirm(
+            f"Create '{self.config.branch}' from '{default_branch}'?", default=True
+        ):
+            raise GitHubAPIError(
+                f"Branch creation cancelled. Create '{self.config.branch}' manually or "
+                f"update sp.yml to use an existing branch.",
+                status_code=None,
+            )
+
+        self.console.print(f"[dim]Creating branch '{self.config.branch}'...[/dim]")
+
+        # Get the default branch's HEAD SHA
+        default_ref_response = client.get(f"{base_url}/git/ref/heads/{default_branch}")
+        self._check_response(default_ref_response, "get default branch ref")
+        default_sha: str = default_ref_response.json()["object"]["sha"]
+
+        # Create the new branch
+        create_ref_response = client.post(
+            f"{base_url}/git/refs",
+            json={
+                "ref": f"refs/heads/{self.config.branch}",
+                "sha": default_sha,
+            },
+        )
+        self._check_response(create_ref_response, "create branch")
+
+        self.console.print(
+            f"[green]✓[/green] Branch '{self.config.branch}' created "
+            f"from '{default_branch}'"
+        )
+        self.console.print()
+
+        return default_sha
+
     def _create_commit(self, token: str, blobs: list[dict[str, str]]) -> str:
         """Create an atomic commit with all files via GitHub API.
 
@@ -235,10 +355,8 @@ class GitHubDestination:
         base_url = f"{self.API_BASE}/repos/{self.config.repo}"
 
         with httpx.Client(headers=headers, timeout=30.0) as client:
-            # 1. Get current branch ref
-            ref_response = client.get(f"{base_url}/git/ref/heads/{self.config.branch}")
-            self._check_response(ref_response, "get branch ref")
-            current_sha = ref_response.json()["object"]["sha"]
+            # 1. Get or create branch
+            current_sha = self._get_or_create_branch(client, base_url)
 
             # 2. Get current commit to find base tree
             commit_response = client.get(f"{base_url}/git/commits/{current_sha}")
@@ -321,10 +439,16 @@ class GitHubDestination:
                     status_code=403,
                 )
             elif response.status_code == 404:
+                # More specific error message based on what resource wasn't found
+                if "repository" in action.lower() or "get repository" in action:
+                    error_detail = (
+                        f"Repository '{self.config.repo}' not found or not accessible."
+                    )
+                else:
+                    error_detail = f"Resource not found: {message}"
                 raise GitHubAPIError(
-                    f"GitHub resource not found while trying to {action}: {message}. "
-                    f"Check that repo '{self.config.repo}' exists and branch "
-                    f"'{self.config.branch}' exists.",
+                    f"GitHub resource not found while trying to {action}: "
+                    f"{error_detail}",
                     status_code=404,
                 )
             elif response.status_code == 409:

@@ -191,7 +191,10 @@ class TestPopRenderer:
         assert results[0]["name"] == "gmv_py"
         assert results[0]["type"] == "period_over_period"
         assert results[0]["based_on"] == "gmv"
-        assert results[0]["comparison_period"] == "year"
+        assert results[0]["period"] == "year"
+        assert results[0]["kind"] == "previous"
+        # based_on_time is only added when calendar_view_name is provided
+        assert "based_on_time" not in results[0]
 
     def test_render_multiple_pop_variants(self):
         metric = Metric(
@@ -259,8 +262,10 @@ class TestViewRenderer:
         result = renderer.render_metrics_refinement(model)
 
         assert result is not None
-        assert result["name"] == "+rentals"  # Refinement syntax
-        assert len(result["measures"]) == 1
+        view, includes = result
+        assert view["name"] == "+rentals"  # Refinement syntax
+        assert len(view["measures"]) == 1
+        assert "rentals.view.lkml" in includes
 
     def test_render_pop_refinement(self):
         metric = Metric(
@@ -279,13 +284,18 @@ class TestViewRenderer:
             metrics=[metric],
         )
 
-        renderer = ViewRenderer()
+        # Provide model-to-explore mapping for PoP calendar reference
+        model_to_explore = {"rentals": "rentals"}
+        renderer = ViewRenderer(model_to_explore=model_to_explore)
         result = renderer.render_pop_refinement(model)
 
         assert result is not None
-        assert result["name"] == "+rentals"
-        assert len(result["measures"]) == 1
-        assert result["measures"][0]["type"] == "period_over_period"
+        view, includes = result
+        assert view["name"] == "+rentals"
+        assert len(view["measures"]) == 1
+        assert view["measures"][0]["type"] == "period_over_period"
+        assert "rentals.view.lkml" in includes
+        assert "rentals.metrics.view.lkml" in includes
 
 
 class TestLookMLGenerator:
@@ -337,7 +347,9 @@ class TestLookMLGenerator:
             metrics=[metric],
         )
 
-        generator = LookMLGenerator()
+        # Provide model-to-explore mapping for PoP generation
+        model_to_explore = {"rentals": "rentals"}
+        generator = LookMLGenerator(model_to_explore=model_to_explore)
         files = generator.generate_model(model)
 
         assert "rentals.view.lkml" in files

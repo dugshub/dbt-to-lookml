@@ -72,8 +72,8 @@ class ExploreGenerator:
             return files
 
         # Render explore
-        explore_dict = self.explore_renderer.render(explore_config, fact_model, models)
-        explore_content = self._serialize_explore(explore_dict)
+        explore_dict, includes = self.explore_renderer.render(explore_config, fact_model, models)
+        explore_content = self._serialize_explore(explore_dict, includes)
         files[f"{explore_config.name}.explore.lkml"] = explore_content
 
         # Collect joined models for calendar
@@ -114,8 +114,8 @@ class ExploreGenerator:
             return files
 
         # Render explore
-        explore_dict = self.explore_renderer.render(explore_config, fact_model, models)
-        explore_content = self._serialize_explore(explore_dict)
+        explore_dict, includes = self.explore_renderer.render(explore_config, fact_model, models)
+        explore_content = self._serialize_explore(explore_dict, includes)
         files[paths.explore_file_path(explore_config.name)] = explore_content
 
         # Collect joined models for calendar
@@ -230,12 +230,19 @@ class ExploreGenerator:
 
         return joined
 
-    def _serialize_explore(self, explore: dict[str, Any]) -> str:
-        """Serialize explore dict to LookML string."""
+    def _serialize_explore(self, explore: dict[str, Any], includes: list[str]) -> str:
+        """Serialize explore dict to LookML string with includes."""
+        # Build include statements
+        include_lines = [f'include: "{inc}"' for inc in includes]
+        include_section = "\n".join(include_lines)
+
+        # Serialize explore
         lookml_dict = {"explores": [explore]}
-        result = lkml.dump(lookml_dict)
-        assert result is not None
-        return result
+        explore_content = lkml.dump(lookml_dict)
+        assert explore_content is not None
+
+        # Combine includes and explore
+        return f"{include_section}\n\n{explore_content}"
 
     def _serialize_view(self, view: dict[str, Any]) -> str:
         """Serialize view dict to LookML string."""

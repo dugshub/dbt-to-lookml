@@ -427,6 +427,21 @@ def run_build(
                 f"[dim]({dims_count} dims, {metrics_count} metrics)[/dim]"
             )
 
+    # Ensure all models have data_model (for sql_table_name generation)
+    # Must be done BEFORE prefix is applied so table name uses original model name
+    from semantic_patterns.domain import ConnectionType, DataModel
+
+    for model in models:
+        if not model.data_model:
+            # Create data_model using model name as table name
+            # Schema will be applied below during generation
+            model.data_model = DataModel(
+                name=model.name,
+                schema_name=config.schema_name,
+                table=model.name,  # model name = table name (1:1)
+                connection=ConnectionType.REDSHIFT,
+            )
+
     # Apply view prefix to model names BEFORE generation
     # This ensures view names, refinements, and join references all use prefixed names
     if view_prefix:
@@ -436,8 +451,32 @@ def run_build(
     # Create model lookup (with prefixed names)
     model_dict = {m.name: m for m in models}
 
+    # Build model-to-explore mapping for PoP calendar references
+    # Maps each model to its parent explore name
+    model_to_explore: dict[str, str] = {}
+    if config.explores:
+        for explore in config.explores:
+            # Apply prefixes to explore and fact names
+            explore_name = (
+                f"{explore_prefix}{explore.effective_name}"
+                if explore_prefix
+                else explore.effective_name
+            )
+            fact_model_name = f"{view_prefix}{explore.fact}" if view_prefix else explore.fact
+
+            # Map fact model to its explore
+            model_to_explore[fact_model_name] = explore_name
+
+            # Map joined_facts to this parent explore
+            for joined_fact in explore.joined_facts:
+                joined_fact_name = f"{view_prefix}{joined_fact}" if view_prefix else joined_fact
+                model_to_explore[joined_fact_name] = explore_name
+
     # Generate views
-    generator = LookMLGenerator(dialect=config.options.dialect)
+    generator = LookMLGenerator(
+        dialect=config.options.dialect,
+        model_to_explore=model_to_explore,
+    )
     all_files: dict[Path, str] = {}
 
     with Progress(

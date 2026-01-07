@@ -25,9 +25,12 @@ Usage:
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable
 from enum import Enum
+from typing import Any
 
+import httpx
 import keyring
 from rich.console import Console
 
@@ -64,6 +67,124 @@ ENV_VAR_MAPPING: dict[str, str] = {
     "looker-client-id": "LOOKER_CLIENT_ID",
     "looker-client-secret": "LOOKER_CLIENT_SECRET",
 }
+
+
+def github_device_flow(console: Console) -> str | None:
+    """Authenticate with GitHub using OAuth device flow.
+
+    This is the same flow used by `gh auth login` - user visits a URL,
+    enters a code, and authorizes the app in their browser.
+
+    Args:
+        console: Rich console for output
+
+    Returns:
+        Access token if successful, None if cancelled or failed
+    """
+    # GitHub OAuth App credentials for semantic-patterns
+    # This is a public client ID and is safe to include in the code
+    # It's registered to the semantic-patterns GitHub App
+    # TODO: Replace with actual registered OAuth App client ID
+    client_id = "Ov23liVE6xhXqJsJzQdP"
+
+    console.print()
+    console.print("[bold]GitHub Authentication[/bold]")
+    console.print()
+    console.print("Requesting authentication code from GitHub...")
+
+    try:
+        # Step 1: Request device and user codes
+        with httpx.Client(timeout=30.0) as client:
+            device_response = client.post(
+                "https://github.com/login/device/code",
+                headers={"Accept": "application/json"},
+                data={
+                    "client_id": client_id,
+                    "scope": "repo",  # Need repo scope to push to repositories
+                },
+            )
+            device_response.raise_for_status()
+            device_data: dict[str, Any] = device_response.json()
+
+            user_code = device_data["user_code"]
+            verification_uri = device_data["verification_uri"]
+            device_code = device_data["device_code"]
+            interval = device_data.get("interval", 5)  # Poll interval in seconds
+
+            # Step 2: Show user the code and URL
+            console.print()
+            console.print(f"[bold green]Your code: {user_code}[/bold green]")
+            console.print()
+            console.print(f"Visit: [link]{verification_uri}[/link]")
+            console.print()
+            console.print(
+                "[dim]Waiting for authentication in your browser...[/dim]"
+            )
+            console.print("[dim](Press Ctrl+C to cancel)[/dim]")
+
+            # Step 3: Poll for access token
+            start_time = time.time()
+            timeout = 300  # 5 minute timeout
+
+            while time.time() - start_time < timeout:
+                time.sleep(interval)
+
+                token_response = client.post(
+                    "https://github.com/login/oauth/access_token",
+                    headers={"Accept": "application/json"},
+                    data={
+                        "client_id": client_id,
+                        "device_code": device_code,
+                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    },
+                )
+                token_response.raise_for_status()
+                token_data: dict[str, Any] = token_response.json()
+
+                # Check for errors
+                if "error" in token_data:
+                    error = token_data["error"]
+
+                    if error == "authorization_pending":
+                        # User hasn't completed auth yet, keep polling
+                        continue
+                    elif error == "slow_down":
+                        # We're polling too fast, increase interval
+                        interval += 5
+                        continue
+                    elif error == "expired_token":
+                        console.print("[red]Authentication timed out[/red]")
+                        return None
+                    elif error == "access_denied":
+                        console.print("[yellow]Authentication cancelled[/yellow]")
+                        return None
+                    else:
+                        console.print(f"[red]Authentication error: {error}[/red]")
+                        return None
+
+                # Success! We have an access token
+                if "access_token" in token_data:
+                    access_token: str = token_data["access_token"]
+                    console.print()
+                    console.print(
+                        "[bold green]✓ Successfully authenticated[/bold green]"
+                    )
+                    return access_token
+
+            # Timeout
+            console.print("[red]Authentication timed out[/red]")
+            return None
+
+    except httpx.HTTPError as e:
+        console.print(f"[red]Network error during authentication: {e}[/red]")
+        return None
+    except KeyboardInterrupt:
+        console.print()
+        console.print("[yellow]Authentication cancelled[/yellow]")
+        return None
+    except Exception as e:
+        console.print(f"[red]Unexpected error during authentication: {e}[/red]")
+        return None
 
 
 class CredentialStore:

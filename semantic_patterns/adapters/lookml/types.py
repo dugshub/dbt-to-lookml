@@ -77,8 +77,8 @@ class InferredJoin(BaseModel):
     entity: str  # Entity name used for join
     relationship: JoinRelationship
     expose: ExposeLevel
-    fact_entity_expr: str  # Expression on fact side (e.g., "facility_sk")
-    joined_entity_expr: str  # Expression on joined side (e.g., "facility_sk")
+    fact_entity_name: str  # Dimension name on fact side (e.g., "facility")
+    joined_entity_name: str  # Dimension name on joined side (e.g., "facility")
 
     model_config = {"frozen": True}
 
@@ -86,8 +86,8 @@ class InferredJoin(BaseModel):
     def sql_on(self) -> str:
         """Generate sql_on clause (requires view names at render time)."""
         # This is a template - actual LookML refs are added during rendering
-        fact_ref = f"${{FACT}}.{self.fact_entity_expr}"
-        join_ref = f"${{{self.model}}}.{self.joined_entity_expr}"
+        fact_ref = f"${{FACT}}.{self.fact_entity_name}"
+        join_ref = f"${{{self.model}}}.{self.joined_entity_name}"
         return f"{fact_ref} = {join_ref}"
 
 
