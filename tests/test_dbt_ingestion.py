@@ -137,6 +137,46 @@ class TestMapDimension:
 
         assert result["hidden"] is True
 
+    def test_map_dimension_with_legacy_subject_category(self) -> None:
+        """Test mapping dimension with legacy subject + category -> group dot notation."""
+        dbt_dim = {
+            "name": "star_rating",
+            "label": "Star Rating",
+            "type": "categorical",
+            "expr": "star_rating",
+            "config": {
+                "meta": {
+                    "subject": "Customer Feedback",
+                    "category": "Rating",
+                    "bi_field": True,
+                }
+            },
+        }
+        result = map_dimension(dbt_dim)
+
+        assert result["name"] == "star_rating"
+        # subject + category should be combined with dot notation
+        assert result["group"] == "Customer Feedback.Rating"
+
+    def test_map_dimension_with_subject_only(self) -> None:
+        """Test mapping dimension with only subject (no category)."""
+        dbt_dim = {
+            "name": "created_at",
+            "type": "time",
+            "type_params": {"time_granularity": "day"},
+            "expr": "created_at_utc",
+            "config": {
+                "meta": {
+                    "subject": "Date Dimensions",
+                    "bi_field": True,
+                }
+            },
+        }
+        result = map_dimension(dbt_dim)
+
+        # subject alone should become group
+        assert result["group"] == "Date Dimensions"
+
 
 class TestMapMeasure:
     """Tests for map_measure function."""
@@ -317,6 +357,34 @@ class TestMapMetric:
         result = map_metric(dbt_metric)
 
         assert result["metrics"] == ["gov", "rental_count"]
+
+    def test_map_metric_with_legacy_subject_category(self) -> None:
+        """Test mapping a metric with legacy subject + category -> group dot notation."""
+        dbt_metric = {
+            "name": "total_parking_spot_count",
+            "label": "Total Parking Spot Count",
+            "type": "simple",
+            "type_params": {
+                "measure": "parking_spot_count",
+            },
+            "config": {
+                "meta": {
+                    "subject": "Facilities",
+                    "category": "Counts",
+                    "bi_field": True,
+                    "primary_entity": "facility",
+                    "format": "decimal_0",
+                }
+            },
+        }
+        result = map_metric(dbt_metric)
+
+        assert result["name"] == "total_parking_spot_count"
+        # subject + category should be combined with dot notation
+        assert result["group"] == "Facilities.Counts"
+        # primary_entity should map to entity
+        assert result["entity"] == "facility"
+        assert result["format"] == "decimal_0"
 
 
 class TestMapSemanticModel:
