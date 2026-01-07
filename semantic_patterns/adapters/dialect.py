@@ -55,12 +55,14 @@ class SqlRenderer:
         }
         return mapping.get(self.dialect, "redshift")
 
-    def qualify_expression(self, expr: str, table_alias: str = "${TABLE}") -> str:
+    def qualify_expression(self, expr: str, table_alias: str = "t") -> str:
         """
         Add table qualifier to bare column references.
 
         Transforms: rental_status
-        To: ${TABLE}.rental_status
+        To: t.rental_status
+
+        This is pure SQL transformation - no LookML-specific logic.
         """
         if not expr or not expr.strip():
             return expr

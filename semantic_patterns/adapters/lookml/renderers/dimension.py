@@ -2,8 +2,9 @@
 
 from typing import Any
 
-from semantic_patterns.adapters.dialect import Dialect, SqlRenderer
+from semantic_patterns.adapters.dialect import Dialect
 from semantic_patterns.adapters.lookml.renderers.labels import apply_group_labels
+from semantic_patterns.adapters.lookml.sql_qualifier import qualify_table_columns
 from semantic_patterns.domain import Dimension, DimensionType, TimeGranularity
 
 # Map TimeGranularity to LookML timeframes
@@ -31,27 +32,30 @@ DEFAULT_TIMEFRAMES = ["raw", "date", "week", "month", "quarter", "year"]
 class DimensionRenderer:
     """Render dimensions to LookML format."""
 
-    def __init__(self, dialect: Dialect | None = None) -> None:
-        self.sql_renderer = SqlRenderer(dialect)
+    def __init__(self, dialect: Dialect | None = None, defined_fields: dict[str, str] | None = None) -> None:
+        self.dialect = dialect  # For future dialect-specific transpilation
+        self.defined_fields = defined_fields or {}
 
-    def render(self, dimension: Dimension) -> list[dict[str, Any]]:
+    def render(self, dimension: Dimension, defined_fields: dict[str, str] | None = None) -> list[dict[str, Any]]:
         """
         Render a dimension to LookML dict(s).
 
         Returns a list because time dimensions with variants
         generate multiple dimension_groups.
         """
-        if dimension.type == DimensionType.TIME:
-            return self._render_time_dimension(dimension)
-        else:
-            return [self._render_categorical_dimension(dimension)]
+        fields = defined_fields if defined_fields is not None else self.defined_fields
 
-    def _render_categorical_dimension(self, dim: Dimension) -> dict[str, Any]:
+        if dimension.type == DimensionType.TIME:
+            return self._render_time_dimension(dimension, fields)
+        else:
+            return [self._render_categorical_dimension(dimension, fields)]
+
+    def _render_categorical_dimension(self, dim: Dimension, defined_fields: dict[str, str]) -> dict[str, Any]:
         """Render a categorical dimension."""
         result: dict[str, Any] = {
             "name": dim.name,
             "type": "string",
-            "sql": self._qualify_expr(dim.effective_expr),
+            "sql": self._qualify_expr(dim.effective_expr, defined_fields),
         }
 
         if dim.label:
@@ -68,23 +72,23 @@ class DimensionRenderer:
 
         return result
 
-    def _render_time_dimension(self, dim: Dimension) -> list[dict[str, Any]]:
+    def _render_time_dimension(self, dim: Dimension, defined_fields: dict[str, str]) -> list[dict[str, Any]]:
         """
         Render a time dimension as dimension_group(s).
 
         If dimension has variants (UTC/local), generates one per variant.
         """
         if dim.has_variants and dim.variants:
-            return self._render_time_with_variants(dim)
+            return self._render_time_with_variants(dim, defined_fields)
         else:
-            return [self._render_single_time_dimension(dim)]
+            return [self._render_single_time_dimension(dim, defined_fields)]
 
-    def _render_single_time_dimension(self, dim: Dimension) -> dict[str, Any]:
+    def _render_single_time_dimension(self, dim: Dimension, defined_fields: dict[str, str]) -> dict[str, Any]:
         """Render a single time dimension_group."""
         result: dict[str, Any] = {
             "name": dim.name,
             "type": "time",
-            "sql": self._qualify_expr(dim.effective_expr),
+            "sql": self._qualify_expr(dim.effective_expr, defined_fields),
             "timeframes": self._get_timeframes(dim.granularity),
             "convert_tz": "no",  # Data is UTC, don't convert
         }
@@ -103,7 +107,7 @@ class DimensionRenderer:
 
         return result
 
-    def _render_time_with_variants(self, dim: Dimension) -> list[dict[str, Any]]:
+    def _render_time_with_variants(self, dim: Dimension, defined_fields: dict[str, str]) -> list[dict[str, Any]]:
         """Render time dimension with timezone variants."""
         results = []
 
@@ -116,7 +120,7 @@ class DimensionRenderer:
             result: dict[str, Any] = {
                 "name": name,
                 "type": "time",
-                "sql": self._qualify_expr(expr),
+                "sql": self._qualify_expr(expr, defined_fields),
                 "timeframes": self._get_timeframes(dim.granularity),
                 "convert_tz": "no",  # Data is UTC, don't convert
             }
@@ -153,6 +157,19 @@ class DimensionRenderer:
             return GRANULARITY_TIMEFRAMES[granularity]
         return DEFAULT_TIMEFRAMES
 
-    def _qualify_expr(self, expr: str) -> str:
-        """Qualify column references in expression."""
-        return self.sql_renderer.qualify_expression(expr)
+    def _qualify_expr(self, expr: str, defined_fields: dict[str, str]) -> str:
+        """
+        Qualify column references for LookML dimensions.
+
+        Uses field references if the column/dimension is already defined,
+        otherwise uses ${TABLE}.column_name.
+        """
+        from semantic_patterns.adapters.lookml.sql_qualifier import LookMLSqlQualifier
+
+        if defined_fields:
+            # Use intelligent field reference logic
+            qualifier = LookMLSqlQualifier(self.dialect, defined_fields)
+            return qualifier.qualify(expr, defined_fields)
+        else:
+            # No fields defined yet, use raw ${TABLE}
+            return qualify_table_columns(expr)

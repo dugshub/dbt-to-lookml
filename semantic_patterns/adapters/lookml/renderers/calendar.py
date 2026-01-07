@@ -136,7 +136,7 @@ class CalendarRenderer:
 
         # Use direct parameter injection instead of CASE statement
         # This allows Looker to inject the column name at runtime
-        calendar_sql = "${TABLE}.{% parameter date_field %}"
+        calendar_sql = '${TABLE}.{% parameter date_field %}'
 
         dimension_group: dict[str, Any] = {
             "name": "calendar",

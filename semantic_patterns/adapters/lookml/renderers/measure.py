@@ -2,9 +2,10 @@
 
 from typing import Any
 
-from semantic_patterns.adapters.dialect import Dialect, SqlRenderer
+from semantic_patterns.adapters.dialect import Dialect
 from semantic_patterns.adapters.lookml.renderers.filter import FilterRenderer
 from semantic_patterns.adapters.lookml.renderers.labels import apply_group_labels
+from semantic_patterns.adapters.lookml.sql_qualifier import LookMLSqlQualifier
 from semantic_patterns.domain import (
     AggregationType,
     Measure,
@@ -38,16 +39,19 @@ FORMAT_TO_LOOKML: dict[str, str] = {
 class MeasureRenderer:
     """Render measures and metrics to LookML format."""
 
-    def __init__(self, dialect: Dialect | None = None) -> None:
-        self.sql_renderer = SqlRenderer(dialect)
-        self.filter_renderer = FilterRenderer(dialect)
+    def __init__(self, dialect: Dialect | None = None, defined_fields: dict[str, str] | None = None) -> None:
+        self.sql_qualifier = LookMLSqlQualifier(dialect, defined_fields)
+        self.defined_fields = defined_fields or {}
+        self.filter_renderer = FilterRenderer(dialect, defined_fields)
 
-    def render_measure(self, measure: Measure) -> dict[str, Any]:
+    def render_measure(self, measure: Measure, defined_fields: dict[str, str] | None = None) -> dict[str, Any]:
         """Render a raw measure to LookML."""
+        fields = defined_fields if defined_fields is not None else self.defined_fields
+
         result: dict[str, Any] = {
             "name": measure.name,
             "type": AGG_TO_LOOKML.get(measure.agg, "sum"),
-            "sql": self._qualify_expr(measure.expr),
+            "sql": self._qualify_expr(measure.expr, fields),
         }
 
         if measure.label:
@@ -71,6 +75,7 @@ class MeasureRenderer:
         self,
         metric: Metric,
         measures: dict[str, Measure],
+        defined_fields: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """
         Render a metric (base variant) to LookML measure.
@@ -78,32 +83,35 @@ class MeasureRenderer:
         For simple metrics: direct aggregation from the underlying measure
         For derived/ratio: type: number with SQL expression
         """
+        fields = defined_fields if defined_fields is not None else self.defined_fields
+
         if metric.type == MetricType.SIMPLE:
-            return self._render_simple_metric(metric, measures)
+            return self._render_simple_metric(metric, measures, fields)
         elif metric.type == MetricType.DERIVED:
             return self._render_derived_metric(metric)
         elif metric.type == MetricType.RATIO:
             return self._render_ratio_metric(metric)
         else:
-            return self._render_simple_metric(metric, measures)
+            return self._render_simple_metric(metric, measures, fields)
 
     def _render_simple_metric(
         self,
         metric: Metric,
         measures: dict[str, Measure],
+        defined_fields: dict[str, str],
     ) -> dict[str, Any]:
         """Render simple metric as direct aggregation."""
         # Get the underlying measure
         measure = measures.get(metric.measure or "") if metric.measure else None
 
         if measure:
-            # Qualify the expression
-            qualified_expr = self._qualify_expr(measure.expr)
+            # Qualify the expression (use field references for defined dimensions)
+            qualified_expr = self._qualify_expr(measure.expr, defined_fields)
 
             # Wrap with filter if metric has one
             if metric.filter and metric.filter.conditions:
                 sql_expr = self.filter_renderer.render_case_when(
-                    qualified_expr, metric.filter
+                    qualified_expr, metric.filter, defined_fields
                 )
             else:
                 sql_expr = qualified_expr
@@ -168,6 +176,6 @@ class MeasureRenderer:
         if metric.group:
             apply_group_labels(result, metric.group_parts)
 
-    def _qualify_expr(self, expr: str) -> str:
-        """Qualify column references in expression."""
-        return self.sql_renderer.qualify_expression(expr)
+    def _qualify_expr(self, expr: str, defined_fields: dict[str, str]) -> str:
+        """Qualify column references in expression (use field refs for defined dimensions)."""
+        return self.sql_qualifier.qualify(expr, defined_fields)

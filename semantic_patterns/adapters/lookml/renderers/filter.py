@@ -2,53 +2,59 @@
 
 from typing import Any
 
-from semantic_patterns.adapters.dialect import Dialect, SqlRenderer
+from semantic_patterns.adapters.dialect import Dialect
+from semantic_patterns.adapters.lookml.sql_qualifier import LookMLSqlQualifier
 from semantic_patterns.domain import Filter, FilterCondition, FilterOperator
 
 
 class FilterRenderer:
     """Render filter conditions to SQL for embedding in measure expressions."""
 
-    def __init__(self, dialect: Dialect | None = None) -> None:
-        self.sql_renderer = SqlRenderer(dialect)
+    def __init__(self, dialect: Dialect | None = None, defined_fields: dict[str, str] | None = None) -> None:
+        self.sql_qualifier = LookMLSqlQualifier(dialect, defined_fields)
+        self.defined_fields = defined_fields or {}
 
-    def render_case_when(self, expr: str, filter: Filter) -> str:
+    def render_case_when(self, expr: str, filter: Filter, defined_fields: dict[str, str] | None = None) -> str:
         """
         Wrap an expression with CASE WHEN filter conditions.
 
         Args:
             expr: The SQL expression to wrap (e.g., column name)
             filter: The filter conditions to apply
+            defined_fields: Map of column_name -> field_name for existing dimensions
 
         Returns:
             SQL like: CASE WHEN condition THEN expr END
 
         Example:
             Input: expr="rental_checkout_amount", filter={transaction_type: completed}
-            Output: CASE WHEN "${TABLE}".transaction_type = 'completed'
-                        THEN "${TABLE}".rental_checkout_amount END
+            Output: CASE WHEN ${transaction_type} = 'completed'
+                        THEN ${TABLE}.rental_checkout_amount END
         """
         if not filter or not filter.conditions:
             return expr
 
+        # Use provided fields or fall back to instance default
+        fields = defined_fields if defined_fields is not None else self.defined_fields
+
         # Build WHERE clause from conditions
-        where_clause = self._render_conditions(filter.conditions)
+        where_clause = self._render_conditions(filter.conditions, fields)
 
         # Wrap with CASE WHEN
         return f"CASE WHEN {where_clause} THEN {expr} END"
 
-    def _render_conditions(self, conditions: list[FilterCondition]) -> str:
+    def _render_conditions(self, conditions: list[FilterCondition], defined_fields: dict[str, str]) -> str:
         """Render multiple conditions as AND-ed SQL."""
         sql_parts = []
         for cond in conditions:
-            sql_parts.append(self._render_condition(cond))
+            sql_parts.append(self._render_condition(cond, defined_fields))
 
         return " AND ".join(sql_parts)
 
-    def _render_condition(self, cond: FilterCondition) -> str:
+    def _render_condition(self, cond: FilterCondition, defined_fields: dict[str, str]) -> str:
         """Render a single filter condition to SQL."""
-        # Qualify field reference
-        field_sql = self.sql_renderer.qualify_expression(cond.field)
+        # Qualify field reference (use field reference if dimension exists)
+        field_sql = self.sql_qualifier.qualify(cond.field, defined_fields)
 
         # Render value based on operator
         if cond.operator == FilterOperator.IN:

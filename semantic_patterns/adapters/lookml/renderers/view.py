@@ -5,6 +5,9 @@ Composes dimensions, measures, and metrics into complete view structures.
 
 from typing import Any
 
+import sqlglot
+import sqlglot.expressions as exp
+
 from semantic_patterns.adapters.dialect import Dialect
 from semantic_patterns.adapters.lookml.renderers.dimension import DimensionRenderer
 from semantic_patterns.adapters.lookml.renderers.measure import MeasureRenderer
@@ -36,9 +39,76 @@ class ViewRenderer:
     ) -> None:
         self.dialect = dialect
         self.dimension_renderer = DimensionRenderer(dialect)
-        self.measure_renderer = MeasureRenderer(dialect)
+        # MeasureRenderer will be created per-view with defined_fields
         self.pop_renderer = PopRenderer(pop_strategy)
         self.model_to_explore = model_to_explore or {}
+
+    @staticmethod
+    def _build_defined_fields(model: ProcessedModel) -> dict[str, str]:
+        """
+        Build map of column_name -> field_name for dimensions and entities.
+
+        This allows measures to reference existing dimensions rather than
+        re-declaring SQL column references.
+
+        Returns:
+            Dict mapping column names AND dimension names to LookML field names
+
+        Example:
+            Dimension: name="transaction_type", expr="rental_event_type"
+            Mapping: {
+                "rental_event_type": "transaction_type",  # column -> field
+                "transaction_type": "transaction_type",   # field -> field (identity)
+            }
+        """
+        mapping: dict[str, str] = {}
+
+        # Add dimensions
+        for dim in model.dimensions:
+            # Map dimension name to itself (for direct field references)
+            mapping[dim.name] = dim.name
+
+            # Also map column name to dimension name (for SQL column references)
+            if dim.expr:
+                col_name = ViewRenderer._extract_simple_column(dim.expr)
+                if col_name and col_name != dim.name:
+                    mapping[col_name] = dim.name
+
+        # Add entities
+        for entity in model.entities:
+            # Map entity name to itself
+            mapping[entity.name] = entity.name
+
+            # Also map column name to entity name
+            if entity.expr:
+                col_name = ViewRenderer._extract_simple_column(entity.expr)
+                if col_name and col_name != entity.name:
+                    mapping[col_name] = entity.name
+
+        return mapping
+
+    @staticmethod
+    def _extract_simple_column(expr: str) -> str | None:
+        """
+        Extract bare column name from simple SQL expressions.
+
+        Examples:
+            "transaction_type" -> "transaction_type"
+            "unique_rental_sk" -> "unique_rental_sk"
+            "UPPER(status)" -> None (not a simple column)
+        """
+        if not expr:
+            return None
+
+        try:
+            parsed = sqlglot.parse_one(expr)
+            # Check if it's just a bare column (no functions, operators, etc.)
+            if isinstance(parsed, exp.Column) and not parsed.table:
+                return parsed.name
+        except Exception:
+            pass
+
+        return None
 
     def render_base_view(self, model: ProcessedModel) -> dict[str, Any]:
         """
@@ -54,20 +124,41 @@ class ViewRenderer:
         if model.sql_table_name:
             view["sql_table_name"] = model.sql_table_name
 
+        # Build field mapping progressively as we render dimensions
+        # This allows later dimensions to reference earlier ones
+        defined_fields: dict[str, str] = {}
+
         # Render dimensions - separate regular dimensions from dimension_groups
         dimensions = []
         dimension_groups = []
         for dim in model.dimensions:
-            dim_results = self.dimension_renderer.render(dim)
+            # Render this dimension with access to previously-defined dimensions
+            dim_results = self.dimension_renderer.render(dim, defined_fields)
+
             if dim.type == DimensionType.TIME:
                 dimension_groups.extend(dim_results)
             else:
                 dimensions.extend(dim_results)
 
+            # Add this dimension to the mapping for subsequent dimensions
+            defined_fields[dim.name] = dim.name
+            if dim.expr:
+                col_name = self._extract_simple_column(dim.expr)
+                if col_name and col_name != dim.name:
+                    defined_fields[col_name] = dim.name
+
         # Render entities as hidden dimensions with primary key
-        entity_dims = self._render_entities(model.entities)
+        entity_dims = self._render_entities(model.entities, defined_fields)
         if entity_dims:
             dimensions.extend(entity_dims)
+
+        # Add entities to the field mapping
+        for entity in model.entities:
+            defined_fields[entity.name] = entity.name
+            if entity.expr:
+                col_name = self._extract_simple_column(entity.expr)
+                if col_name and col_name != entity.name:
+                    defined_fields[col_name] = entity.name
 
         if dimensions:
             view["dimensions"] = dimensions
@@ -75,11 +166,14 @@ class ViewRenderer:
         if dimension_groups:
             view["dimension_groups"] = dimension_groups
 
+        # Create measure renderer with complete field mapping
+        measure_renderer = MeasureRenderer(self.dialect, defined_fields)
+
         # Render measures (hidden raw measures)
         measures = []
         for measure in model.measures:
             if measure.hidden:  # Only include hidden measures in base
-                measures.append(self.measure_renderer.render_measure(measure))
+                measures.append(measure_renderer.render_measure(measure, defined_fields))
 
         if measures:
             view["measures"] = measures
@@ -101,14 +195,18 @@ class ViewRenderer:
         if not model.metrics:
             return None
 
+        # Build field mapping for measure rendering
+        defined_fields = self._build_defined_fields(model)
+        measure_renderer = MeasureRenderer(self.dialect, defined_fields)
+
         # Build measure lookup for simple metrics
         measure_lookup = {m.name: m for m in model.measures}
 
         # Render base metric measures (not PoP variants)
         measures = []
         for metric in model.metrics:
-            # Render base metric
-            base_measure = self.measure_renderer.render_metric(metric, measure_lookup)
+            # Render base metric (using field refs for existing dimensions)
+            base_measure = measure_renderer.render_metric(metric, measure_lookup, defined_fields)
             measures.append(base_measure)
 
         if not measures:
@@ -175,15 +273,24 @@ class ViewRenderer:
             includes,
         )
 
-    def _render_entities(self, entities: list[Entity]) -> list[dict[str, Any]]:
+    def _render_entities(self, entities: list[Entity], defined_fields: dict[str, str]) -> list[dict[str, Any]]:
         """Render entities as hidden dimensions."""
+        from semantic_patterns.adapters.lookml.sql_qualifier import LookMLSqlQualifier
+
         results = []
 
         for entity in entities:
+            # Qualify entity expression (may reference dimensions)
+            if defined_fields:
+                qualifier = LookMLSqlQualifier(self.dialect, defined_fields)
+                sql_expr = qualifier.qualify(entity.expr, defined_fields)
+            else:
+                sql_expr = qualify_table_columns(entity.expr)
+
             dim: dict[str, Any] = {
                 "name": entity.name,
                 "type": "string",
-                "sql": f"${{TABLE}}.{entity.expr}",
+                "sql": sql_expr,
                 "hidden": "yes",
             }
 
