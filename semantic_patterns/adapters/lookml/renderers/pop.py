@@ -10,7 +10,7 @@ and gives users runtime control over the comparison period.
 
 from typing import Any, Protocol
 
-from semantic_patterns.adapters.lookml.renderers.labels import apply_group_labels
+from semantic_patterns.adapters.lookml.renderers.labels import apply_pop_view_label
 from semantic_patterns.domain import (
     Metric,
     MetricVariant,
@@ -131,9 +131,11 @@ class LookerNativePopStrategy:
             else:
                 result["value_format_name"] = metric.format
 
-        # Group with base metric
-        if metric.group:
-            apply_group_labels(result, metric.group_parts)
+        # PoP measures go to "Metrics (PoP)" view_label
+        # group_label format: "{Category} · {Metric Label}"
+        category = metric.group_parts[1] if len(metric.group_parts) >= 2 else metric.group_parts[0] if metric.group_parts else None
+        metric_label = metric.label or metric.name.replace("_", " ").title()
+        apply_pop_view_label(result, category, metric_label)
 
         return result
 
@@ -287,8 +289,11 @@ class DynamicFilteredPopStrategy:
         if metric.format:
             result["value_format_name"] = metric.format
 
-        if metric.group:
-            apply_group_labels(result, metric.group_parts)
+        # PoP measures go to "Metrics (PoP)" view_label
+        # group_label format: "{Category} · {Metric Label}"
+        category = metric.group_parts[1] if len(metric.group_parts) >= 2 else metric.group_parts[0] if metric.group_parts else None
+        metric_label = metric.label or metric.name.replace("_", " ").title()
+        apply_pop_view_label(result, category, metric_label)
 
         return result
 
@@ -307,8 +312,11 @@ class DynamicFilteredPopStrategy:
         if metric.format:
             result["value_format_name"] = metric.format
 
-        if metric.group:
-            apply_group_labels(result, metric.group_parts)
+        # PoP measures go to "Metrics (PoP)" view_label
+        # group_label format: "{Category} · {Metric Label}"
+        category = metric.group_parts[1] if len(metric.group_parts) >= 2 else metric.group_parts[0] if metric.group_parts else None
+        metric_label = metric.label or metric.name.replace("_", " ").title()
+        apply_pop_view_label(result, category, metric_label)
 
         return result
 
@@ -327,7 +335,10 @@ class DynamicFilteredPopStrategy:
             "value_format_name": "percent_1",
         }
 
-        if metric.group:
-            apply_group_labels(result, metric.group_parts)
+        # PoP measures go to "Metrics (PoP)" view_label
+        # group_label format: "{Category} · {Metric Label}"
+        category = metric.group_parts[1] if len(metric.group_parts) >= 2 else metric.group_parts[0] if metric.group_parts else None
+        metric_label = metric.label or metric.name.replace("_", " ").title()
+        apply_pop_view_label(result, category, metric_label)
 
         return result

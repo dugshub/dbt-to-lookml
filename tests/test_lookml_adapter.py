@@ -404,8 +404,8 @@ class TestDynamicFilteredPopStrategy:
             == "rentals_explore_calendar.is_comparison_period"
         )
         assert result["filters"][0]["value"] == "yes"
-        assert result["view_label"] == "  Metrics"  # From two-level group
-        assert result["group_label"] == "Revenue"
+        assert result["view_label"] == "  Metrics (PoP)"  # PoP always goes to Metrics (PoP)
+        assert result["group_label"] == "Revenue · GMV"  # Category · Metric Label
 
     def test_render_change_measure(self):
         """Test rendering the _change measure."""

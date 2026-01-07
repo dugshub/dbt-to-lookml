@@ -249,7 +249,7 @@ class TestExploreRenderer:
 
         config = ExploreConfig(name="rentals", fact_model="rentals")
         renderer = ExploreRenderer()
-        result = renderer.render(config, fact_model, {"rentals": fact_model})
+        result, includes = renderer.render(config, fact_model, {"rentals": fact_model})
 
         assert result["name"] == "rentals"
         assert result["label"] == "Rentals"
@@ -276,7 +276,7 @@ class TestExploreRenderer:
         config = ExploreConfig(name="rentals", fact_model="rentals")
 
         renderer = ExploreRenderer()
-        result = renderer.render(config, fact_model, models)
+        result, includes = renderer.render(config, fact_model, models)
 
         assert "joins" in result
         join = next(j for j in result["joins"] if j["name"] == "facilities")
@@ -305,7 +305,7 @@ class TestExploreRenderer:
         config = ExploreConfig(name="rentals", fact_model="rentals")
 
         renderer = ExploreRenderer()
-        result = renderer.render(config, fact_model, models)
+        result, includes = renderer.render(config, fact_model, models)
 
         assert "joins" in result
         join = next(j for j in result["joins"] if j["name"] == "reviews")
@@ -331,7 +331,7 @@ class TestExploreRenderer:
         config = ExploreConfig(name="rentals", fact_model="rentals")
 
         renderer = ExploreRenderer()
-        result = renderer.render(config, fact_model, models)
+        result, includes = renderer.render(config, fact_model, models)
 
         join = next(j for j in result["joins"] if j["name"] == "reviews")
         # No field restriction when complete=true
@@ -357,7 +357,7 @@ class TestExploreRenderer:
         config = ExploreConfig(name="rentals", fact_model="rentals")
 
         renderer = ExploreRenderer()
-        result = renderer.render(config, fact_model, models)
+        result, includes = renderer.render(config, fact_model, models)
 
         join = next(j for j in result["joins"] if j["name"] == "searches")
         assert join["fields"] == ["searches.dimensions_only*"]
@@ -390,7 +390,7 @@ class TestExploreRenderer:
         )
 
         renderer = ExploreRenderer()
-        result = renderer.render(config, fact_model, models)
+        result, includes = renderer.render(config, fact_model, models)
 
         join = next(j for j in result["joins"] if j["name"] == "reviews")
         assert join["fields"] == ["reviews.dimensions_only*"]
@@ -423,7 +423,7 @@ class TestExploreRenderer:
         config = ExploreConfig(name="rentals", fact_model="rentals")
 
         renderer = ExploreRenderer()
-        result = renderer.render(config, fact_model, models)
+        result, includes = renderer.render(config, fact_model, models)
 
         join_names = {j["name"] for j in result["joins"]}
         assert "facilities" in join_names
