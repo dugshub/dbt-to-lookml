@@ -312,6 +312,11 @@ class CalendarRenderer:
         options: list[DateOption] = []
 
         all_models = [fact_model] + joined_models
+
+        # Count how many models have date_selector enabled
+        models_with_dates = [m for m in all_models if m.date_selector]
+        is_single_model = len(models_with_dates) == 1
+
         for model in all_models:
             if not model.date_selector:
                 continue
@@ -334,7 +339,11 @@ class CalendarRenderer:
                             if variant_name == "utc"
                             else variant_name.title()
                         )
-                        label = f"{view_title} {dim_title} ({variant_label})"
+                        # Omit view prefix for single-model explores
+                        if is_single_model:
+                            label = f"{dim_title} ({variant_label})"
+                        else:
+                            label = f"{view_title} {dim_title} ({variant_label})"
 
                         options.append(
                             DateOption(
@@ -347,7 +356,11 @@ class CalendarRenderer:
                         )
                 else:
                     # Simple dimension without variants
-                    label = f"{view_title} {dim_title}"
+                    # Omit view prefix for single-model explores
+                    if is_single_model:
+                        label = dim_title
+                    else:
+                        label = f"{view_title} {dim_title}"
                     dim_expr = dim.expr or dim.name  # Fallback to name if no expr
                     options.append(
                         DateOption(

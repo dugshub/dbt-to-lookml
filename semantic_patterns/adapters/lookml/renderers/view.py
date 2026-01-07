@@ -55,24 +55,60 @@ class ViewRenderer:
             Dict mapping column names AND dimension names to LookML field names
 
         Example:
-            Dimension: name="transaction_type", expr="rental_event_type"
+            Categorical dimension: name="transaction_type", expr="rental_event_type"
             Mapping: {
                 "rental_event_type": "transaction_type",  # column -> field
                 "transaction_type": "transaction_type",   # field -> field (identity)
+            }
+
+            Time dimension: name="created_at", expr="rental_created_at_utc"
+            Mapping: {
+                "rental_created_at_utc": "created_at_raw",  # column -> _raw field
+                "created_at": "created_at_raw",             # name -> _raw field
+            }
+
+            Time dimension with variants: name="created_at", variants={utc: col_utc, local: col_local}
+            Mapping: {
+                "col_utc": "created_at_utc_raw",      # variant column -> variant _raw field
+                "col_local": "created_at_local_raw", # variant column -> variant _raw field
+                "created_at_utc": "created_at_utc_raw",    # variant name -> variant _raw field
+                "created_at_local": "created_at_local_raw", # variant name -> variant _raw field
             }
         """
         mapping: dict[str, str] = {}
 
         # Add dimensions
         for dim in model.dimensions:
-            # Map dimension name to itself (for direct field references)
-            mapping[dim.name] = dim.name
-
-            # Also map column name to dimension name (for SQL column references)
-            if dim.expr:
-                col_name = ViewRenderer._extract_simple_column(dim.expr)
-                if col_name and col_name != dim.name:
-                    mapping[col_name] = dim.name
+            if dim.type == DimensionType.TIME:
+                # Time dimensions become dimension_groups with timeframe suffixes
+                # The _raw timeframe gives the actual timestamp value
+                if dim.has_variants and dim.variants:
+                    # Map each variant's column and name to its _raw field
+                    for variant_name, variant_expr in dim.variants.items():
+                        field_name = f"{dim.name}_{variant_name}_raw"
+                        # Map variant dimension name (e.g., "created_at_utc")
+                        mapping[f"{dim.name}_{variant_name}"] = field_name
+                        # Map variant SQL column (e.g., "rental_created_at_utc")
+                        col_name = ViewRenderer._extract_simple_column(variant_expr)
+                        if col_name:
+                            mapping[col_name] = field_name
+                else:
+                    # Non-variant time dimension
+                    field_name = f"{dim.name}_raw"
+                    # Map dimension name to _raw field
+                    mapping[dim.name] = field_name
+                    # Map SQL column to _raw field
+                    if dim.expr:
+                        col_name = ViewRenderer._extract_simple_column(dim.expr)
+                        if col_name and col_name != dim.name:
+                            mapping[col_name] = field_name
+            else:
+                # Categorical dimensions map directly
+                mapping[dim.name] = dim.name
+                if dim.expr:
+                    col_name = ViewRenderer._extract_simple_column(dim.expr)
+                    if col_name and col_name != dim.name:
+                        mapping[col_name] = dim.name
 
         # Add entities
         for entity in model.entities:
@@ -141,11 +177,31 @@ class ViewRenderer:
                 dimensions.extend(dim_results)
 
             # Add this dimension to the mapping for subsequent dimensions
-            defined_fields[dim.name] = dim.name
-            if dim.expr:
-                col_name = self._extract_simple_column(dim.expr)
-                if col_name and col_name != dim.name:
-                    defined_fields[col_name] = dim.name
+            # Time dimensions map to _raw field, categorical dimensions map directly
+            if dim.type == DimensionType.TIME:
+                if dim.has_variants and dim.variants:
+                    # Map each variant's column and name to its _raw field
+                    for variant_name, variant_expr in dim.variants.items():
+                        field_name = f"{dim.name}_{variant_name}_raw"
+                        defined_fields[f"{dim.name}_{variant_name}"] = field_name
+                        col_name = self._extract_simple_column(variant_expr)
+                        if col_name:
+                            defined_fields[col_name] = field_name
+                else:
+                    # Non-variant time dimension
+                    field_name = f"{dim.name}_raw"
+                    defined_fields[dim.name] = field_name
+                    if dim.expr:
+                        col_name = self._extract_simple_column(dim.expr)
+                        if col_name and col_name != dim.name:
+                            defined_fields[col_name] = field_name
+            else:
+                # Categorical dimensions map directly
+                defined_fields[dim.name] = dim.name
+                if dim.expr:
+                    col_name = self._extract_simple_column(dim.expr)
+                    if col_name and col_name != dim.name:
+                        defined_fields[col_name] = dim.name
 
         # Render entities as hidden dimensions with primary key
         entity_dims = self._render_entities(model.entities, defined_fields)
