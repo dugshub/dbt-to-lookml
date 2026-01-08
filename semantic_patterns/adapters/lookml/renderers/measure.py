@@ -28,6 +28,26 @@ AGG_TO_LOOKML: dict[AggregationType, str] = {
     AggregationType.PERCENTILE: "percentile",
 }
 
+
+def get_lookml_type(agg: AggregationType, has_expr: bool = True) -> str:
+    """
+    Get the LookML measure type for an aggregation type.
+
+    Special case: COUNT with an expression must use count_distinct in LookML
+    because LookML's "count" type just counts rows and doesn't accept sql parameter.
+
+    Args:
+        agg: The aggregation type
+        has_expr: Whether the measure has an expression (sql parameter)
+
+    Returns:
+        The LookML measure type string
+    """
+    lookml_type = AGG_TO_LOOKML.get(agg, "sum")
+    if agg == AggregationType.COUNT and has_expr:
+        lookml_type = "count_distinct"
+    return lookml_type
+
 # Map format strings to LookML value_format_name
 FORMAT_TO_LOOKML: dict[str, str] = {
     "usd": "usd",
@@ -60,16 +80,9 @@ class MeasureRenderer:
         """Render a raw measure to LookML."""
         fields = defined_fields if defined_fields is not None else self.defined_fields
 
-        # Determine LookML measure type
-        # Special case: COUNT with an expr should be count_distinct in LookML
-        # because LookML's "count" type just counts rows (no sql parameter)
-        lookml_type = AGG_TO_LOOKML.get(measure.agg, "sum")
-        if measure.agg == AggregationType.COUNT and measure.expr:
-            lookml_type = "count_distinct"
-
         result: dict[str, Any] = {
             "name": measure.name,
-            "type": lookml_type,
+            "type": get_lookml_type(measure.agg, bool(measure.expr)),
             "sql": self._qualify_expr(measure.expr, fields),
         }
 
@@ -134,15 +147,9 @@ class MeasureRenderer:
             else:
                 sql_expr = qualified_expr
 
-            # Determine LookML measure type
-            # Special case: COUNT with an expr should be count_distinct in LookML
-            lookml_type = AGG_TO_LOOKML.get(measure.agg, "sum")
-            if measure.agg == AggregationType.COUNT and measure.expr:
-                lookml_type = "count_distinct"
-
             result: dict[str, Any] = {
                 "name": metric.name,
-                "type": lookml_type,
+                "type": get_lookml_type(measure.agg, bool(measure.expr)),
                 "sql": sql_expr,
             }
         else:

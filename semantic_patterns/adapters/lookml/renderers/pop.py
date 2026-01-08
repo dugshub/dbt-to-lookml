@@ -25,6 +25,9 @@ from semantic_patterns.domain import (
 if TYPE_CHECKING:
     from semantic_patterns.domain import Measure
 
+    # For filter rendering (import at runtime to avoid circular imports)
+    from semantic_patterns.adapters.lookml.renderers.filter import FilterRenderer
+
 # Map PopComparison to Looker's period_over_period comparison_period
 COMPARISON_TO_LOOKML: dict[PopComparison, str] = {
     PopComparison.PRIOR_YEAR: "year",
@@ -267,6 +270,7 @@ class DynamicFilteredPopStrategy:
         self,
         metric: Metric,
         measures: dict[str, "Measure"] | None = None,
+        defined_fields: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Render all PoP measures for a metric based on its pop.outputs config.
@@ -278,6 +282,7 @@ class DynamicFilteredPopStrategy:
         Args:
             metric: The metric to render PoP measures for
             measures: Dict of measure name -> Measure for looking up expressions
+            defined_fields: Map of column_name -> field_name for filter rendering
         """
         if not metric.pop or not metric.pop.outputs:
             return []
@@ -285,7 +290,7 @@ class DynamicFilteredPopStrategy:
         results = []
         for output in metric.pop.outputs:
             if output == PopOutput.PREVIOUS:
-                results.append(self._render_prior(metric, measures))
+                results.append(self._render_prior(metric, measures, defined_fields))
             elif output == PopOutput.CHANGE:
                 results.append(self._render_change(metric))
             elif output == PopOutput.PERCENT_CHANGE:
@@ -297,9 +302,11 @@ class DynamicFilteredPopStrategy:
         self,
         metric: Metric,
         measures: dict[str, "Measure"] | None = None,
+        defined_fields: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Render the _prior filtered measure."""
-        from semantic_patterns.adapters.lookml.renderers.measure import AGG_TO_LOOKML
+        from semantic_patterns.adapters.lookml.renderers.filter import FilterRenderer
+        from semantic_patterns.adapters.lookml.renderers.measure import get_lookml_type
 
         base_label = metric.label or metric.name.replace("_", " ").title()
 
@@ -312,7 +319,7 @@ class DynamicFilteredPopStrategy:
         # Determine aggregation type from measure, default to sum
         lookml_type = "sum"
         if measure:
-            lookml_type = AGG_TO_LOOKML.get(measure.agg, "sum")
+            lookml_type = get_lookml_type(measure.agg, bool(measure.expr))
 
         result: dict[str, Any] = {
             "name": f"{metric.name}_prior",
@@ -328,12 +335,22 @@ class DynamicFilteredPopStrategy:
         }
 
         # Build SQL from the measure's expression
+        # IMPORTANT: Apply metric's filter (e.g., rental_event_type = 'completed')
+        # to match the base metric's behavior
+        fields = defined_fields or {}
         if measure:
-            # Use the measure's actual SQL expression
-            result["sql"] = f"${{TABLE}}.{measure.expr}"
+            base_sql = f"${{TABLE}}.{measure.expr}"
         elif metric.measure:
-            # Fallback: assume measure name is a column (may not work)
-            result["sql"] = f"${{TABLE}}.{metric.measure}"
+            base_sql = f"${{TABLE}}.{metric.measure}"
+        else:
+            base_sql = "NULL"
+
+        # Apply metric's filter as CASE WHEN (matching base metric pattern)
+        if metric.filter and metric.filter.conditions:
+            filter_renderer = FilterRenderer(defined_fields=fields)
+            result["sql"] = filter_renderer.render_case_when(base_sql, metric.filter, fields)
+        else:
+            result["sql"] = base_sql
 
         if metric.format:
             result["value_format_name"] = metric.format
