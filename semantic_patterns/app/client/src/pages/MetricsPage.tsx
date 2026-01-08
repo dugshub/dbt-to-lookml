@@ -43,10 +43,11 @@ export function MetricsPage() {
     )
   }
 
-  // Group by model
-  const byModel = metrics?.reduce((acc, metric) => {
-    if (!acc[metric.model]) acc[metric.model] = []
-    acc[metric.model].push(metric)
+  // Group by entity first
+  const byEntity = metrics?.reduce((acc, metric) => {
+    const entity = metric.entity || 'Other'
+    if (!acc[entity]) acc[entity] = []
+    acc[entity].push(metric)
     return acc
   }, {} as Record<string, typeof metrics>)
 
@@ -57,12 +58,10 @@ export function MetricsPage() {
         <span className="text-gray-400">{metrics?.length} total</span>
       </div>
 
-      {byModel && Object.entries(byModel).map(([model, items]) => (
-        <div key={model} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      {byEntity && Object.entries(byEntity).sort(([a], [b]) => a.localeCompare(b)).map(([entity, items]) => (
+        <div key={entity} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <div className="px-4 py-3 bg-gray-800/50 border-b border-gray-800">
-            <Link to={`/models/${model}`} className="font-medium text-white hover:text-blue-400">
-              {model}
-            </Link>
+            <span className="font-medium text-white">{entity}</span>
             <span className="text-gray-500 ml-2">({items?.length})</span>
           </div>
           <div className="grid gap-4 p-4 md:grid-cols-2">
@@ -70,14 +69,22 @@ export function MetricsPage() {
               const displayName = metric.label || metric.name
               return (
                 <div
-                  key={`${model}-${metric.name}`}
+                  key={`${metric.model}-${metric.name}`}
                   className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-4"
                 >
                   {/* Header */}
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <h3 className="font-semibold text-white">{displayName}</h3>
-                      <code className="text-xs text-gray-500">{metric.name}</code>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs text-gray-500">{metric.name}</code>
+                        <Link
+                          to={`/models/${metric.model}`}
+                          className="text-xs text-gray-500 hover:text-blue-400"
+                        >
+                          {metric.model}
+                        </Link>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 text-xs bg-purple-500/20 text-purple-300 rounded">

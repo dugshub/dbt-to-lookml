@@ -107,6 +107,7 @@ export interface ProcessedModel {
   time_dimension?: string
   primary_entity?: Entity
   foreign_entities: Entity[]
+  entity_group?: string
   total_variant_count: number
 }
 
@@ -119,7 +120,24 @@ export interface ModelSummary {
   metric_variants: number
   entities: number
   primary_entity?: string
+  entity_group?: string
   time_dimension?: string
+}
+
+// Cross-model types (include entity for grouping)
+export interface DimensionWithContext extends Dimension {
+  model: string
+  entity?: string
+}
+
+export interface MeasureWithContext extends Measure {
+  model: string
+  entity?: string
+}
+
+export interface MetricWithContext extends Metric {
+  model: string
+  entity?: string
 }
 
 export interface Stats {

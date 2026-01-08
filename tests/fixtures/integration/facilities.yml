@@ -13,6 +13,8 @@ semantic_models:
       Includes geography, operator hierarchy, and status.
     model: facilities
     time_dimension: created_at
+    meta:
+      entity_group: Facility
 
     entities:
       - name: facility

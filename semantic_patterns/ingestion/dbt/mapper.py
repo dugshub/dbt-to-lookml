@@ -150,6 +150,8 @@ def _extract_meta(dbt_obj: dict[str, Any]) -> dict[str, Any]:
         result["complete"] = meta["complete"]
     if "date_selector" in meta:
         result["date_selector"] = meta["date_selector"]
+    if "entity_group" in meta:
+        result["entity_group"] = meta["entity_group"]
 
     # Handle bi_field: false -> hidden: true (inverse)
     if "bi_field" in meta and not meta["bi_field"] and "hidden" not in result:
@@ -449,6 +451,11 @@ def map_semantic_model(dbt_model: dict[str, Any]) -> dict[str, Any]:
     # Direct mappings
     if "description" in dbt_model:
         result["description"] = dbt_model["description"]
+
+    # Extract model-level semantic_patterns metadata (for entity_group, etc.)
+    sp_meta = _extract_meta(dbt_model)
+    if sp_meta:
+        result["meta"] = sp_meta
 
     # Map entities
     entities = dbt_model.get("entities", [])

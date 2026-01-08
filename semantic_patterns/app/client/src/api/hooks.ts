@@ -8,6 +8,9 @@ import type {
   Measure,
   Metric,
   Entity,
+  DimensionWithContext,
+  MeasureWithContext,
+  MetricWithContext,
   ConfigResponse,
   ValidateResult,
   BuildResult,
@@ -112,7 +115,7 @@ export function useAllDimensions() {
   return useQuery({
     queryKey: queryKeys.allDimensions,
     queryFn: async () => {
-      const { data } = await api.get<(Dimension & { model: string })[]>('/dimensions')
+      const { data } = await api.get<DimensionWithContext[]>('/dimensions')
       return data
     },
   })
@@ -122,7 +125,7 @@ export function useAllMeasures() {
   return useQuery({
     queryKey: queryKeys.allMeasures,
     queryFn: async () => {
-      const { data } = await api.get<(Measure & { model: string })[]>('/measures')
+      const { data } = await api.get<MeasureWithContext[]>('/measures')
       return data
     },
   })
@@ -132,7 +135,7 @@ export function useAllMetrics() {
   return useQuery({
     queryKey: queryKeys.allMetrics,
     queryFn: async () => {
-      const { data } = await api.get<(Metric & { model: string })[]>('/metrics')
+      const { data } = await api.get<MetricWithContext[]>('/metrics')
       return data
     },
   })

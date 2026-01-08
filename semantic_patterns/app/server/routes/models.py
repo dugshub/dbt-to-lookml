@@ -29,6 +29,7 @@ async def list_models() -> list[dict[str, Any]]:
             "metric_variants": m.total_variant_count,
             "entities": len(m.entities),
             "primary_entity": m.primary_entity.name if m.primary_entity else None,
+            "entity_group": m.entity_group,
             "time_dimension": m.time_dimension,
         }
         for m in state.models
@@ -88,6 +89,7 @@ async def list_all_dimensions() -> list[dict[str, Any]]:
         for dim in model.dimensions:
             result.append({
                 "model": model.name,
+                "entity": model.entity_group,
                 **dim.model_dump(),
             })
     return result
@@ -101,6 +103,7 @@ async def list_all_measures() -> list[dict[str, Any]]:
         for measure in model.measures:
             result.append({
                 "model": model.name,
+                "entity": model.entity_group,
                 **measure.model_dump(),
             })
     return result
@@ -114,6 +117,7 @@ async def list_all_metrics() -> list[dict[str, Any]]:
         for metric in model.metrics:
             result.append({
                 "model": model.name,
+                "entity": model.entity_group,
                 **metric.model_dump(),
             })
     return result

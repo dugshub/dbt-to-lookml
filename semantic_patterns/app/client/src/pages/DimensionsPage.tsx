@@ -15,10 +15,11 @@ export function DimensionsPage() {
     )
   }
 
-  // Group by model
-  const byModel = dimensions?.reduce((acc, dim) => {
-    if (!acc[dim.model]) acc[dim.model] = []
-    acc[dim.model].push(dim)
+  // Group by entity first
+  const byEntity = dimensions?.reduce((acc, dim) => {
+    const entity = dim.entity || 'Other'
+    if (!acc[entity]) acc[entity] = []
+    acc[entity].push(dim)
     return acc
   }, {} as Record<string, typeof dimensions>)
 
@@ -29,12 +30,10 @@ export function DimensionsPage() {
         <span className="text-gray-400">{dimensions?.length} total</span>
       </div>
 
-      {byModel && Object.entries(byModel).map(([model, dims]) => (
-        <div key={model} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      {byEntity && Object.entries(byEntity).sort(([a], [b]) => a.localeCompare(b)).map(([entity, dims]) => (
+        <div key={entity} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <div className="px-4 py-3 bg-gray-800/50 border-b border-gray-800">
-            <Link to={`/models/${model}`} className="font-medium text-white hover:text-blue-400">
-              {model}
-            </Link>
+            <span className="font-medium text-white">{entity}</span>
             <span className="text-gray-500 ml-2">({dims?.length})</span>
           </div>
           <div className="p-4">
@@ -46,7 +45,7 @@ export function DimensionsPage() {
                 const showTechnicalName = dim.label && dim.label !== dim.name
                 return (
                   <div
-                    key={`${model}-${dim.name}`}
+                    key={`${dim.model}-${dim.name}`}
                     className="flex items-start justify-between py-2 border-b border-gray-800/50 last:border-0"
                   >
                     <div className="flex-1 min-w-0">
@@ -62,6 +61,12 @@ export function DimensionsPage() {
                             <EyeOff size={10} /> hidden
                           </span>
                         )}
+                        <Link
+                          to={`/models/${dim.model}`}
+                          className="text-xs text-gray-500 hover:text-blue-400"
+                        >
+                          {dim.model}
+                        </Link>
                       </div>
                       {showTechnicalName && (
                         <code className="text-xs text-gray-500 mt-0.5 block">{dim.name}</code>

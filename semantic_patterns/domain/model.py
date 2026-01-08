@@ -77,6 +77,31 @@ class ProcessedModel(BaseModel):
     def foreign_entities(self) -> list[Entity]:
         return [e for e in self.entities if e.type == "foreign"]
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def entity_group(self) -> str | None:
+        """Get entity group name for rollup display.
+
+        Resolution order:
+        1. Explicit override in meta.entity_group
+        2. Primary entity label (if set)
+        3. Primary entity name (capitalized)
+
+        This allows models with different primary entities to still roll up
+        under the same entity group for display purposes.
+        """
+        # Check for explicit override in meta
+        entity_group_override = self.meta.get("entity_group")
+        if isinstance(entity_group_override, str) and entity_group_override:
+            return entity_group_override
+        # Fall back to primary entity
+        if self.primary_entity:
+            return (
+                self.primary_entity.label
+                or self.primary_entity.name.replace("_", " ").title()
+            )
+        return None
+
     @property
     def sql_table_name(self) -> str | None:
         """Get fully qualified table name from data model."""
