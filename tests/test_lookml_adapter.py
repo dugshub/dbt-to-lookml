@@ -461,8 +461,9 @@ class TestDynamicFilteredPopStrategy:
         )
         assert result["filters"][0]["value"] == "yes"
         assert result["view_label"] == "  Metrics (PoP)"  # PoP always goes to Metrics (PoP)
-        # Compact style: just effective label (no category prefix)
-        assert result["group_label"] == "GMV"
+        # group_label: "Category · Short Label", group_item_label: "Short Label - Variant"
+        assert result["group_label"] == "Revenue · GMV"
+        assert result["group_item_label"] == "GMV - PY"
 
     def test_render_change_measure(self):
         """Test rendering the _change measure."""

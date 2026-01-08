@@ -145,10 +145,13 @@ class LookerNativePopStrategy:
                 result["value_format_name"] = metric.format
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label uses LabelResolver
+        # group_label groups all variants of a metric, group_item_label distinguishes them
         category = _extract_category(metric)
         result["view_label"] = "  Metrics (PoP)"
         result["group_label"] = self.label_resolver.pop_group_label(metric, category)
+        result["group_item_label"] = self.label_resolver.pop_group_item_label(
+            metric, comparison_str, output_str
+        )
 
         return result
 
@@ -336,10 +339,13 @@ class DynamicFilteredPopStrategy:
             result["value_format_name"] = metric.format
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label uses LabelResolver
+        # group_label groups all variants of a metric, group_item_label distinguishes them
         category = _extract_category(metric)
         result["view_label"] = "  Metrics (PoP)"
         result["group_label"] = self.label_resolver.pop_group_label(metric, category)
+        result["group_item_label"] = self.label_resolver.pop_group_item_label(
+            metric, "prior_year", "previous"
+        )
 
         return result
 
@@ -362,10 +368,13 @@ class DynamicFilteredPopStrategy:
             result["value_format_name"] = metric.format
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label uses LabelResolver
+        # group_label groups all variants of a metric, group_item_label distinguishes them
         category = _extract_category(metric)
         result["view_label"] = "  Metrics (PoP)"
         result["group_label"] = self.label_resolver.pop_group_label(metric, category)
+        result["group_item_label"] = self.label_resolver.pop_group_item_label(
+            metric, "prior_year", "change"
+        )
 
         return result
 
@@ -386,9 +395,12 @@ class DynamicFilteredPopStrategy:
         }
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label uses LabelResolver
+        # group_label groups all variants of a metric, group_item_label distinguishes them
         category = _extract_category(metric)
         result["view_label"] = "  Metrics (PoP)"
         result["group_label"] = self.label_resolver.pop_group_label(metric, category)
+        result["group_item_label"] = self.label_resolver.pop_group_item_label(
+            metric, "prior_year", "pct_change"
+        )
 
         return result

@@ -454,8 +454,8 @@ class TestPopLabel:
 class TestPopGroupLabel:
     """Tests for pop_group_label method."""
 
-    def test_compact_style_returns_effective_label(self):
-        """Compact style returns just the effective label."""
+    def test_returns_short_label_without_category(self):
+        """Returns just short label when no category provided."""
         config = LabelConfig(max_length=30, pop_style="compact")
         resolver = LabelResolver(config)
 
@@ -470,8 +470,8 @@ class TestPopGroupLabel:
         result = resolver.pop_group_label(metric)
         assert result == "GMV"
 
-    def test_compact_style_ignores_category(self):
-        """Compact style ignores category prefix."""
+    def test_includes_category_with_short_label(self):
+        """Returns 'Category · Short Label' format when category provided."""
         config = LabelConfig(max_length=30, pop_style="compact")
         resolver = LabelResolver(config)
 
@@ -483,9 +483,8 @@ class TestPopGroupLabel:
             short_label="GMV",
         )
 
-        result = resolver.pop_group_label(metric, category="Revenue Metrics")
-        # Category ignored in compact mode
-        assert result == "GMV"
+        result = resolver.pop_group_label(metric, category="Revenue")
+        assert result == "Revenue · GMV"
 
     def test_standard_style_includes_category_prefix(self):
         """Standard style includes category prefix when provided."""
@@ -519,8 +518,8 @@ class TestPopGroupLabel:
         result = resolver.pop_group_label(metric, category="Revenue")
         assert result == "Revenue · GMV"
 
-    def test_non_compact_style_without_category(self):
-        """Non-compact style without category returns just effective label."""
+    def test_without_category_returns_just_short_label(self):
+        """Without category returns just short/effective label."""
         config = LabelConfig(max_length=50, pop_style="standard")
         resolver = LabelResolver(config)
 
@@ -565,3 +564,132 @@ class TestPopGroupLabel:
 
         result = resolver.pop_group_label(metric, category="Revenue")
         assert result == "Revenue · Gross Merchandise Value"
+
+
+class TestPopGroupItemLabel:
+    """Tests for pop_group_item_label method."""
+
+    def test_previous_output_format(self):
+        """Previous output: 'GOV - PY'."""
+        config = LabelConfig(max_length=30, pop_style="compact")
+        resolver = LabelResolver(config)
+
+        metric = Metric(
+            name="gov",
+            type=MetricType.SIMPLE,
+            measure="checkout_amount",
+            label="Gross Order Value",
+            short_label="GOV",
+        )
+
+        result = resolver.pop_group_item_label(metric, "prior_year", "previous")
+        assert result == "GOV - PY"
+
+    def test_pct_change_output_format(self):
+        """Pct change output: 'GOV - PY%'."""
+        config = LabelConfig(max_length=30, pop_style="compact")
+        resolver = LabelResolver(config)
+
+        metric = Metric(
+            name="gov",
+            type=MetricType.SIMPLE,
+            measure="checkout_amount",
+            label="Gross Order Value",
+            short_label="GOV",
+        )
+
+        result = resolver.pop_group_item_label(metric, "prior_year", "pct_change")
+        assert result == "GOV - PY%"
+
+    def test_change_output_format(self):
+        """Change output: 'GOV - PYΔ'."""
+        config = LabelConfig(max_length=30, pop_style="compact")
+        resolver = LabelResolver(config)
+
+        metric = Metric(
+            name="gov",
+            type=MetricType.SIMPLE,
+            measure="checkout_amount",
+            label="Gross Order Value",
+            short_label="GOV",
+        )
+
+        result = resolver.pop_group_item_label(metric, "prior_year", "change")
+        assert result == "GOV - PYΔ"
+
+    def test_prior_month_abbreviation(self):
+        """Prior month uses PM abbreviation."""
+        config = LabelConfig(max_length=30, pop_style="compact")
+        resolver = LabelResolver(config)
+
+        metric = Metric(
+            name="gov",
+            type=MetricType.SIMPLE,
+            measure="checkout_amount",
+            short_label="GOV",
+        )
+
+        result = resolver.pop_group_item_label(metric, "prior_month", "previous")
+        assert result == "GOV - PM"
+
+    def test_prior_quarter_abbreviation(self):
+        """Prior quarter uses PQ abbreviation."""
+        config = LabelConfig(max_length=30, pop_style="compact")
+        resolver = LabelResolver(config)
+
+        metric = Metric(
+            name="gov",
+            type=MetricType.SIMPLE,
+            measure="checkout_amount",
+            short_label="GOV",
+        )
+
+        result = resolver.pop_group_item_label(metric, "prior_quarter", "pct_change")
+        assert result == "GOV - PQ%"
+
+    def test_uses_short_label_when_available(self):
+        """Uses short_label for the label portion."""
+        config = LabelConfig(max_length=30, pop_style="compact")
+        resolver = LabelResolver(config)
+
+        metric = Metric(
+            name="gmv",
+            type=MetricType.SIMPLE,
+            measure="total_gmv",
+            label="Gross Merchandise Value",
+            short_label="GMV",
+        )
+
+        result = resolver.pop_group_item_label(metric, "prior_year", "previous")
+        assert result == "GMV - PY"
+
+    def test_falls_back_to_label_when_no_short_label(self):
+        """Falls back to label when short_label not provided."""
+        config = LabelConfig(max_length=30, pop_style="compact")
+        resolver = LabelResolver(config)
+
+        metric = Metric(
+            name="revenue",
+            type=MetricType.SIMPLE,
+            measure="total_revenue",
+            label="Revenue",
+            # No short_label
+        )
+
+        result = resolver.pop_group_item_label(metric, "prior_year", "previous")
+        assert result == "Revenue - PY"
+
+    def test_unknown_comparison_uses_first_two_chars(self):
+        """Unknown comparison uses first 2 chars uppercase."""
+        config = LabelConfig(max_length=30, pop_style="compact")
+        resolver = LabelResolver(config)
+
+        metric = Metric(
+            name="revenue",
+            type=MetricType.SIMPLE,
+            measure="total_revenue",
+            short_label="Rev",
+        )
+
+        result = resolver.pop_group_item_label(metric, "custom_period", "previous")
+        assert result == "Rev - CU"

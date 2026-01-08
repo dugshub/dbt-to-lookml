@@ -151,16 +151,46 @@ class LabelResolver:
         category: str | None = None,
     ) -> str:
         """
-        Generate group_label for PoP variants.
+        Generate group_label for PoP variants: '{Category} · {Short Label}'.
 
-        For compact style, just uses the short/effective label.
-        For other styles, may include category prefix.
+        Groups all variants of a metric together under one collapsible header.
+        Example: "Revenue · GOV"
         """
-        effective = metric.short_label or self._get_base_label(metric)
-
-        if self.config.pop_style == "compact":
-            return effective
+        short = metric.short_label or self._get_base_label(metric)
 
         if category:
-            return f"{category} · {effective}"
-        return effective
+            return f"{category} · {short}"
+        return short
+
+    def pop_group_item_label(
+        self,
+        metric: Metric,
+        comparison: str,
+        output: str,
+    ) -> str:
+        """
+        Generate group_item_label for PoP variants: '{Short Label} - {Variant}'.
+
+        Provides compact labels within the group for each variant.
+        Examples:
+            - "GOV - PY" (prior year, previous value)
+            - "GOV - PY%" (prior year, percent change)
+            - "GOV - PYΔ" (prior year, absolute change)
+
+        Args:
+            metric: The base metric
+            comparison: Comparison type (e.g., "prior_year", "prior_month")
+            output: Output type (e.g., "previous", "change", "pct_change")
+        """
+        short = metric.short_label or self._get_base_label(metric)
+        comp_abbrev = COMPARISON_ABBREVS.get(comparison, comparison[:2].upper())
+
+        # Build variant suffix based on output type
+        if output == "pct_change":
+            variant = f"{comp_abbrev}%"
+        elif output == "change":
+            variant = f"{comp_abbrev}Δ"
+        else:  # previous
+            variant = comp_abbrev
+
+        return f"{short} - {variant}"
