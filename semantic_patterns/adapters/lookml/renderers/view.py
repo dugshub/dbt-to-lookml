@@ -10,6 +10,7 @@ import sqlglot.expressions as exp
 
 from semantic_patterns.adapters.dialect import Dialect
 from semantic_patterns.adapters.lookml.renderers.dimension import DimensionRenderer
+from semantic_patterns.adapters.lookml.sql_qualifier import qualify_table_columns
 from semantic_patterns.adapters.lookml.renderers.measure import MeasureRenderer
 from semantic_patterns.adapters.lookml.renderers.pop import (
     DynamicFilteredPopStrategy,
@@ -312,25 +313,27 @@ class ViewRenderer:
             return None
 
         # Create strategy based on configured type
-        measures: list[dict[str, Any]] = []
+        pop_measures_list: list[dict[str, Any]] = []
         if self.pop_strategy_type == "dynamic":
             # Dynamic strategy uses filtered measures with is_comparison_period
             # Calendar is rendered as +{fact_view} refinement, so filter is at fact_view
             dynamic_strategy = DynamicFilteredPopStrategy(calendar_view_name=fact_view_name)
+            # Build measures lookup for expression resolution
+            measures_dict = {m.name: m for m in model.measures}
             # Use render_all for dynamic strategy (generates measures per output type)
             for metric in model.metrics:
                 if metric.has_pop:
-                    pop_measures = dynamic_strategy.render_all(metric)
-                    measures.extend(pop_measures)
+                    pop_measures = dynamic_strategy.render_all(metric, measures_dict)
+                    pop_measures_list.extend(pop_measures)
         else:
             # Native strategy uses Looker's period_over_period type
             native_strategy = LookerNativePopStrategy(fact_view_name=fact_view_name)
             pop_renderer = PopRenderer(native_strategy)
             for metric in model.metrics:
                 pop_measures = pop_renderer.render_variants(metric)
-                measures.extend(pop_measures)
+                pop_measures_list.extend(pop_measures)
 
-        if not measures:
+        if not pop_measures_list:
             return None
 
         # PoP refinement needs to include base view AND metrics file
@@ -340,7 +343,7 @@ class ViewRenderer:
         return (
             {
                 "name": f"+{model.name}",  # Refinement syntax
-                "measures": measures,
+                "measures": pop_measures_list,
             },
             includes,
         )

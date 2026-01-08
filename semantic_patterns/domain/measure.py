@@ -31,6 +31,7 @@ class Measure(BaseModel):
     agg: AggregationType = Field(..., description="Aggregation type")
     expr: str = Field(..., description="SQL expression for the measure")
     label: str | None = Field(None, description="Display label")
+    short_label: str | None = Field(None, description="Short label for compact displays")
     description: str | None = Field(None, description="Human-readable description")
 
     # Display/organization

@@ -43,6 +43,7 @@ class Dimension(BaseModel):
     name: str = Field(..., description="Unique identifier")
     type: DimensionType = Field(..., description="Dimension type")
     label: str | None = Field(None, description="Display label")
+    short_label: str | None = Field(None, description="Short label for compact displays")
     description: str | None = Field(None, description="Human-readable description")
 
     # SQL expression (required unless variants specified)

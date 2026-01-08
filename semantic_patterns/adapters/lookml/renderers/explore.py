@@ -75,7 +75,7 @@ class ExploreRenderer:
         if explore_config.label:
             explore["label"] = explore_config.label
         else:
-            explore["label"] = _smart_title(explore_config.name)
+            explore["label"] = _smart_title(explore_config.effective_name)
 
         if explore_config.description:
             explore["description"] = explore_config.description
@@ -216,7 +216,7 @@ class ExploreRenderer:
         """
         override = explore_config.get_override(model_name)
         if override and override.relationship:
-            return override.relationship
+            return JoinRelationship(override.relationship)
         return default
 
     def _determine_expose_level(
@@ -237,7 +237,7 @@ class ExploreRenderer:
         # Check for override
         override = explore_config.get_override(target_model.name)
         if override and override.expose:
-            return override.expose
+            return ExposeLevel(override.expose)
 
         # Check if model is a joined fact (child fact in this explore)
         # joined_facts are explicitly declared child facts that should expose all fields
@@ -298,4 +298,4 @@ class ExploreRenderer:
         if not date_options:
             return None
 
-        return self.calendar_renderer.render(explore_config.name, date_options)
+        return self.calendar_renderer.render(explore_config.effective_name, date_options)

@@ -36,6 +36,16 @@ class ModelConfig(BaseModel):
     model_config = {"frozen": True}
 
 
+class LabelConfig(BaseModel):
+    """Configuration for label rendering behavior."""
+
+    max_length: int = 27  # Looker filter clips at ~27-29 chars
+    group_conformity: bool = True  # If one field in group uses short_label, all do
+    pop_style: str = "compact"  # "compact", "standard", or "verbose"
+
+    model_config = {"frozen": True}
+
+
 class OptionsConfig(BaseModel):
     """Generator options configuration."""
 
@@ -45,6 +55,7 @@ class OptionsConfig(BaseModel):
     convert_tz: bool = False  # Convert time dimensions to UTC
     view_prefix: str = ""  # Prefix for view names
     explore_prefix: str = ""  # Prefix for explore names (defaults to view_prefix)
+    labels: LabelConfig = Field(default_factory=LabelConfig)
 
     model_config = {"frozen": True}
 

@@ -150,6 +150,8 @@ def _extract_meta(dbt_obj: dict[str, Any]) -> dict[str, Any]:
         result["complete"] = meta["complete"]
     if "date_selector" in meta:
         result["date_selector"] = meta["date_selector"]
+    if "short_label" in meta:
+        result["short_label"] = meta["short_label"]
 
     # Handle bi_field: false -> hidden: true (inverse)
     if "bi_field" in meta and not meta["bi_field"] and "hidden" not in result:
@@ -238,6 +240,15 @@ def map_dimension(dbt_dim: dict[str, Any]) -> dict[str, Any]:
     if "hidden" in sp_meta:
         result["hidden"] = sp_meta["hidden"]
 
+    # Extract short_label from meta or as direct field
+    short_label = (
+        dbt_dim.get("meta", {}).get("short_label")
+        or dbt_dim.get("short_label")
+        or sp_meta.get("short_label")
+    )
+    if short_label:
+        result["short_label"] = short_label
+
     return result
 
 
@@ -288,6 +299,15 @@ def map_measure(dbt_measure: dict[str, Any]) -> dict[str, Any]:
         result["format"] = sp_meta["format"]
     if "hidden" in sp_meta:
         result["hidden"] = sp_meta["hidden"]
+
+    # Extract short_label from meta or as direct field
+    short_label = (
+        dbt_measure.get("meta", {}).get("short_label")
+        or dbt_measure.get("short_label")
+        or sp_meta.get("short_label")
+    )
+    if short_label:
+        result["short_label"] = short_label
 
     return result
 
@@ -432,6 +452,15 @@ def map_metric(dbt_metric: dict[str, Any]) -> dict[str, Any]:
         result["entity"] = sp_meta["entity"]
     if "pop" in sp_meta:
         result["pop"] = sp_meta["pop"]
+
+    # Extract short_label from meta or as direct field
+    short_label = (
+        dbt_metric.get("meta", {}).get("short_label")
+        or dbt_metric.get("short_label")
+        or sp_meta.get("short_label")
+    )
+    if short_label:
+        result["short_label"] = short_label
 
     return result
 

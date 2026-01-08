@@ -114,7 +114,8 @@ class CalendarRenderer:
             return None
 
         # Determine fact view (first in list if not specified)
-        fact_view = fact_view_name or (date_options[0].view if date_options else None)
+        # date_options is guaranteed non-empty here (early return above)
+        fact_view = fact_view_name or date_options[0].view
 
         # Build date_field parameter with allowed values
         # Use actual SQL column names for direct parameter injection

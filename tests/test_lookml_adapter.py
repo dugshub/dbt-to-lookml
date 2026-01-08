@@ -452,7 +452,8 @@ class TestDynamicFilteredPopStrategy:
 
         assert result["name"] == "gmv_prior"
         assert result["type"] == "sum"
-        assert result["label"] == "GMV (PoP)"
+        # Default compact style: "{short} ({comp_abbrev})" -> "GMV (PY)"
+        assert result["label"] == "GMV (PY)"
         assert result["value_format_name"] == "usd"
         assert (
             result["filters"][0]["field"]
@@ -460,7 +461,8 @@ class TestDynamicFilteredPopStrategy:
         )
         assert result["filters"][0]["value"] == "yes"
         assert result["view_label"] == "  Metrics (PoP)"  # PoP always goes to Metrics (PoP)
-        assert result["group_label"] == "Revenue · GMV"  # Category · Metric Label
+        # Compact style: just effective label (no category prefix)
+        assert result["group_label"] == "GMV"
 
     def test_render_change_measure(self):
         """Test rendering the _change measure."""
@@ -478,7 +480,8 @@ class TestDynamicFilteredPopStrategy:
 
         assert result["name"] == "gmv_change"
         assert result["type"] == "number"
-        assert result["label"] == "GMV Change"
+        # Default compact style: "{short} Δ {comp_abbrev}" -> "GMV Δ PY"
+        assert result["label"] == "GMV Δ PY"
         assert "${gmv}" in result["sql"]
         assert "${gmv_prior}" in result["sql"]
 

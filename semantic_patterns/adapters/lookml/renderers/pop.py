@@ -8,9 +8,11 @@ The dynamic strategy generates fewer measures (3 per metric vs N*M with native)
 and gives users runtime control over the comparison period.
 """
 
-from typing import Any, Protocol
+from __future__ import annotations
 
-from semantic_patterns.adapters.lookml.renderers.labels import apply_pop_view_label
+from typing import TYPE_CHECKING, Any, Protocol
+
+from semantic_patterns.adapters.lookml.labels import LabelResolver
 from semantic_patterns.domain import (
     Metric,
     MetricVariant,
@@ -20,6 +22,9 @@ from semantic_patterns.domain import (
     VariantKind,
 )
 
+if TYPE_CHECKING:
+    from semantic_patterns.domain import Measure
+
 # Map PopComparison to Looker's period_over_period comparison_period
 COMPARISON_TO_LOOKML: dict[PopComparison, str] = {
     PopComparison.PRIOR_YEAR: "year",
@@ -27,6 +32,15 @@ COMPARISON_TO_LOOKML: dict[PopComparison, str] = {
     PopComparison.PRIOR_QUARTER: "quarter",
     PopComparison.PRIOR_WEEK: "week",
 }
+
+
+def _extract_category(metric: Metric) -> str | None:
+    """Extract category from metric's group_parts for PoP group_label."""
+    if len(metric.group_parts) >= 2:
+        return metric.group_parts[1]
+    elif metric.group_parts:
+        return metric.group_parts[0]
+    return None
 
 # Map PopOutput to Looker's period_over_period kind
 OUTPUT_TO_LOOKML: dict[PopOutput, str] = {
@@ -66,15 +80,25 @@ class LookerNativePopStrategy:
     - Calendar is added via view extension (+fact_view) in explore file
     """
 
-    def __init__(self, fact_view_name: str | None = None) -> None:
+    def __init__(
+        self,
+        fact_view_name: str | None = None,
+        label_resolver: LabelResolver | None = None,
+    ) -> None:
         """
         Initialize with fact view name for qualified based_on_time references.
 
         Args:
             fact_view_name: Name of the fact view (e.g., "sp_rentals")
                            Calendar dimension is defined on this view.
+            label_resolver: Optional LabelResolver for label generation.
+                           If not provided, a default one is created.
         """
         self.fact_view_name = fact_view_name
+        if label_resolver is None:
+            from semantic_patterns.config import LabelConfig
+            label_resolver = LabelResolver(LabelConfig())
+        self.label_resolver = label_resolver
 
     def render(
         self,
@@ -101,27 +125,14 @@ class LookerNativePopStrategy:
         if self.fact_view_name:
             result["based_on_time"] = f"{self.fact_view_name}.calendar_date"
 
-        # Generate label
-        comparison_labels = {
-            PopComparison.PRIOR_YEAR: "Prior Year",
-            PopComparison.PRIOR_MONTH: "Prior Month",
-            PopComparison.PRIOR_QUARTER: "Prior Quarter",
-            PopComparison.PRIOR_WEEK: "Prior Week",
-        }
-        output_labels = {
-            PopOutput.PREVIOUS: "",
-            PopOutput.CHANGE: "Change",
-            PopOutput.PERCENT_CHANGE: "% Change",
-        }
+        # Generate label using LabelResolver
+        # Convert enum names to lowercase strings for LabelResolver lookup
+        comparison_str = params.comparison.name.lower()  # e.g., "prior_year"
+        output_str = params.output.value  # e.g., "previous", "change", "pct_change"
 
-        comp_label = comparison_labels.get(params.comparison, "Prior Period")
-        out_label = output_labels.get(params.output, "")
-
-        base_label = metric.label or metric.name.replace("_", " ").title()
-        if out_label:
-            result["label"] = f"{base_label} vs {comp_label} ({out_label})"
-        else:
-            result["label"] = f"{base_label} ({comp_label})"
+        result["label"] = self.label_resolver.pop_label(
+            metric, comparison_str, output_str
+        )
 
         # Inherit format from variant or metric
         if variant.value_format:
@@ -134,10 +145,10 @@ class LookerNativePopStrategy:
                 result["value_format_name"] = metric.format
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label format: "{Category} · {Metric Label}"
-        category = metric.group_parts[1] if len(metric.group_parts) >= 2 else metric.group_parts[0] if metric.group_parts else None
-        metric_label = metric.label or metric.name.replace("_", " ").title()
-        apply_pop_view_label(result, category, metric_label)
+        # group_label uses LabelResolver
+        category = _extract_category(metric)
+        result["view_label"] = "  Metrics (PoP)"
+        result["group_label"] = self.label_resolver.pop_group_label(metric, category)
 
         return result
 
@@ -190,14 +201,24 @@ class DynamicFilteredPopStrategy:
     - The calendar view must have `is_comparison_period` dimension
     """
 
-    def __init__(self, calendar_view_name: str) -> None:
+    def __init__(
+        self,
+        calendar_view_name: str,
+        label_resolver: LabelResolver | None = None,
+    ) -> None:
         """
         Initialize with the calendar view name for filter references.
 
         Args:
             calendar_view_name: Name of the calendar view
+            label_resolver: Optional LabelResolver for label generation.
+                           If not provided, a default one is created.
         """
         self.calendar_view_name = calendar_view_name
+        if label_resolver is None:
+            from semantic_patterns.config import LabelConfig
+            label_resolver = LabelResolver(LabelConfig())
+        self.label_resolver = label_resolver
         self._rendered_outputs: dict[str, set[PopOutput]] = {}
 
     def reset(self) -> None:
@@ -239,13 +260,21 @@ class DynamicFilteredPopStrategy:
 
         return None
 
-    def render_all(self, metric: Metric) -> list[dict[str, Any]]:
+    def render_all(
+        self,
+        metric: Metric,
+        measures: dict[str, "Measure"] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Render all PoP measures for a metric based on its pop.outputs config.
 
         This is the preferred method for dynamic PoP - generates exactly
         the measures specified in outputs, ignoring comparisons (which are
         handled by the calendar parameter).
+
+        Args:
+            metric: The metric to render PoP measures for
+            measures: Dict of measure name -> Measure for looking up expressions
         """
         if not metric.pop or not metric.pop.outputs:
             return []
@@ -253,7 +282,7 @@ class DynamicFilteredPopStrategy:
         results = []
         for output in metric.pop.outputs:
             if output == PopOutput.PREVIOUS:
-                results.append(self._render_prior(metric))
+                results.append(self._render_prior(metric, measures))
             elif output == PopOutput.CHANGE:
                 results.append(self._render_change(metric))
             elif output == PopOutput.PERCENT_CHANGE:
@@ -261,17 +290,31 @@ class DynamicFilteredPopStrategy:
 
         return results
 
-    def _render_prior(self, metric: Metric) -> dict[str, Any]:
+    def _render_prior(
+        self,
+        metric: Metric,
+        measures: dict[str, "Measure"] | None = None,
+    ) -> dict[str, Any]:
         """Render the _prior filtered measure."""
+        from semantic_patterns.adapters.lookml.renderers.measure import AGG_TO_LOOKML
+
         base_label = metric.label or metric.name.replace("_", " ").title()
+
+        # Use LabelResolver for label generation (previous output type)
+        label = self.label_resolver.pop_label(metric, "prior_year", "previous")
+
+        # Look up the underlying measure for expression and aggregation type
+        measure = measures.get(metric.measure or "") if measures and metric.measure else None
+
+        # Determine aggregation type from measure, default to sum
+        lookml_type = "sum"
+        if measure:
+            lookml_type = AGG_TO_LOOKML.get(measure.agg, "sum")
 
         result: dict[str, Any] = {
             "name": f"{metric.name}_prior",
-            # Known limitation: hardcoded to SUM aggregation. Inheriting from base
-            # metric requires tracking the measure's aggregation type through the
-            # domain layer. For now, most PoP metrics are additive (sum-based).
-            "type": "sum",
-            "label": f"{base_label} (PoP)",
+            "type": lookml_type,
+            "label": label,
             "description": f"{base_label} for the selected comparison period",
             "filters": [
                 {
@@ -281,21 +324,22 @@ class DynamicFilteredPopStrategy:
             ],
         }
 
-        # Build SQL - needs to match the base metric.
-        # For simple metrics, this is the measure's expression.
-        # Out of scope for v0.3: derived/ratio metrics (which combine multiple
-        # measures) and pre-filtered metrics would require recursive SQL building.
-        if metric.measure:
+        # Build SQL from the measure's expression
+        if measure:
+            # Use the measure's actual SQL expression
+            result["sql"] = f"${{TABLE}}.{measure.expr}"
+        elif metric.measure:
+            # Fallback: assume measure name is a column (may not work)
             result["sql"] = f"${{TABLE}}.{metric.measure}"
 
         if metric.format:
             result["value_format_name"] = metric.format
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label format: "{Category} · {Metric Label}"
-        category = metric.group_parts[1] if len(metric.group_parts) >= 2 else metric.group_parts[0] if metric.group_parts else None
-        metric_label = metric.label or metric.name.replace("_", " ").title()
-        apply_pop_view_label(result, category, metric_label)
+        # group_label uses LabelResolver
+        category = _extract_category(metric)
+        result["view_label"] = "  Metrics (PoP)"
+        result["group_label"] = self.label_resolver.pop_group_label(metric, category)
 
         return result
 
@@ -303,10 +347,13 @@ class DynamicFilteredPopStrategy:
         """Render the _change measure (current - prior)."""
         base_label = metric.label or metric.name.replace("_", " ").title()
 
+        # Use LabelResolver for label generation (change output type)
+        label = self.label_resolver.pop_label(metric, "prior_year", "change")
+
         result: dict[str, Any] = {
             "name": f"{metric.name}_change",
             "type": "number",
-            "label": f"{base_label} Change",
+            "label": label,
             "description": f"Difference between current and prior period {base_label}",
             "sql": f"${{{metric.name}}} - ${{{metric.name}_prior}}",
         }
@@ -315,32 +362,33 @@ class DynamicFilteredPopStrategy:
             result["value_format_name"] = metric.format
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label format: "{Category} · {Metric Label}"
-        category = metric.group_parts[1] if len(metric.group_parts) >= 2 else metric.group_parts[0] if metric.group_parts else None
-        metric_label = metric.label or metric.name.replace("_", " ").title()
-        apply_pop_view_label(result, category, metric_label)
+        # group_label uses LabelResolver
+        category = _extract_category(metric)
+        result["view_label"] = "  Metrics (PoP)"
+        result["group_label"] = self.label_resolver.pop_group_label(metric, category)
 
         return result
 
     def _render_pct_change(self, metric: Metric) -> dict[str, Any]:
         """Render the _pct_change measure."""
-        base_label = metric.label or metric.name.replace("_", " ").title()
+        # Use LabelResolver for label generation (pct_change output type)
+        label = self.label_resolver.pop_label(metric, "prior_year", "pct_change")
 
         prior = f"${{{metric.name}_prior}}"
         current = f"${{{metric.name}}}"
         result: dict[str, Any] = {
             "name": f"{metric.name}_pct_change",
             "type": "number",
-            "label": f"{base_label} % Change",
+            "label": label,
             "description": "Percent change from prior period",
             "sql": f"({current} - {prior}) / NULLIF({prior}, 0)",
             "value_format_name": "percent_1",
         }
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label format: "{Category} · {Metric Label}"
-        category = metric.group_parts[1] if len(metric.group_parts) >= 2 else metric.group_parts[0] if metric.group_parts else None
-        metric_label = metric.label or metric.name.replace("_", " ").title()
-        apply_pop_view_label(result, category, metric_label)
+        # group_label uses LabelResolver
+        category = _extract_category(metric)
+        result["view_label"] = "  Metrics (PoP)"
+        result["group_label"] = self.label_resolver.pop_group_label(metric, category)
 
         return result
