@@ -42,6 +42,7 @@ class ProcessedModel(BaseModel):
     """
 
     name: str
+    label: str | None = None
     description: str | None = None
 
     # Data source

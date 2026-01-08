@@ -113,6 +113,7 @@ export interface ProcessedModel {
 
 export interface ModelSummary {
   name: string
+  label?: string
   description?: string
   dimensions: number
   measures: number

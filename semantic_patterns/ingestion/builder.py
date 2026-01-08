@@ -131,6 +131,9 @@ class DomainBuilder:
         # Build measures
         measures = [self._build_measure(m) for m in data.get("measures", [])]
 
+        # Resolve COUNT measures without expr - use primary entity for count_distinct
+        measures = self._resolve_count_measures(measures, entities)
+
         # Build metrics (filter to those belonging to this model by entity)
         model_metrics = self._get_metrics_for_model(name, entities)
         metrics = [self._build_metric(m) for m in model_metrics]
@@ -147,6 +150,7 @@ class DomainBuilder:
 
         return ProcessedModel(
             name=name,
+            label=data.get("label"),
             description=data.get("description"),
             data_model=data_model,
             measures=measures,
@@ -183,6 +187,54 @@ class DomainBuilder:
             label=data.get("label"),
             complete=data.get("complete", False),
         )
+
+    def _resolve_count_measures(
+        self, measures: list[Measure], entities: list[Entity]
+    ) -> list[Measure]:
+        """
+        Resolve COUNT measures without expressions.
+
+        For measures with agg=COUNT and no expr, use the primary entity's
+        expression and convert to COUNT_DISTINCT. This is safer than raw
+        row counts which can be inflated by joins.
+
+        Args:
+            measures: List of measures to resolve
+            entities: List of entities (to find primary)
+
+        Returns:
+            Updated list of measures with resolved expressions
+        """
+        # Find primary entity
+        primary_entity = next(
+            (e for e in entities if e.type == "primary"), None
+        )
+
+        if not primary_entity:
+            return measures
+
+        resolved = []
+        for measure in measures:
+            if measure.agg == AggregationType.COUNT and not measure.expr:
+                # Use primary entity expr and convert to count_distinct
+                resolved.append(
+                    Measure(
+                        name=measure.name,
+                        agg=AggregationType.COUNT_DISTINCT,
+                        expr=primary_entity.expr,
+                        label=measure.label,
+                        short_label=measure.short_label,
+                        description=measure.description,
+                        format=measure.format,
+                        group=measure.group,
+                        hidden=measure.hidden,
+                        meta=measure.meta,
+                    )
+                )
+            else:
+                resolved.append(measure)
+
+        return resolved
 
     def _build_dimension(self, data: dict[str, Any]) -> Dimension:
         """Build Dimension from dict."""
@@ -231,10 +283,19 @@ class DomainBuilder:
         except ValueError:
             agg = AggregationType.SUM
 
+        # expr can be None for COUNT - will be resolved later using primary entity
+        # For other aggregation types, expr is required
+        expr = data.get("expr")
+        if not expr and agg != AggregationType.COUNT:
+            raise KeyError(
+                f"Measure '{data.get('name', 'unknown')}' with agg '{agg_str}' "
+                "requires 'expr'. Only 'count' can omit expr (uses primary entity)."
+            )
+
         return Measure(
             name=data["name"],
             agg=agg,
-            expr=data["expr"],
+            expr=expr,
             label=data.get("label"),
             short_label=data.get("short_label"),
             description=data.get("description"),

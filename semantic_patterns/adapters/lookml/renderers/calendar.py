@@ -160,6 +160,7 @@ class CalendarRenderer:
         parameters = [date_field_param]
         dimensions = []
         filters = []
+        dimension_groups = [dimension_group]
 
         # Add PoP infrastructure if enabled
         if pop_config and pop_config.enabled:
@@ -172,12 +173,14 @@ class CalendarRenderer:
                 parameters.append(pop_elements["parameter"])
             if pop_elements.get("dimensions"):
                 dimensions.extend(pop_elements["dimensions"])
+            if pop_elements.get("dimension_group"):
+                dimension_groups.append(pop_elements["dimension_group"])
 
         # Return as view refinement (+view_name) to extend the fact view
         result: dict[str, Any] = {
             "name": f"+{fact_view}",  # View refinement syntax
             "parameters": parameters,
-            "dimension_groups": [dimension_group],
+            "dimension_groups": dimension_groups,
         }
 
         if filters:
@@ -243,18 +246,29 @@ class CalendarRenderer:
         # This avoids duplicating the CASE statement in each period dimension
         calendar_raw_ref = "${calendar_raw}"
 
-        # is_selected_period - TRUE if date falls within selected date_range
-        is_selected_sql = (
-            f"{{% condition date_range %}} {calendar_raw_ref} {{% endcondition %}}"
-        )
+        # is_selected_period - TRUE if date falls within selected period
+        # Falls back to calendar_month filter if date_range not set
+        is_selected_sql = f"""{{% if date_range._is_filtered %}}
+          {{% condition date_range %}} {calendar_raw_ref} {{% endcondition %}}
+        {{% elsif calendar_month._is_filtered %}}
+          {{% condition calendar_month %}} {calendar_raw_ref} {{% endcondition %}}
+        {{% else %}}
+          TRUE
+        {{% endif %}}"""
 
         # is_comparison_period - TRUE if date falls within the offset period
         # Uses dialect-specific DATEADD to shift the date forward by comparison period
         # Then checks if the shifted date falls within the selected range
+        # Falls back to calendar_month filter if date_range not set
+        # Returns FALSE if neither filter is set (avoids silent wrong results)
         dateadd_expr = self._build_comparison_dateadd(calendar_raw_ref)
-        is_comparison_sql = f"""{{% condition date_range %}}
-          {dateadd_expr}
-        {{% endcondition %}}"""
+        is_comparison_sql = f"""{{% if date_range._is_filtered %}}
+          {{% condition date_range %}} {dateadd_expr} {{% endcondition %}}
+        {{% elsif calendar_month._is_filtered %}}
+          {{% condition calendar_month %}} {dateadd_expr} {{% endcondition %}}
+        {{% else %}}
+          FALSE
+        {{% endif %}}"""
 
         result["dimensions"] = [
             {
@@ -270,6 +284,26 @@ class CalendarRenderer:
                 "sql": is_comparison_sql,
             },
         ]
+
+        # pop_calendar - aligned date that shifts comparison period data forward
+        # This allows grouping where prior year data appears in same bucket as current year
+        # 2024-02 data (is_comparison_period=yes) → pop_calendar = 2025-02
+        # 2025-02 data (is_comparison_period=no) → pop_calendar = 2025-02
+        pop_calendar_sql = f"""CASE
+          WHEN {is_comparison_sql} THEN {dateadd_expr}
+          ELSE {calendar_raw_ref}
+        END"""
+
+        result["dimension_group"] = {
+            "name": "pop_calendar",
+            "type": "time",
+            "datatype": "datetime",
+            "label": "PoP Calendar",
+            "description": "Aligned calendar for Period-over-Period analysis. Prior period data is shifted to align with current period.",
+            "view_label": " Calendar",
+            "timeframes": ["raw", "date", "week", "month", "quarter", "year"],
+            "sql": pop_calendar_sql,
+        }
 
         return result
 

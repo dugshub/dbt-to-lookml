@@ -507,6 +507,8 @@ def map_semantic_model(dbt_model: dict[str, Any]) -> dict[str, Any]:
     }
 
     # Direct mappings
+    if "label" in dbt_model:
+        result["label"] = dbt_model["label"]
     if "description" in dbt_model:
         result["description"] = dbt_model["description"]
 

@@ -29,7 +29,11 @@ class Measure(BaseModel):
 
     name: str = Field(..., description="Unique identifier for the measure")
     agg: AggregationType = Field(..., description="Aggregation type")
-    expr: str = Field(..., description="SQL expression for the measure")
+    expr: str | None = Field(
+        None,
+        description="SQL expression for the measure. Required for most types, "
+        "but COUNT can omit to use primary entity.",
+    )
     label: str | None = Field(None, description="Display label")
     short_label: str | None = Field(None, description="Short label for compact displays")
     description: str | None = Field(None, description="Human-readable description")

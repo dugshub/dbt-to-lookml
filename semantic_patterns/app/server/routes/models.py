@@ -22,6 +22,7 @@ async def list_models() -> list[dict[str, Any]]:
     return [
         {
             "name": m.name,
+            "label": m.label,
             "description": m.description,
             "dimensions": len(m.dimensions),
             "measures": len(m.measures),

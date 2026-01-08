@@ -337,10 +337,11 @@ class TestViewRenderer:
         assert result is not None
         view, includes = result
         assert view["name"] == "+rentals"
-        # Dynamic strategy generates measures based on outputs, not comparisons
-        assert len(view["measures"]) == 2  # _prior and _pct_change
+        # Dynamic strategy generates: _current (always), plus configured outputs
+        assert len(view["measures"]) == 3  # _current, _prior, _pct_change
         # Check measure names
         names = {m["name"] for m in view["measures"]}
+        assert "gmv_current" in names
         assert "gmv_prior" in names
         assert "gmv_pct_change" in names
         # Prior measure uses filtered approach
@@ -461,9 +462,9 @@ class TestDynamicFilteredPopStrategy:
         )
         assert result["filters"][0]["value"] == "yes"
         assert result["view_label"] == "  Metrics (PoP)"  # PoP always goes to Metrics (PoP)
-        # group_label: "Category · Short Label", group_item_label: "Short Label - Variant"
+        # group_label: "Category · Short Label", group_item_label: simple variant name
         assert result["group_label"] == "Revenue · GMV"
-        assert result["group_item_label"] == "GMV - PY"
+        assert result["group_item_label"] == "Prior Period"
 
     def test_render_change_measure(self):
         """Test rendering the _change measure."""
@@ -483,7 +484,7 @@ class TestDynamicFilteredPopStrategy:
         assert result["type"] == "number"
         # Default compact style: "{short} Δ {comp_abbrev}" -> "GMV Δ PY"
         assert result["label"] == "GMV Δ PY"
-        assert "${gmv}" in result["sql"]
+        assert "${gmv_current}" in result["sql"]
         assert "${gmv_prior}" in result["sql"]
 
     def test_render_pct_change_measure(self):
@@ -523,10 +524,10 @@ class TestDynamicFilteredPopStrategy:
 
         results = strategy.render_all(metric)
 
-        # Should generate exactly 3 measures (one per output), not 6 (comparisons × outputs)
-        assert len(results) == 3
+        # Should generate _current (always) + 3 outputs = 4 measures total
+        assert len(results) == 4
         names = {r["name"] for r in results}
-        assert names == {"gmv_prior", "gmv_change", "gmv_pct_change"}
+        assert names == {"gmv_current", "gmv_prior", "gmv_change", "gmv_pct_change"}
 
     def test_deduplication_via_render(self):
         """Test that render() deduplicates by output type."""

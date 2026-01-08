@@ -24,10 +24,12 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from collections.abc import Callable
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -36,6 +38,10 @@ from rich.console import Console
 
 # Service name used for all keychain entries
 SERVICE_NAME = "semantic-patterns"
+
+# Local credentials file path
+CREDENTIALS_DIR = Path.home() / ".semantic-patterns"
+CREDENTIALS_FILE = CREDENTIALS_DIR / "credentials.json"
 
 
 class CredentialType(str, Enum):
@@ -194,12 +200,13 @@ def github_device_flow(console: Console) -> str | None:
 
 
 class CredentialStore:
-    """Unified credential storage with keychain and environment fallback.
+    """Unified credential storage with local file, keychain, and environment fallback.
 
     Priority order for credential resolution:
     1. Environment variable (for CI/automation)
-    2. System keychain (for local development)
-    3. Interactive prompt (one-time setup, saves to keychain)
+    2. Local file ~/.semantic-patterns/credentials.json (primary storage)
+    3. System keychain (legacy fallback)
+    4. Interactive prompt (one-time setup, saves to local file)
     """
 
     def __init__(self, console: Console | None = None) -> None:
@@ -209,6 +216,32 @@ class CredentialStore:
             console: Rich console for interactive prompts. If None, creates one.
         """
         self.console = console or Console()
+
+    def _read_local_credentials(self) -> dict[str, str]:
+        """Read credentials from local file."""
+        if CREDENTIALS_FILE.exists():
+            try:
+                return json.loads(CREDENTIALS_FILE.read_text())
+            except (json.JSONDecodeError, OSError):
+                return {}
+        return {}
+
+    def _write_local_credentials(self, creds: dict[str, str]) -> bool:
+        """Write credentials to local file."""
+        try:
+            CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
+            CREDENTIALS_FILE.write_text(json.dumps(creds, indent=2))
+            # Secure the file (owner read/write only)
+            CREDENTIALS_FILE.chmod(0o600)
+            return True
+        except OSError:
+            return False
+
+    def _save_to_local(self, key: str, value: str) -> bool:
+        """Save a single credential to local file."""
+        creds = self._read_local_credentials()
+        creds[key] = value
+        return self._write_local_credentials(creds)
 
     def get(
         self,
@@ -243,22 +276,29 @@ class CredentialStore:
 
         # 1. Check environment variable
         # Note: We explicitly check for non-empty strings to avoid empty env vars
-        # overriding keychain values (e.g., LOOKER_CLIENT_ID="" should fall through)
+        # overriding other values (e.g., LOOKER_CLIENT_ID="" should fall through)
         env_var = ENV_VAR_MAPPING.get(key, f"SP_{key.upper().replace('-', '_')}")
         env_value = os.environ.get(env_var)
         if env_value is not None and env_value.strip():
             return env_value
 
-        # 2. Check keychain
+        # 2. Check local file (primary storage)
+        local_creds = self._read_local_credentials()
+        if key in local_creds and local_creds[key]:
+            return local_creds[key]
+
+        # 3. Check keychain (legacy fallback)
         try:
             keychain_value = keyring.get_password(SERVICE_NAME, key)
             if keychain_value:
+                # Migrate to local file for reliability
+                self._save_to_local(key, keychain_value)
                 return keychain_value
         except keyring.errors.KeyringError:
             # Keychain not available (e.g., headless CI without keychain)
             pass
 
-        # 3. Interactive prompt (if enabled)
+        # 4. Interactive prompt (if enabled)
         if prompt_if_missing:
             return self._prompt_for_credential(
                 key,
@@ -271,14 +311,14 @@ class CredentialStore:
         return None
 
     def set(self, credential_type: str | CredentialType, value: str) -> bool:
-        """Store a credential in the system keychain.
+        """Store a credential in local file (primary) and keychain (backup).
 
         Args:
             credential_type: Type of credential
             value: The credential value to store
 
         Returns:
-            True if stored successfully, False if keychain unavailable
+            True if stored successfully to local file
         """
         key = (
             credential_type.value
@@ -286,14 +326,19 @@ class CredentialStore:
             else credential_type
         )
 
+        # Save to local file (primary)
+        saved_local = self._save_to_local(key, value)
+
+        # Also try keychain as backup (ignore failures)
         try:
             keyring.set_password(SERVICE_NAME, key, value)
-            return True
         except keyring.errors.KeyringError:
-            return False
+            pass
+
+        return saved_local
 
     def delete(self, credential_type: str | CredentialType) -> bool:
-        """Delete a credential from the system keychain.
+        """Delete a credential from local file and keychain.
 
         Args:
             credential_type: Type of credential to delete
@@ -307,14 +352,23 @@ class CredentialStore:
             else credential_type
         )
 
+        deleted = False
+
+        # Delete from local file
+        creds = self._read_local_credentials()
+        if key in creds:
+            del creds[key]
+            self._write_local_credentials(creds)
+            deleted = True
+
+        # Also delete from keychain
         try:
             keyring.delete_password(SERVICE_NAME, key)
-            return True
-        except keyring.errors.PasswordDeleteError:
-            # Password didn't exist
-            return False
-        except keyring.errors.KeyringError:
-            return False
+            deleted = True
+        except (keyring.errors.PasswordDeleteError, keyring.errors.KeyringError):
+            pass
+
+        return deleted
 
     def exists(self, credential_type: str | CredentialType) -> bool:
         """Check if a credential exists in env or keychain.
@@ -381,23 +435,21 @@ class CredentialStore:
 
             break
 
-        # Offer to save to keychain
-        if save_to_keychain:
+        # Offer to save locally
+        if save_to_keychain:  # parameter name kept for backwards compatibility
             self.console.print()
             save_prompt = self.console.input(
-                "Save to system keychain for future use? [Y/n]: "
+                "Save for future use? [Y/n]: "
             )
             if save_prompt.lower() != "n":
                 if self.set(key, value):
                     self.console.print(
-                        f"[green]Saved to keychain ({SERVICE_NAME}/{key})[/green]"
+                        f"[green]Saved to ~/.semantic-patterns/[/green]"
                     )
                 else:
-                    msg = (
-                        "[yellow]Could not save to keychain "
-                        "(keychain unavailable)[/yellow]"
+                    self.console.print(
+                        "[yellow]Could not save credentials[/yellow]"
                     )
-                    self.console.print(msg)
 
         return value
 

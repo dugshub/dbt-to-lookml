@@ -80,11 +80,16 @@ class MeasureRenderer:
         """Render a raw measure to LookML."""
         fields = defined_fields if defined_fields is not None else self.defined_fields
 
+        lookml_type = get_lookml_type(measure.agg, bool(measure.expr))
         result: dict[str, Any] = {
             "name": measure.name,
-            "type": get_lookml_type(measure.agg, bool(measure.expr)),
-            "sql": self._qualify_expr(measure.expr, fields),
+            "type": lookml_type,
         }
+
+        # LookML "count" type doesn't accept sql parameter - it just counts rows
+        # Only set sql for types that need it (count_distinct, sum, average, etc.)
+        if lookml_type != "count":
+            result["sql"] = self._qualify_expr(measure.expr, fields)
 
         result["label"] = self.label_resolver.effective_label(measure)
 
@@ -136,22 +141,27 @@ class MeasureRenderer:
         measure = measures.get(metric.measure or "") if metric.measure else None
 
         if measure:
-            # Qualify the expression (use field references for defined dimensions)
-            qualified_expr = self._qualify_expr(measure.expr, defined_fields)
-
-            # Wrap with filter if metric has one
-            if metric.filter and metric.filter.conditions:
-                sql_expr = self.filter_renderer.render_case_when(
-                    qualified_expr, metric.filter, defined_fields
-                )
-            else:
-                sql_expr = qualified_expr
+            lookml_type = get_lookml_type(measure.agg, bool(measure.expr))
 
             result: dict[str, Any] = {
                 "name": metric.name,
-                "type": get_lookml_type(measure.agg, bool(measure.expr)),
-                "sql": sql_expr,
+                "type": lookml_type,
             }
+
+            # LookML "count" type doesn't accept sql parameter - it just counts rows
+            # Only set sql for types that need it (count_distinct, sum, average, etc.)
+            if lookml_type != "count":
+                # Qualify the expression (use field references for defined dimensions)
+                qualified_expr = self._qualify_expr(measure.expr, defined_fields)
+
+                # Wrap with filter if metric has one
+                if metric.filter and metric.filter.conditions:
+                    sql_expr = self.filter_renderer.render_case_when(
+                        qualified_expr, metric.filter, defined_fields
+                    )
+                else:
+                    sql_expr = qualified_expr
+                result["sql"] = sql_expr
         else:
             # Fallback: reference measure by name
             result = {

@@ -5,9 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+from rich.console import Console
 
 from semantic_patterns.cli import RichGroup
 from semantic_patterns.cli.commands import auth, build, init, validate
+from semantic_patterns.config import find_config
+
+console = Console()
 
 
 @click.group(cls=RichGroup)
@@ -183,6 +187,24 @@ def serve(
     # Find the client directory
     client_dir = Path(__file__).parent / "app" / "client"
     has_frontend = client_dir.exists() and (client_dir / "package.json").exists()
+
+    # Auto-install npm deps if missing
+    if has_frontend and not api_only:
+        node_modules = client_dir / "node_modules"
+        if not node_modules.exists():
+            console.print("[dim]Installing frontend dependencies...[/dim]")
+            npm_install = subprocess.run(
+                ["npm", "install"],
+                cwd=client_dir,
+                capture_output=True,
+            )
+            if npm_install.returncode != 0:
+                console.print("[yellow]npm install failed - running API only[/yellow]")
+                if npm_install.stderr:
+                    console.print(f"[dim]{npm_install.stderr.decode()[:500]}[/dim]")
+                has_frontend = False
+            else:
+                console.print("[green]✓[/green] Frontend dependencies installed")
 
     # Start backend
     backend_env = os.environ.copy()

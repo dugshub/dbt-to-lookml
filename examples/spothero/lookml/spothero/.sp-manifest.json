@@ -1,113 +1,98 @@
 {
   "version": "1.0.0",
   "project": "spothero",
-  "generated_at": "2026-01-06T15:03:10.014963+00:00",
-  "config_hash": "429b1a551dbd5d8a",
+  "generated_at": "2026-01-08T16:30:28.781903+00:00",
+  "config_hash": "5c40d600e5a211bb",
   "sources": [],
   "outputs": [
     {
       "path": "views/facility_dimension/facility_dimension.view.lkml",
-      "hash": "9a0a9514cbd6a4bd",
+      "hash": "758e18ac1c9018bd",
       "type": "view"
     },
     {
       "path": "views/facility_dimension/facility_dimension.metrics.view.lkml",
-      "hash": "c4bd0bf14140110d",
+      "hash": "212cc969770bb3d8",
       "type": "view"
     },
     {
       "path": "views/facility_lifecycle/facility_lifecycle.view.lkml",
-      "hash": "75aba5dad0fbf627",
+      "hash": "d53904f78a201dbe",
       "type": "view"
     },
     {
       "path": "views/facility_lifecycle/facility_lifecycle.metrics.view.lkml",
-      "hash": "c210267097f00645",
+      "hash": "4154244b6b58eda1",
       "type": "view"
     },
     {
       "path": "views/facility_lifecycle/facility_lifecycle.pop.view.lkml",
-      "hash": "b6402bac43414265",
+      "hash": "ea5bd8ca90915517",
       "type": "view"
     },
     {
       "path": "views/facility_monthly_status/facility_monthly_status.view.lkml",
-      "hash": "c9df487f67e5db5e",
+      "hash": "325789f406eacb45",
       "type": "view"
     },
     {
       "path": "views/facility_monthly_status/facility_monthly_status.metrics.view.lkml",
-      "hash": "e785015664070748",
-      "type": "view"
-    },
-    {
-      "path": "views/facility_monthly_status/facility_monthly_status.pop.view.lkml",
-      "hash": "03a618d4ebf5a479",
+      "hash": "7bbf46f94bcb8688",
       "type": "view"
     },
     {
       "path": "views/rentals/rentals.view.lkml",
-      "hash": "5cb4e50b82eca05e",
+      "hash": "53faf396071ce942",
       "type": "view"
     },
     {
       "path": "views/rentals/rentals.metrics.view.lkml",
-      "hash": "00babe91e8e4a860",
+      "hash": "a2fa0cf3b9da941e",
       "type": "view"
     },
     {
       "path": "views/rentals/rentals.pop.view.lkml",
-      "hash": "dc6cce8fb977406c",
+      "hash": "13e90238d0a52232",
       "type": "view"
     },
     {
       "path": "views/reviews/reviews.view.lkml",
-      "hash": "4da651b6eaf823e0",
+      "hash": "2ed81db3a3555371",
       "type": "view"
     },
     {
       "path": "views/reviews/reviews.metrics.view.lkml",
-      "hash": "7dad1854812c6cc2",
-      "type": "view"
-    },
-    {
-      "path": "views/reviews/reviews.pop.view.lkml",
-      "hash": "59068a4fc67190c6",
+      "hash": "97ed66c1f5800117",
       "type": "view"
     },
     {
       "path": "views/sfdc_cases/sfdc_cases.view.lkml",
-      "hash": "e108d7c6f39e02a3",
+      "hash": "b8d3b05b8b2fcb66",
       "type": "view"
     },
     {
       "path": "views/sfdc_cases/sfdc_cases.metrics.view.lkml",
-      "hash": "13413189129f0fcb",
-      "type": "view"
-    },
-    {
-      "path": "views/sfdc_cases/sfdc_cases.pop.view.lkml",
-      "hash": "5b8f38a769a4921c",
+      "hash": "4d03a28fc955f9e1",
       "type": "view"
     },
     {
       "path": "views/time_spine/time_spine.view.lkml",
-      "hash": "80e138a61f29e2ad",
+      "hash": "1dc2db57c37dfb74",
       "type": "view"
     },
     {
       "path": "explores/rentals.explore.lkml",
-      "hash": "7411cb0b0da7ffa9",
+      "hash": "860836e708498e97",
       "type": "explore"
     },
     {
       "path": "explores/facility_lifecycle.explore.lkml",
-      "hash": "f0547d2283e33e75",
+      "hash": "1e8d0fba240b8797",
       "type": "explore"
     },
     {
       "path": "spothero.model.lkml",
-      "hash": "ceabe4c1b0b0e003",
+      "hash": "159b1f049ae1557e",
       "type": "model"
     }
   ],
@@ -189,5 +174,5 @@
       ]
     }
   ],
-  "github_push": null
+  "looker_push": null
 }

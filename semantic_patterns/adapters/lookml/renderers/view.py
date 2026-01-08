@@ -320,10 +320,14 @@ class ViewRenderer:
             dynamic_strategy = DynamicFilteredPopStrategy(calendar_view_name=fact_view_name)
             # Build measures lookup for expression resolution
             measures_dict = {m.name: m for m in model.measures}
+            # Build defined_fields for filter rendering (so filters use field refs)
+            defined_fields = self._build_defined_fields(model)
             # Use render_all for dynamic strategy (generates measures per output type)
             for metric in model.metrics:
                 if metric.has_pop:
-                    pop_measures = dynamic_strategy.render_all(metric, measures_dict)
+                    pop_measures = dynamic_strategy.render_all(
+                        metric, measures_dict, defined_fields
+                    )
                     pop_measures_list.extend(pop_measures)
         else:
             # Native strategy uses Looker's period_over_period type

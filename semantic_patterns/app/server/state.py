@@ -27,7 +27,8 @@ class ServerState(BaseModel):
         if config_path is None:
             found = find_config()
             if found is None:
-                raise FileNotFoundError("No sp.yml found")
+                # No config found - leave state empty
+                return
             config_path = found
 
         self.config_path = config_path

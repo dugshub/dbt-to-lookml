@@ -279,6 +279,9 @@ class DynamicFilteredPopStrategy:
         the measures specified in outputs, ignoring comparisons (which are
         handled by the calendar parameter).
 
+        Always generates _current (filtered on is_selected_period) first,
+        then _prior, then derived measures (_change, _pct_change).
+
         Args:
             metric: The metric to render PoP measures for
             measures: Dict of measure name -> Measure for looking up expressions
@@ -288,6 +291,11 @@ class DynamicFilteredPopStrategy:
             return []
 
         results = []
+
+        # Always render _current first (needed for change/pct_change)
+        results.append(self._render_current(metric, measures, defined_fields))
+
+        # Then render other outputs
         for output in metric.pop.outputs:
             if output == PopOutput.PREVIOUS:
                 results.append(self._render_prior(metric, measures, defined_fields))
@@ -297,6 +305,69 @@ class DynamicFilteredPopStrategy:
                 results.append(self._render_pct_change(metric))
 
         return results
+
+    def _render_current(
+        self,
+        metric: Metric,
+        measures: dict[str, "Measure"] | None = None,
+        defined_fields: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Render the _current filtered measure (is_selected_period = yes)."""
+        from semantic_patterns.adapters.lookml.renderers.filter import FilterRenderer
+        from semantic_patterns.adapters.lookml.renderers.measure import get_lookml_type
+
+        base_label = metric.label or metric.name.replace("_", " ").title()
+
+        # Look up the underlying measure for expression and aggregation type
+        measure = measures.get(metric.measure or "") if measures and metric.measure else None
+
+        # Determine aggregation type from measure, default to sum
+        lookml_type = "sum"
+        if measure:
+            lookml_type = get_lookml_type(measure.agg, bool(measure.expr))
+
+        result: dict[str, Any] = {
+            "name": f"{metric.name}_current",
+            "type": lookml_type,
+            "label": base_label,
+            "description": f"{base_label} for the selected period",
+            "filters": [
+                {
+                    "field": f"{self.calendar_view_name}.is_selected_period",
+                    "value": "yes",
+                }
+            ],
+        }
+
+        # Build SQL from the measure's expression
+        # Note: type "count" doesn't accept sql parameter in LookML
+        # Only set sql for types that need it (count_distinct, sum, average, etc.)
+        if lookml_type != "count":
+            fields = defined_fields or {}
+            if measure and measure.expr:
+                base_sql = f"${{TABLE}}.{measure.expr}"
+            elif metric.measure:
+                base_sql = f"${{TABLE}}.{metric.measure}"
+            else:
+                base_sql = "NULL"
+
+            # Apply metric's filter as CASE WHEN (matching base metric pattern)
+            if metric.filter and metric.filter.conditions:
+                filter_renderer = FilterRenderer(defined_fields=fields)
+                result["sql"] = filter_renderer.render_case_when(base_sql, metric.filter, fields)
+            else:
+                result["sql"] = base_sql
+
+        if metric.format:
+            result["value_format_name"] = metric.format
+
+        # PoP measures go to "Metrics (PoP)" view_label
+        category = _extract_category(metric)
+        result["view_label"] = "  Metrics (PoP)"
+        result["group_label"] = self.label_resolver.pop_group_label(metric, category)
+        result["group_item_label"] = "Current Period"
+
+        return result
 
     def _render_prior(
         self,
@@ -335,34 +406,32 @@ class DynamicFilteredPopStrategy:
         }
 
         # Build SQL from the measure's expression
-        # IMPORTANT: Apply metric's filter (e.g., rental_event_type = 'completed')
-        # to match the base metric's behavior
-        fields = defined_fields or {}
-        if measure:
-            base_sql = f"${{TABLE}}.{measure.expr}"
-        elif metric.measure:
-            base_sql = f"${{TABLE}}.{metric.measure}"
-        else:
-            base_sql = "NULL"
+        # Note: type "count" doesn't accept sql parameter in LookML
+        # Only set sql for types that need it (count_distinct, sum, average, etc.)
+        if lookml_type != "count":
+            fields = defined_fields or {}
+            if measure and measure.expr:
+                base_sql = f"${{TABLE}}.{measure.expr}"
+            elif metric.measure:
+                base_sql = f"${{TABLE}}.{metric.measure}"
+            else:
+                base_sql = "NULL"
 
-        # Apply metric's filter as CASE WHEN (matching base metric pattern)
-        if metric.filter and metric.filter.conditions:
-            filter_renderer = FilterRenderer(defined_fields=fields)
-            result["sql"] = filter_renderer.render_case_when(base_sql, metric.filter, fields)
-        else:
-            result["sql"] = base_sql
+            # Apply metric's filter as CASE WHEN (matching base metric pattern)
+            if metric.filter and metric.filter.conditions:
+                filter_renderer = FilterRenderer(defined_fields=fields)
+                result["sql"] = filter_renderer.render_case_when(base_sql, metric.filter, fields)
+            else:
+                result["sql"] = base_sql
 
         if metric.format:
             result["value_format_name"] = metric.format
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label groups all variants of a metric, group_item_label distinguishes them
         category = _extract_category(metric)
         result["view_label"] = "  Metrics (PoP)"
         result["group_label"] = self.label_resolver.pop_group_label(metric, category)
-        result["group_item_label"] = self.label_resolver.pop_group_item_label(
-            metric, "prior_year", "previous"
-        )
+        result["group_item_label"] = "Prior Period"
 
         return result
 
@@ -378,20 +447,17 @@ class DynamicFilteredPopStrategy:
             "type": "number",
             "label": label,
             "description": f"Difference between current and prior period {base_label}",
-            "sql": f"${{{metric.name}}} - ${{{metric.name}_prior}}",
+            "sql": f"${{{metric.name}_current}} - ${{{metric.name}_prior}}",
         }
 
         if metric.format:
             result["value_format_name"] = metric.format
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label groups all variants of a metric, group_item_label distinguishes them
         category = _extract_category(metric)
         result["view_label"] = "  Metrics (PoP)"
         result["group_label"] = self.label_resolver.pop_group_label(metric, category)
-        result["group_item_label"] = self.label_resolver.pop_group_item_label(
-            metric, "prior_year", "change"
-        )
+        result["group_item_label"] = "PP Δ"
 
         return result
 
@@ -401,7 +467,7 @@ class DynamicFilteredPopStrategy:
         label = self.label_resolver.pop_label(metric, "prior_year", "pct_change")
 
         prior = f"${{{metric.name}_prior}}"
-        current = f"${{{metric.name}}}"
+        current = f"${{{metric.name}_current}}"
         result: dict[str, Any] = {
             "name": f"{metric.name}_pct_change",
             "type": "number",
@@ -412,12 +478,9 @@ class DynamicFilteredPopStrategy:
         }
 
         # PoP measures go to "Metrics (PoP)" view_label
-        # group_label groups all variants of a metric, group_item_label distinguishes them
         category = _extract_category(metric)
         result["view_label"] = "  Metrics (PoP)"
         result["group_label"] = self.label_resolver.pop_group_label(metric, category)
-        result["group_item_label"] = self.label_resolver.pop_group_item_label(
-            metric, "prior_year", "pct_change"
-        )
+        result["group_item_label"] = "PP %"
 
         return result
