@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 import lkml
 
 from semantic_patterns.adapters.dialect import Dialect, get_default_dialect
-from semantic_patterns.adapters.lookml.renderers.pop import PopStrategy
 from semantic_patterns.adapters.lookml.renderers.view import ViewRenderer
 from semantic_patterns.domain import ProcessedModel
 
@@ -31,13 +30,13 @@ class LookMLGenerator:
     def __init__(
         self,
         dialect: Dialect | None = None,
-        pop_strategy: PopStrategy | None = None,
+        pop_strategy_type: str = "dynamic",
         model_to_explore: dict[str, str] | None = None,
         model_to_fact: dict[str, str] | None = None,
     ) -> None:
         self.dialect = dialect or get_default_dialect()
         self.view_renderer = ViewRenderer(
-            self.dialect, pop_strategy, model_to_explore, model_to_fact
+            self.dialect, pop_strategy_type, model_to_explore, model_to_fact
         )
 
     def generate(self, models: list[ProcessedModel]) -> dict[str, str]:

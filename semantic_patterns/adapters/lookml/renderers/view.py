@@ -11,7 +11,11 @@ import sqlglot.expressions as exp
 from semantic_patterns.adapters.dialect import Dialect
 from semantic_patterns.adapters.lookml.renderers.dimension import DimensionRenderer
 from semantic_patterns.adapters.lookml.renderers.measure import MeasureRenderer
-from semantic_patterns.adapters.lookml.renderers.pop import PopRenderer, PopStrategy
+from semantic_patterns.adapters.lookml.renderers.pop import (
+    DynamicFilteredPopStrategy,
+    LookerNativePopStrategy,
+    PopRenderer,
+)
 from semantic_patterns.domain import (
     Dimension,
     DimensionType,
@@ -34,14 +38,14 @@ class ViewRenderer:
     def __init__(
         self,
         dialect: Dialect | None = None,
-        pop_strategy: PopStrategy | None = None,
+        pop_strategy_type: str = "dynamic",
         model_to_explore: dict[str, str] | None = None,
         model_to_fact: dict[str, str] | None = None,
     ) -> None:
         self.dialect = dialect
         self.dimension_renderer = DimensionRenderer(dialect)
         # MeasureRenderer will be created per-view with defined_fields
-        self.pop_renderer = PopRenderer(pop_strategy)
+        self.pop_strategy_type = pop_strategy_type
         self.model_to_explore = model_to_explore or {}
         self.model_to_fact = model_to_fact or {}
 
@@ -287,31 +291,44 @@ class ViewRenderer:
 
         This is the PoP file: {model}.pop.view.lkml
         Returns tuple of (view dict, includes list) or None if no PoP variants.
+
+        Uses the configured pop_strategy_type:
+        - "native": Looker's native period_over_period measure type
+        - "dynamic": Filtered measures with user-selectable comparison period
         """
         # Check if any metrics have PoP variants
         has_pop = any(m.has_pop for m in model.metrics)
         if not has_pop:
             return None
 
-        # Create PoP renderer with fact view context
-        # Calendar dimension is defined on the fact view via +{fact_view} extension
-        from semantic_patterns.adapters.lookml.renderers.pop import LookerNativePopStrategy
-
         # Find the fact view for this model's explore
-        # PoP measures need to reference {fact_view}.calendar_date
+        # Both strategies need the fact view name for different purposes:
+        # - native: for based_on_time reference ({fact_view}.calendar_date)
+        # - dynamic: for filter reference ({fact_view}.is_comparison_period)
         fact_view_name = self.model_to_fact.get(model.name)
         if not fact_view_name:
             # Model not in any explore - skip PoP generation
             # (These are dimension-only models that get joined but don't have their own explore)
             return None
 
-        pop_strategy = LookerNativePopStrategy(fact_view_name=fact_view_name)
-        pop_renderer = PopRenderer(pop_strategy)
-
-        measures = []
-        for metric in model.metrics:
-            pop_measures = pop_renderer.render_variants(metric)
-            measures.extend(pop_measures)
+        # Create strategy based on configured type
+        measures: list[dict[str, Any]] = []
+        if self.pop_strategy_type == "dynamic":
+            # Dynamic strategy uses filtered measures with is_comparison_period
+            # Calendar is rendered as +{fact_view} refinement, so filter is at fact_view
+            dynamic_strategy = DynamicFilteredPopStrategy(calendar_view_name=fact_view_name)
+            # Use render_all for dynamic strategy (generates measures per output type)
+            for metric in model.metrics:
+                if metric.has_pop:
+                    pop_measures = dynamic_strategy.render_all(metric)
+                    measures.extend(pop_measures)
+        else:
+            # Native strategy uses Looker's period_over_period type
+            native_strategy = LookerNativePopStrategy(fact_view_name=fact_view_name)
+            pop_renderer = PopRenderer(native_strategy)
+            for metric in model.metrics:
+                pop_measures = pop_renderer.render_variants(metric)
+                measures.extend(pop_measures)
 
         if not measures:
             return None

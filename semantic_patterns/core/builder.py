@@ -244,6 +244,7 @@ def run_build(
     # Generate views
     generator = LookMLGenerator(
         dialect=config.options.dialect,
+        pop_strategy_type=config.options.pop_strategy,
         model_to_explore=model_to_explore,
         model_to_fact=model_to_fact,
     )

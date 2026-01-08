@@ -8,6 +8,7 @@ from semantic_patterns.adapters.lookml.renderers.dimension import DimensionRende
 from semantic_patterns.adapters.lookml.renderers.explore import ExploreRenderer
 from semantic_patterns.adapters.lookml.renderers.measure import MeasureRenderer
 from semantic_patterns.adapters.lookml.renderers.pop import (
+    DynamicFilteredPopStrategy,
     LookerNativePopStrategy,
     PopRenderer,
     PopStrategy,
@@ -18,10 +19,11 @@ __all__ = [
     "CalendarRenderer",
     "DateOption",
     "DimensionRenderer",
+    "DynamicFilteredPopStrategy",
     "ExploreRenderer",
+    "LookerNativePopStrategy",
     "MeasureRenderer",
     "PopRenderer",
     "PopStrategy",
-    "LookerNativePopStrategy",
     "ViewRenderer",
 ]

@@ -268,7 +268,8 @@ class TestViewRenderer:
         assert len(view["measures"]) == 1
         assert "rentals.view.lkml" in includes
 
-    def test_render_pop_refinement(self):
+    def test_render_pop_refinement_native(self):
+        """Test native PoP strategy uses Looker's period_over_period type."""
         metric = Metric(
             name="gmv",
             type=MetricType.SIMPLE,
@@ -288,7 +289,11 @@ class TestViewRenderer:
         # Provide model-to-explore and model-to-fact mappings for PoP calendar reference
         model_to_explore = {"rentals": "rentals"}
         model_to_fact = {"rentals": "rentals"}
-        renderer = ViewRenderer(model_to_explore=model_to_explore, model_to_fact=model_to_fact)
+        renderer = ViewRenderer(
+            pop_strategy_type="native",
+            model_to_explore=model_to_explore,
+            model_to_fact=model_to_fact,
+        )
         result = renderer.render_pop_refinement(model)
 
         assert result is not None
@@ -298,6 +303,51 @@ class TestViewRenderer:
         assert view["measures"][0]["type"] == "period_over_period"
         # PoP measures should reference calendar on fact view
         assert view["measures"][0]["based_on_time"] == "rentals.calendar_date"
+        assert "rentals.view.lkml" in includes
+        assert "rentals.metrics.view.lkml" in includes
+
+    def test_render_pop_refinement_dynamic(self):
+        """Test dynamic PoP strategy uses filtered measures."""
+        metric = Metric(
+            name="gmv",
+            type=MetricType.SIMPLE,
+            measure="amount",
+            pop=PopConfig(
+                comparisons=[PopComparison.PRIOR_YEAR],
+                outputs=[PopOutput.PREVIOUS, PopOutput.PERCENT_CHANGE],
+            ),
+        )
+        metric.expand_variants()
+
+        model = ProcessedModel(
+            name="rentals",
+            metrics=[metric],
+        )
+
+        # Provide model-to-explore and model-to-fact mappings
+        model_to_explore = {"rentals": "rentals"}
+        model_to_fact = {"rentals": "rentals"}
+        renderer = ViewRenderer(
+            pop_strategy_type="dynamic",
+            model_to_explore=model_to_explore,
+            model_to_fact=model_to_fact,
+        )
+        result = renderer.render_pop_refinement(model)
+
+        assert result is not None
+        view, includes = result
+        assert view["name"] == "+rentals"
+        # Dynamic strategy generates measures based on outputs, not comparisons
+        assert len(view["measures"]) == 2  # _prior and _pct_change
+        # Check measure names
+        names = {m["name"] for m in view["measures"]}
+        assert "gmv_prior" in names
+        assert "gmv_pct_change" in names
+        # Prior measure uses filtered approach
+        prior_measure = next(m for m in view["measures"] if m["name"] == "gmv_prior")
+        assert prior_measure["type"] == "sum"
+        assert "filters" in prior_measure
+        assert prior_measure["filters"][0]["field"] == "rentals.is_comparison_period"
         assert "rentals.view.lkml" in includes
         assert "rentals.metrics.view.lkml" in includes
 
