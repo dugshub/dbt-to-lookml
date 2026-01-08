@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useState } from 'react'
 import { ArrowLeft, Key, Clock, Tag, EyeOff, Layers } from 'lucide-react'
 import { useModel } from '../api'
+import { GroupedList } from '../components/common'
 import type { Dimension, Measure, Metric, Entity } from '../types'
 
 type Tab = 'dimensions' | 'measures' | 'metrics' | 'entities'
@@ -16,7 +17,7 @@ function Badge({ children, color }: { children: React.ReactNode; color: string }
 
 function DimensionRow({ dimension }: { dimension: Dimension }) {
   return (
-    <div className="flex items-start justify-between py-3 border-b border-gray-800 last:border-0">
+    <div className="flex items-start justify-between py-2 border-b border-gray-800/50 last:border-0">
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <span className="font-medium text-white">{dimension.name}</span>
@@ -36,11 +37,8 @@ function DimensionRow({ dimension }: { dimension: Dimension }) {
             </Badge>
           )}
         </div>
-        {dimension.label && (
+        {dimension.label && dimension.label !== dimension.name && (
           <p className="text-sm text-gray-400 mt-0.5">{dimension.label}</p>
-        )}
-        {dimension.group && (
-          <p className="text-xs text-gray-500 mt-1">Group: {dimension.group}</p>
         )}
       </div>
       <code className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded max-w-xs truncate">
@@ -52,7 +50,7 @@ function DimensionRow({ dimension }: { dimension: Dimension }) {
 
 function MeasureRow({ measure }: { measure: Measure }) {
   return (
-    <div className="flex items-start justify-between py-3 border-b border-gray-800 last:border-0">
+    <div className="flex items-start justify-between py-2 border-b border-gray-800/50 last:border-0">
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <span className="font-medium text-white">{measure.name}</span>
@@ -66,11 +64,8 @@ function MeasureRow({ measure }: { measure: Measure }) {
             <Badge color="bg-blue-500/10 text-blue-400">{measure.format}</Badge>
           )}
         </div>
-        {measure.label && (
+        {measure.label && measure.label !== measure.name && (
           <p className="text-sm text-gray-400 mt-0.5">{measure.label}</p>
-        )}
-        {measure.group && (
-          <p className="text-xs text-gray-500 mt-1">Group: {measure.group}</p>
         )}
       </div>
       <code className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded max-w-xs truncate">
@@ -82,7 +77,7 @@ function MeasureRow({ measure }: { measure: Measure }) {
 
 function MetricRow({ metric }: { metric: Metric }) {
   return (
-    <div className="py-3 border-b border-gray-800 last:border-0">
+    <div className="py-2 border-b border-gray-800/50 last:border-0">
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-2">
@@ -97,11 +92,8 @@ function MetricRow({ metric }: { metric: Metric }) {
               </Badge>
             )}
           </div>
-          {metric.label && (
+          {metric.label && metric.label !== metric.name && (
             <p className="text-sm text-gray-400 mt-0.5">{metric.label}</p>
-          )}
-          {metric.group && (
-            <p className="text-xs text-gray-500 mt-1">Group: {metric.group}</p>
           )}
         </div>
         <span className="text-sm text-gray-500">{metric.variant_count} variants</span>
@@ -130,7 +122,7 @@ function MetricRow({ metric }: { metric: Metric }) {
 
 function EntityRow({ entity }: { entity: Entity }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-gray-800 last:border-0">
+    <div className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
       <div className="flex items-center gap-3">
         <span className="font-medium text-white">{entity.name}</span>
         <Badge
@@ -233,25 +225,28 @@ export function ModelDetailPage() {
       {/* Tab content */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
         {activeTab === 'dimensions' && (
-          <div>
-            {model.dimensions.map((dim) => (
-              <DimensionRow key={dim.name} dimension={dim} />
-            ))}
-          </div>
+          <GroupedList
+            items={model.dimensions}
+            groupBy={(dim) => dim.group}
+            renderItem={(dim) => <DimensionRow key={dim.name} dimension={dim} />}
+            emptyMessage="No dimensions"
+          />
         )}
         {activeTab === 'measures' && (
-          <div>
-            {model.measures.map((measure) => (
-              <MeasureRow key={measure.name} measure={measure} />
-            ))}
-          </div>
+          <GroupedList
+            items={model.measures}
+            groupBy={(m) => m.group}
+            renderItem={(m) => <MeasureRow key={m.name} measure={m} />}
+            emptyMessage="No measures"
+          />
         )}
         {activeTab === 'metrics' && (
-          <div>
-            {model.metrics.map((metric) => (
-              <MetricRow key={metric.name} metric={metric} />
-            ))}
-          </div>
+          <GroupedList
+            items={model.metrics}
+            groupBy={(m) => m.group}
+            renderItem={(m) => <MetricRow key={m.name} metric={m} />}
+            emptyMessage="No metrics"
+          />
         )}
         {activeTab === 'entities' && (
           <div>
