@@ -1,0 +1,26 @@
+# Test configuration for semantic-patterns UI
+project: test-project
+
+input: ./integration
+output: ./lookml
+schema: gold
+format: semantic-patterns
+
+options:
+  dialect: redshift
+  pop_strategy: dynamic
+  date_selector: true
+
+output_options:
+  manifest: true
+
+looker:
+  enabled: false
+  model:
+    name: analytics
+    connection: redshift_prod
+  explores:
+    - fact: rentals
+      label: Rental Analytics
+    - fact: facilities
+      label: Facility Analysis

@@ -1,11 +1,11 @@
-# semantic-patterns configuration
+# semantic-patterns configuration for SpotHero dbt Semantic Layer
 
 project: spothero-gold
 
-input: ./semantic_models
+input: ./spothero-dbt-silver/redshift_gold/models/3_semantic
 output: ./lookml
-schema: gold
-format: semantic-patterns
+schema: redshift_gold
+format: dbt
 
 # Generator options
 options:
@@ -19,31 +19,60 @@ options:
 # Output options
 output_options:
   manifest: true
-  clean: clean  # or 'warn' or 'ignore'
+  clean: clean
 
-# Looker destination (LookML generation + Git push + dev sync)
+# Looker destination
 looker:
-  enabled: false  # Set to true to enable LookML generation
+  enabled: false
 
   # LookML model file settings
   model:
-    name: gold
-    connection: database
+    name: spothero_semantic
+    connection: redshift_prod
 
-  # Explores (optional - omit for views only)
+  # Explores - based on dbt semantic models
   explores:
+    # Core rental analytics
     - fact: rentals
-    - fact: facility_lifecycle
-      # label: Custom Label
-      # joined_facts: []
-      # join_exclusions: []
+      label: Rental Analytics
+      description: Core rental transactions with revenue, segmentation, and facility attribution
 
-  # Git repository (required if enabled=true)
-  # repo: myorg/looker-models         # Git repo backing Looker project
-  # branch: sp-generated              # Branch for generated LookML
-  # path: lookml/                     # Path within repo (optional)
+    # Facility portfolio
+    - fact: facility_dimension
+      label: Facility Attributes
+      description: Facility and canonical location attributes with SFDC hierarchy
+
+    - fact: facility_lifecycle
+      label: Facility Lifecycle
+      description: SCD2 facility state transitions for point-in-time portfolio analysis
+      joined_facts:
+        - facility_dimension
+
+    - fact: facility_monthly_status
+      label: Monthly Portfolio
+      description: Month-end canonical location snapshots (legacy Finance reporting)
+      joined_facts:
+        - facility_dimension
+
+    # Customer experience
+    - fact: reviews
+      label: Customer Reviews
+      description: Star ratings and feedback sentiment analysis
+      joined_facts:
+        - facility_dimension
+
+    - fact: sfdc_cases
+      label: Support Cases
+      description: Salesforce support cases with hero tags and SIPP classification
+      joined_facts:
+        - facility_dimension
+
+  # Git repository (enable when ready to push)
+  # repo: spothero/looker-models
+  # branch: sp-generated
+  # path: lookml/
 
   # Looker dev sync (optional)
-  # base_url: https://mycompany.looker.com  # Looker instance
-  # project_id: my_project            # Looker project name
-  # sync_dev: true                    # Sync user's dev environment
+  # base_url: https://spothero.looker.com
+  # project_id: spothero_analytics
+  # sync_dev: true
