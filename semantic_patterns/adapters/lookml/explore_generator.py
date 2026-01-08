@@ -87,7 +87,7 @@ class ExploreGenerator:
             pop_config = PopCalendarConfig.from_models(all_explore_models)
 
             calendar_dict = self.calendar_renderer.render(
-                explore_config.name, date_options, pop_config, fact_model.name
+                explore_config.effective_name, date_options, pop_config, fact_model.name
             )
 
         # Serialize explore (with calendar view embedded if present)
@@ -134,7 +134,7 @@ class ExploreGenerator:
             pop_config = PopCalendarConfig.from_models(all_explore_models)
 
             calendar_dict = self.calendar_renderer.render(
-                explore_config.name, date_options, pop_config, fact_model.name
+                explore_config.effective_name, date_options, pop_config, fact_model.name
             )
 
         # Serialize explore (with calendar view embedded if present)
@@ -145,7 +145,7 @@ class ExploreGenerator:
         else:
             explore_content = self._serialize_explore(explore_dict, includes)
 
-        files[paths.explore_file_path(explore_config.name)] = explore_content
+        files[paths.explore_file_path(explore_config.effective_name)] = explore_content
 
         return files
 

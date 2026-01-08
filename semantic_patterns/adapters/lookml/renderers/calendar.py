@@ -31,11 +31,17 @@ class DateOption:
     @property
     def parameter_value(self) -> str:
         """
-        Value for the parameter - returns the SQL column name for direct injection.
+        Value for the parameter - returns view_alias.sql_column for direct SQL injection.
 
-        This allows ${TABLE}.{% parameter date_field %} to work correctly.
+        Looker generates table aliases matching view names, so:
+        - view: sp_rentals, expr: rental_created_at_utc
+        - parameter_value: sp_rentals.rental_created_at_utc
+        - SQL: FROM "gold_production"."rentals" AS "sp_rentals"
+        - Result: sp_rentals.rental_created_at_utc is valid SQL!
+
+        This allows dates from any joined view to work correctly.
         """
-        return self.expr
+        return f"{self.view}.{self.expr}"
 
 
 @dataclass
@@ -108,7 +114,8 @@ class CalendarRenderer:
             return None
 
         # Determine fact view (first in list if not specified)
-        fact_view = fact_view_name or (date_options[0].view if date_options else None)
+        # date_options is guaranteed non-empty here (early return above)
+        fact_view = fact_view_name or date_options[0].view
 
         # Build date_field parameter with allowed values
         # Use actual SQL column names for direct parameter injection
@@ -134,9 +141,10 @@ class CalendarRenderer:
             "allowed_values": allowed_values,
         }
 
-        # Use direct parameter injection instead of CASE statement
-        # This allows Looker to inject the column name at runtime
-        calendar_sql = '${TABLE}.{% parameter date_field %}'
+        # Parameter value is view_alias.sql_column (e.g., "sp_rentals.rental_created_at_utc")
+        # Direct injection works because Looker aliases tables with the view name
+        # This allows dates from any joined view to work correctly
+        calendar_sql = '{% parameter date_field %}'
 
         dimension_group: dict[str, Any] = {
             "name": "calendar",
@@ -312,6 +320,11 @@ class CalendarRenderer:
         options: list[DateOption] = []
 
         all_models = [fact_model] + joined_models
+
+        # Count how many models have date_selector enabled
+        models_with_dates = [m for m in all_models if m.date_selector]
+        is_single_model = len(models_with_dates) == 1
+
         for model in all_models:
             if not model.date_selector:
                 continue
@@ -334,7 +347,11 @@ class CalendarRenderer:
                             if variant_name == "utc"
                             else variant_name.title()
                         )
-                        label = f"{view_title} {dim_title} ({variant_label})"
+                        # Omit view prefix for single-model explores
+                        if is_single_model:
+                            label = f"{dim_title} ({variant_label})"
+                        else:
+                            label = f"{view_title} {dim_title} ({variant_label})"
 
                         options.append(
                             DateOption(
@@ -347,7 +364,11 @@ class CalendarRenderer:
                         )
                 else:
                     # Simple dimension without variants
-                    label = f"{view_title} {dim_title}"
+                    # Omit view prefix for single-model explores
+                    if is_single_model:
+                        label = dim_title
+                    else:
+                        label = f"{view_title} {dim_title}"
                     dim_expr = dim.expr or dim.name  # Fallback to name if no expr
                     options.append(
                         DateOption(

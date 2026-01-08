@@ -10,8 +10,13 @@ import sqlglot.expressions as exp
 
 from semantic_patterns.adapters.dialect import Dialect
 from semantic_patterns.adapters.lookml.renderers.dimension import DimensionRenderer
+from semantic_patterns.adapters.lookml.sql_qualifier import qualify_table_columns
 from semantic_patterns.adapters.lookml.renderers.measure import MeasureRenderer
-from semantic_patterns.adapters.lookml.renderers.pop import PopRenderer, PopStrategy
+from semantic_patterns.adapters.lookml.renderers.pop import (
+    DynamicFilteredPopStrategy,
+    LookerNativePopStrategy,
+    PopRenderer,
+)
 from semantic_patterns.domain import (
     Dimension,
     DimensionType,
@@ -34,14 +39,16 @@ class ViewRenderer:
     def __init__(
         self,
         dialect: Dialect | None = None,
-        pop_strategy: PopStrategy | None = None,
+        pop_strategy_type: str = "dynamic",
         model_to_explore: dict[str, str] | None = None,
+        model_to_fact: dict[str, str] | None = None,
     ) -> None:
         self.dialect = dialect
         self.dimension_renderer = DimensionRenderer(dialect)
         # MeasureRenderer will be created per-view with defined_fields
-        self.pop_renderer = PopRenderer(pop_strategy)
+        self.pop_strategy_type = pop_strategy_type
         self.model_to_explore = model_to_explore or {}
+        self.model_to_fact = model_to_fact or {}
 
     @staticmethod
     def _build_defined_fields(model: ProcessedModel) -> dict[str, str]:
@@ -55,24 +62,60 @@ class ViewRenderer:
             Dict mapping column names AND dimension names to LookML field names
 
         Example:
-            Dimension: name="transaction_type", expr="rental_event_type"
+            Categorical dimension: name="transaction_type", expr="rental_event_type"
             Mapping: {
                 "rental_event_type": "transaction_type",  # column -> field
                 "transaction_type": "transaction_type",   # field -> field (identity)
+            }
+
+            Time dimension: name="created_at", expr="rental_created_at_utc"
+            Mapping: {
+                "rental_created_at_utc": "created_at_raw",  # column -> _raw field
+                "created_at": "created_at_raw",             # name -> _raw field
+            }
+
+            Time dimension with variants: name="created_at", variants={utc: col_utc, local: col_local}
+            Mapping: {
+                "col_utc": "created_at_utc_raw",      # variant column -> variant _raw field
+                "col_local": "created_at_local_raw", # variant column -> variant _raw field
+                "created_at_utc": "created_at_utc_raw",    # variant name -> variant _raw field
+                "created_at_local": "created_at_local_raw", # variant name -> variant _raw field
             }
         """
         mapping: dict[str, str] = {}
 
         # Add dimensions
         for dim in model.dimensions:
-            # Map dimension name to itself (for direct field references)
-            mapping[dim.name] = dim.name
-
-            # Also map column name to dimension name (for SQL column references)
-            if dim.expr:
-                col_name = ViewRenderer._extract_simple_column(dim.expr)
-                if col_name and col_name != dim.name:
-                    mapping[col_name] = dim.name
+            if dim.type == DimensionType.TIME:
+                # Time dimensions become dimension_groups with timeframe suffixes
+                # The _raw timeframe gives the actual timestamp value
+                if dim.has_variants and dim.variants:
+                    # Map each variant's column and name to its _raw field
+                    for variant_name, variant_expr in dim.variants.items():
+                        field_name = f"{dim.name}_{variant_name}_raw"
+                        # Map variant dimension name (e.g., "created_at_utc")
+                        mapping[f"{dim.name}_{variant_name}"] = field_name
+                        # Map variant SQL column (e.g., "rental_created_at_utc")
+                        col_name = ViewRenderer._extract_simple_column(variant_expr)
+                        if col_name:
+                            mapping[col_name] = field_name
+                else:
+                    # Non-variant time dimension
+                    field_name = f"{dim.name}_raw"
+                    # Map dimension name to _raw field
+                    mapping[dim.name] = field_name
+                    # Map SQL column to _raw field
+                    if dim.expr:
+                        col_name = ViewRenderer._extract_simple_column(dim.expr)
+                        if col_name and col_name != dim.name:
+                            mapping[col_name] = field_name
+            else:
+                # Categorical dimensions map directly
+                mapping[dim.name] = dim.name
+                if dim.expr:
+                    col_name = ViewRenderer._extract_simple_column(dim.expr)
+                    if col_name and col_name != dim.name:
+                        mapping[col_name] = dim.name
 
         # Add entities
         for entity in model.entities:
@@ -141,11 +184,31 @@ class ViewRenderer:
                 dimensions.extend(dim_results)
 
             # Add this dimension to the mapping for subsequent dimensions
-            defined_fields[dim.name] = dim.name
-            if dim.expr:
-                col_name = self._extract_simple_column(dim.expr)
-                if col_name and col_name != dim.name:
-                    defined_fields[col_name] = dim.name
+            # Time dimensions map to _raw field, categorical dimensions map directly
+            if dim.type == DimensionType.TIME:
+                if dim.has_variants and dim.variants:
+                    # Map each variant's column and name to its _raw field
+                    for variant_name, variant_expr in dim.variants.items():
+                        field_name = f"{dim.name}_{variant_name}_raw"
+                        defined_fields[f"{dim.name}_{variant_name}"] = field_name
+                        col_name = self._extract_simple_column(variant_expr)
+                        if col_name:
+                            defined_fields[col_name] = field_name
+                else:
+                    # Non-variant time dimension
+                    field_name = f"{dim.name}_raw"
+                    defined_fields[dim.name] = field_name
+                    if dim.expr:
+                        col_name = self._extract_simple_column(dim.expr)
+                        if col_name and col_name != dim.name:
+                            defined_fields[col_name] = field_name
+            else:
+                # Categorical dimensions map directly
+                defined_fields[dim.name] = dim.name
+                if dim.expr:
+                    col_name = self._extract_simple_column(dim.expr)
+                    if col_name and col_name != dim.name:
+                        defined_fields[col_name] = dim.name
 
         # Render entities as hidden dimensions with primary key
         entity_dims = self._render_entities(model.entities, defined_fields)
@@ -229,36 +292,48 @@ class ViewRenderer:
 
         This is the PoP file: {model}.pop.view.lkml
         Returns tuple of (view dict, includes list) or None if no PoP variants.
+
+        Uses the configured pop_strategy_type:
+        - "native": Looker's native period_over_period measure type
+        - "dynamic": Filtered measures with user-selectable comparison period
         """
         # Check if any metrics have PoP variants
         has_pop = any(m.has_pop for m in model.metrics)
         if not has_pop:
             return None
 
-        # Create PoP renderer with calendar view context
-        # Use model-to-explore mapping to find the correct explore's calendar
-        from semantic_patterns.adapters.lookml.renderers.explore import (
-            get_calendar_view_name,
-        )
-        from semantic_patterns.adapters.lookml.renderers.pop import LookerNativePopStrategy
-
-        # Find which explore this model belongs to
-        explore_name = self.model_to_explore.get(model.name)
-        if not explore_name:
+        # Find the fact view for this model's explore
+        # Both strategies need the fact view name for different purposes:
+        # - native: for based_on_time reference ({fact_view}.calendar_date)
+        # - dynamic: for filter reference ({fact_view}.is_comparison_period)
+        fact_view_name = self.model_to_fact.get(model.name)
+        if not fact_view_name:
             # Model not in any explore - skip PoP generation
             # (These are dimension-only models that get joined but don't have their own explore)
             return None
 
-        calendar_view_name = get_calendar_view_name(explore_name)
-        pop_strategy = LookerNativePopStrategy(calendar_view_name=calendar_view_name)
-        pop_renderer = PopRenderer(pop_strategy)
+        # Create strategy based on configured type
+        pop_measures_list: list[dict[str, Any]] = []
+        if self.pop_strategy_type == "dynamic":
+            # Dynamic strategy uses filtered measures with is_comparison_period
+            # Calendar is rendered as +{fact_view} refinement, so filter is at fact_view
+            dynamic_strategy = DynamicFilteredPopStrategy(calendar_view_name=fact_view_name)
+            # Build measures lookup for expression resolution
+            measures_dict = {m.name: m for m in model.measures}
+            # Use render_all for dynamic strategy (generates measures per output type)
+            for metric in model.metrics:
+                if metric.has_pop:
+                    pop_measures = dynamic_strategy.render_all(metric, measures_dict)
+                    pop_measures_list.extend(pop_measures)
+        else:
+            # Native strategy uses Looker's period_over_period type
+            native_strategy = LookerNativePopStrategy(fact_view_name=fact_view_name)
+            pop_renderer = PopRenderer(native_strategy)
+            for metric in model.metrics:
+                pop_measures = pop_renderer.render_variants(metric)
+                pop_measures_list.extend(pop_measures)
 
-        measures = []
-        for metric in model.metrics:
-            pop_measures = pop_renderer.render_variants(metric)
-            measures.extend(pop_measures)
-
-        if not measures:
+        if not pop_measures_list:
             return None
 
         # PoP refinement needs to include base view AND metrics file
@@ -268,7 +343,7 @@ class ViewRenderer:
         return (
             {
                 "name": f"+{model.name}",  # Refinement syntax
-                "measures": measures,
+                "measures": pop_measures_list,
             },
             includes,
         )

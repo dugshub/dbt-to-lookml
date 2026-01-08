@@ -1,8 +1,11 @@
 """Dimension rendering for LookML."""
 
+from __future__ import annotations
+
 from typing import Any
 
 from semantic_patterns.adapters.dialect import Dialect
+from semantic_patterns.adapters.lookml.labels import LabelResolver
 from semantic_patterns.adapters.lookml.renderers.labels import apply_group_labels
 from semantic_patterns.adapters.lookml.sql_qualifier import qualify_table_columns
 from semantic_patterns.domain import Dimension, DimensionType, TimeGranularity
@@ -32,9 +35,18 @@ DEFAULT_TIMEFRAMES = ["raw", "date", "week", "month", "quarter", "year"]
 class DimensionRenderer:
     """Render dimensions to LookML format."""
 
-    def __init__(self, dialect: Dialect | None = None, defined_fields: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        dialect: Dialect | None = None,
+        defined_fields: dict[str, str] | None = None,
+        label_resolver: LabelResolver | None = None,
+    ) -> None:
         self.dialect = dialect  # For future dialect-specific transpilation
         self.defined_fields = defined_fields or {}
+        if label_resolver is None:
+            from semantic_patterns.config import LabelConfig
+            label_resolver = LabelResolver(LabelConfig())
+        self.label_resolver = label_resolver
 
     def render(self, dimension: Dimension, defined_fields: dict[str, str] | None = None) -> list[dict[str, Any]]:
         """
@@ -58,8 +70,7 @@ class DimensionRenderer:
             "sql": self._qualify_expr(dim.effective_expr, defined_fields),
         }
 
-        if dim.label:
-            result["label"] = dim.label
+        result["label"] = self.label_resolver.effective_label(dim)
 
         if dim.description:
             result["description"] = dim.description
@@ -93,8 +104,7 @@ class DimensionRenderer:
             "convert_tz": "no",  # Data is UTC, don't convert
         }
 
-        if dim.label:
-            result["label"] = dim.label
+        result["label"] = self.label_resolver.effective_label(dim)
 
         if dim.description:
             result["description"] = dim.description
@@ -126,15 +136,12 @@ class DimensionRenderer:
             }
 
             # Label includes variant
-            if dim.label:
-                if variant_name == "utc":
-                    variant_label = variant_name.upper()
-                else:
-                    variant_label = variant_name.title()
-                result["label"] = f"{dim.label} ({variant_label})"
+            base_label = self.label_resolver.effective_label(dim)
+            if variant_name == "utc":
+                variant_label = variant_name.upper()
             else:
-                name_title = dim.name.replace("_", " ").title()
-                result["label"] = f"{name_title} ({variant_name.upper()})"
+                variant_label = variant_name.title()
+            result["label"] = f"{base_label} ({variant_label})"
 
             if dim.description:
                 result["description"] = dim.description

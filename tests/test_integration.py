@@ -193,7 +193,7 @@ class TestIntegrationWithFixtures:
 
         assert "views" in parsed
         view = parsed["views"][0]
-        assert view["name"] == "rentals_explore_calendar"
+        assert view["name"] == "+rentals"  # View extension format
 
         # Should have parameter
         assert "parameters" in view
@@ -206,8 +206,8 @@ class TestIntegrationWithFixtures:
         # Should include rentals date options
         assert any("Rental" in label or "rental" in label.lower() for label in labels)
 
-    def test_pop_variants_generated(self):
-        """Test that PoP variants are generated for metrics with pop config."""
+    def test_pop_variants_generated_native(self):
+        """Test that native PoP uses Looker's period_over_period type."""
         models = DomainBuilder.from_directory(FIXTURES_DIR)
         rentals = next(m for m in models if m.name == "rentals")
 
@@ -216,16 +216,51 @@ class TestIntegrationWithFixtures:
         assert gov_metric is not None
         assert gov_metric.has_pop
 
-        # Generate with model_to_explore mapping (required for PoP to know which calendar to reference)
+        # Generate with native strategy and model mappings
         model_to_explore = {"rentals": "rentals"}
-        generator = LookMLGenerator(model_to_explore=model_to_explore)
+        model_to_fact = {"rentals": "rentals"}
+        generator = LookMLGenerator(
+            pop_strategy_type="native",
+            model_to_explore=model_to_explore,
+            model_to_fact=model_to_fact,
+        )
         files = generator.generate(models)
 
         assert "rentals.pop.view.lkml" in files
 
         content = files["rentals.pop.view.lkml"]
-        # Should have prior year and prior month variants
+        # Native strategy: Should have prior year variants with _py suffix
         assert "gov_py" in content or "gmv_py" in content
+        # Native strategy: PoP measures reference calendar on fact view
+        assert "rentals.calendar_date" in content
+
+    def test_pop_variants_generated_dynamic(self):
+        """Test that dynamic PoP uses filtered measures with is_comparison_period."""
+        models = DomainBuilder.from_directory(FIXTURES_DIR)
+        rentals = next(m for m in models if m.name == "rentals")
+
+        # Find GOV metric which has PoP config
+        gov_metric = rentals.get_metric("gov")
+        assert gov_metric is not None
+        assert gov_metric.has_pop
+
+        # Generate with dynamic strategy (the default)
+        model_to_explore = {"rentals": "rentals"}
+        model_to_fact = {"rentals": "rentals"}
+        generator = LookMLGenerator(
+            pop_strategy_type="dynamic",
+            model_to_explore=model_to_explore,
+            model_to_fact=model_to_fact,
+        )
+        files = generator.generate(models)
+
+        assert "rentals.pop.view.lkml" in files
+
+        content = files["rentals.pop.view.lkml"]
+        # Dynamic strategy: Should have _prior suffix measures
+        assert "gov_prior" in content or "gmv_prior" in content
+        # Dynamic strategy: Uses is_comparison_period filter
+        assert "is_comparison_period" in content
 
     def test_full_generation_output(self):
         """Test full generation and print summary."""
@@ -478,8 +513,8 @@ class TestGeneratedLookMLContent:
         # complete: true means no field restriction
         assert "fields" not in reviews_join
 
-    def test_calendar_has_case_statement(self, generated_files):
-        """Test calendar view has CASE statement for dynamic date selection."""
+    def test_calendar_has_direct_sql_injection(self, generated_files):
+        """Test calendar view uses direct SQL injection for date selection."""
         content = generated_files["rentals.explore.lkml"]
         parsed = lkml.load(content)
 
@@ -489,5 +524,7 @@ class TestGeneratedLookMLContent:
         calendar = next((d for d in dim_groups if d["name"] == "calendar"), None)
 
         assert calendar is not None
-        assert "CASE" in calendar["sql"]
+        # Direct SQL injection - parameter value is view.column
         assert "{% parameter date_field %}" in calendar["sql"]
+        # No ${} wrapper needed - parameter value is already valid SQL
+        assert "${" not in calendar["sql"]

@@ -195,6 +195,7 @@ class Metric(BaseModel):
     name: str
     type: MetricType
     label: str | None = None
+    short_label: str | None = None
     description: str | None = None
 
     # Simple metric params

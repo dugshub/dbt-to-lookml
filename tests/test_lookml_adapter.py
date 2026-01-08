@@ -268,7 +268,8 @@ class TestViewRenderer:
         assert len(view["measures"]) == 1
         assert "rentals.view.lkml" in includes
 
-    def test_render_pop_refinement(self):
+    def test_render_pop_refinement_native(self):
+        """Test native PoP strategy uses Looker's period_over_period type."""
         metric = Metric(
             name="gmv",
             type=MetricType.SIMPLE,
@@ -285,9 +286,14 @@ class TestViewRenderer:
             metrics=[metric],
         )
 
-        # Provide model-to-explore mapping for PoP calendar reference
+        # Provide model-to-explore and model-to-fact mappings for PoP calendar reference
         model_to_explore = {"rentals": "rentals"}
-        renderer = ViewRenderer(model_to_explore=model_to_explore)
+        model_to_fact = {"rentals": "rentals"}
+        renderer = ViewRenderer(
+            pop_strategy_type="native",
+            model_to_explore=model_to_explore,
+            model_to_fact=model_to_fact,
+        )
         result = renderer.render_pop_refinement(model)
 
         assert result is not None
@@ -295,6 +301,53 @@ class TestViewRenderer:
         assert view["name"] == "+rentals"
         assert len(view["measures"]) == 1
         assert view["measures"][0]["type"] == "period_over_period"
+        # PoP measures should reference calendar on fact view
+        assert view["measures"][0]["based_on_time"] == "rentals.calendar_date"
+        assert "rentals.view.lkml" in includes
+        assert "rentals.metrics.view.lkml" in includes
+
+    def test_render_pop_refinement_dynamic(self):
+        """Test dynamic PoP strategy uses filtered measures."""
+        metric = Metric(
+            name="gmv",
+            type=MetricType.SIMPLE,
+            measure="amount",
+            pop=PopConfig(
+                comparisons=[PopComparison.PRIOR_YEAR],
+                outputs=[PopOutput.PREVIOUS, PopOutput.PERCENT_CHANGE],
+            ),
+        )
+        metric.expand_variants()
+
+        model = ProcessedModel(
+            name="rentals",
+            metrics=[metric],
+        )
+
+        # Provide model-to-explore and model-to-fact mappings
+        model_to_explore = {"rentals": "rentals"}
+        model_to_fact = {"rentals": "rentals"}
+        renderer = ViewRenderer(
+            pop_strategy_type="dynamic",
+            model_to_explore=model_to_explore,
+            model_to_fact=model_to_fact,
+        )
+        result = renderer.render_pop_refinement(model)
+
+        assert result is not None
+        view, includes = result
+        assert view["name"] == "+rentals"
+        # Dynamic strategy generates measures based on outputs, not comparisons
+        assert len(view["measures"]) == 2  # _prior and _pct_change
+        # Check measure names
+        names = {m["name"] for m in view["measures"]}
+        assert "gmv_prior" in names
+        assert "gmv_pct_change" in names
+        # Prior measure uses filtered approach
+        prior_measure = next(m for m in view["measures"] if m["name"] == "gmv_prior")
+        assert prior_measure["type"] == "sum"
+        assert "filters" in prior_measure
+        assert prior_measure["filters"][0]["field"] == "rentals.is_comparison_period"
         assert "rentals.view.lkml" in includes
         assert "rentals.metrics.view.lkml" in includes
 
@@ -348,9 +401,10 @@ class TestLookMLGenerator:
             metrics=[metric],
         )
 
-        # Provide model-to-explore mapping for PoP generation
+        # Provide model-to-explore and model-to-fact mappings for PoP generation
         model_to_explore = {"rentals": "rentals"}
-        generator = LookMLGenerator(model_to_explore=model_to_explore)
+        model_to_fact = {"rentals": "rentals"}
+        generator = LookMLGenerator(model_to_explore=model_to_explore, model_to_fact=model_to_fact)
         files = generator.generate_model(model)
 
         assert "rentals.view.lkml" in files
@@ -398,7 +452,8 @@ class TestDynamicFilteredPopStrategy:
 
         assert result["name"] == "gmv_prior"
         assert result["type"] == "sum"
-        assert result["label"] == "GMV (PoP)"
+        # Default compact style: "{short} ({comp_abbrev})" -> "GMV (PY)"
+        assert result["label"] == "GMV (PY)"
         assert result["value_format_name"] == "usd"
         assert (
             result["filters"][0]["field"]
@@ -406,7 +461,9 @@ class TestDynamicFilteredPopStrategy:
         )
         assert result["filters"][0]["value"] == "yes"
         assert result["view_label"] == "  Metrics (PoP)"  # PoP always goes to Metrics (PoP)
-        assert result["group_label"] == "Revenue · GMV"  # Category · Metric Label
+        # group_label: "Category · Short Label", group_item_label: "Short Label - Variant"
+        assert result["group_label"] == "Revenue · GMV"
+        assert result["group_item_label"] == "GMV - PY"
 
     def test_render_change_measure(self):
         """Test rendering the _change measure."""
@@ -424,7 +481,8 @@ class TestDynamicFilteredPopStrategy:
 
         assert result["name"] == "gmv_change"
         assert result["type"] == "number"
-        assert result["label"] == "GMV Change"
+        # Default compact style: "{short} Δ {comp_abbrev}" -> "GMV Δ PY"
+        assert result["label"] == "GMV Δ PY"
         assert "${gmv}" in result["sql"]
         assert "${gmv_prior}" in result["sql"]
 
@@ -536,6 +594,7 @@ class TestCalendarRendererWithPoP:
                 dimension="created_at",
                 label="Rental Created",
                 raw_ref="${rentals.created_at_raw}",
+                expr="rental_created_at_utc",
             ),
         ]
 
@@ -573,6 +632,7 @@ class TestCalendarRendererWithPoP:
                 dimension="created_at",
                 label="Rental Created",
                 raw_ref="${rentals.created_at_raw}",
+                expr="rental_created_at_utc",
             ),
         ]
 

@@ -152,6 +152,8 @@ def _extract_meta(dbt_obj: dict[str, Any]) -> dict[str, Any]:
         result["date_selector"] = meta["date_selector"]
     if "entity_group" in meta:
         result["entity_group"] = meta["entity_group"]
+    if "short_label" in meta:
+        result["short_label"] = meta["short_label"]
 
     # Handle bi_field: false -> hidden: true (inverse)
     if "bi_field" in meta and not meta["bi_field"] and "hidden" not in result:
@@ -240,6 +242,15 @@ def map_dimension(dbt_dim: dict[str, Any]) -> dict[str, Any]:
     if "hidden" in sp_meta:
         result["hidden"] = sp_meta["hidden"]
 
+    # Extract short_label from meta or as direct field
+    short_label = (
+        dbt_dim.get("meta", {}).get("short_label")
+        or dbt_dim.get("short_label")
+        or sp_meta.get("short_label")
+    )
+    if short_label:
+        result["short_label"] = short_label
+
     return result
 
 
@@ -290,6 +301,15 @@ def map_measure(dbt_measure: dict[str, Any]) -> dict[str, Any]:
         result["format"] = sp_meta["format"]
     if "hidden" in sp_meta:
         result["hidden"] = sp_meta["hidden"]
+
+    # Extract short_label from meta or as direct field
+    short_label = (
+        dbt_measure.get("meta", {}).get("short_label")
+        or dbt_measure.get("short_label")
+        or sp_meta.get("short_label")
+    )
+    if short_label:
+        result["short_label"] = short_label
 
     return result
 
@@ -435,7 +455,45 @@ def map_metric(dbt_metric: dict[str, Any]) -> dict[str, Any]:
     if "pop" in sp_meta:
         result["pop"] = sp_meta["pop"]
 
+    # Extract short_label from meta or as direct field
+    short_label = (
+        dbt_metric.get("meta", {}).get("short_label")
+        or dbt_metric.get("short_label")
+        or sp_meta.get("short_label")
+    )
+    if short_label:
+        result["short_label"] = short_label
+
     return result
+
+
+def _extract_dbt_model_ref(model_ref: str) -> str | None:
+    """
+    Extract the model name from a dbt ref() expression.
+
+    Examples:
+        ref('fct_review') -> 'fct_review'
+        ref("rentals") -> 'rentals'
+        fct_review -> 'fct_review'  # Already plain name
+
+    Returns:
+        The extracted model name, or None if parsing fails.
+    """
+    if not model_ref:
+        return None
+
+    # Pattern: ref('model_name') or ref("model_name")
+    ref_pattern = r"ref\(['\"](\w+)['\"]\)"
+    match = re.match(ref_pattern, model_ref.strip())
+    if match:
+        return match.group(1)
+
+    # If no ref() wrapper, treat as plain model name
+    # (for cases where it's already extracted or native format)
+    if re.match(r"^\w+$", model_ref.strip()):
+        return model_ref.strip()
+
+    return None
 
 
 def map_semantic_model(dbt_model: dict[str, Any]) -> dict[str, Any]:
@@ -456,6 +514,16 @@ def map_semantic_model(dbt_model: dict[str, Any]) -> dict[str, Any]:
     sp_meta = _extract_meta(dbt_model)
     if sp_meta:
         result["meta"] = sp_meta
+
+    # Extract dbt model reference (the actual table name)
+    # dbt format: model: ref('fct_review') -> table is 'fct_review'
+    model_ref = dbt_model.get("model")
+    if model_ref:
+        table_name = _extract_dbt_model_ref(model_ref)
+        if table_name:
+            # Store in meta for builder.py to use when creating DataModel
+            result["meta"] = result.get("meta", {})
+            result["meta"]["dbt_table"] = table_name
 
     # Map entities
     entities = dbt_model.get("entities", [])

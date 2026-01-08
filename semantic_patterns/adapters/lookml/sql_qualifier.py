@@ -10,10 +10,28 @@ import re
 import sqlglot
 import sqlglot.expressions as exp
 
-from semantic_patterns.adapters.dialect import Dialect, SqlRenderer
+from semantic_patterns.adapters.dialect import Dialect, SqlRenderer, get_default_dialect
 
 
-def qualify_table_columns(expr: str) -> str:
+# Map our Dialect enum to sqlglot dialect strings
+SQLGLOT_DIALECT_MAP = {
+    Dialect.REDSHIFT: "redshift",
+    Dialect.POSTGRES: "postgres",
+    Dialect.SNOWFLAKE: "snowflake",
+    Dialect.BIGQUERY: "bigquery",
+    Dialect.DUCKDB: "duckdb",
+    Dialect.STARBURST: "trino",
+}
+
+
+def _get_sqlglot_dialect(dialect: Dialect | None) -> str:
+    """Get sqlglot dialect string from our Dialect enum."""
+    if dialect is None:
+        dialect = get_default_dialect()
+    return SQLGLOT_DIALECT_MAP.get(dialect, "redshift")
+
+
+def qualify_table_columns(expr: str, dialect: Dialect | None = None) -> str:
     """
     Simple helper to qualify bare columns with ${TABLE}.
 
@@ -21,6 +39,7 @@ def qualify_table_columns(expr: str) -> str:
 
     Args:
         expr: SQL expression
+        dialect: SQL dialect for proper parsing (defaults to environment/redshift)
 
     Returns:
         Expression with ${TABLE}. prefix on bare columns
@@ -31,8 +50,10 @@ def qualify_table_columns(expr: str) -> str:
     if not expr or not expr.strip():
         return expr
 
+    sqlglot_dialect = _get_sqlglot_dialect(dialect)
+
     try:
-        parsed = sqlglot.parse_one(expr)
+        parsed = sqlglot.parse_one(expr, dialect=sqlglot_dialect)
     except Exception:
         return expr
 
@@ -41,7 +62,8 @@ def qualify_table_columns(expr: str) -> str:
         if column.table is None or column.table == "":
             column.set("table", exp.to_identifier("__LOOKML_TABLE__"))
 
-    result = parsed.sql()
+    # Output SQL in the same dialect to preserve function syntax
+    result = parsed.sql(dialect=sqlglot_dialect)
 
     # Replace marker with ${TABLE}
     result = re.sub(r'"?__LOOKML_TABLE__"?\."?(\w+)"?', r'${TABLE}.\1', result)
@@ -61,8 +83,10 @@ class LookMLSqlQualifier:
     """
 
     def __init__(self, dialect: Dialect | None = None, defined_fields: dict[str, str] | None = None) -> None:
+        self.dialect = dialect
         self.sql_renderer = SqlRenderer(dialect)
         self.defined_fields = defined_fields or {}
+        self._sqlglot_dialect = _get_sqlglot_dialect(dialect)
 
     def qualify(self, expr: str, defined_fields: dict[str, str] | None = None) -> str:
         """
@@ -93,9 +117,11 @@ class LookMLSqlQualifier:
 
         fields = defined_fields if defined_fields is not None else self.defined_fields
 
-        # Parse expression
+        # Parse expression with dialect awareness
+        # This ensures date function keywords (day, month, year) are recognized
+        # as date parts rather than column references
         try:
-            parsed = sqlglot.parse_one(expr)
+            parsed = sqlglot.parse_one(expr, dialect=self._sqlglot_dialect)
         except Exception:
             # If parsing fails, return original
             return expr
@@ -113,8 +139,8 @@ class LookMLSqlQualifier:
                     # Mark for ${TABLE} replacement
                     column.set("table", exp.to_identifier("__LOOKML_TABLE__"))
 
-        # Get SQL output
-        result = parsed.sql()
+        # Get SQL output in the same dialect to preserve function syntax
+        result = parsed.sql(dialect=self._sqlglot_dialect)
 
         # Replace markers with LookML syntax
         # Field references: __LOOKML_FIELD__.field_name → ${field_name}

@@ -1,8 +1,11 @@
 """Measure and metric rendering for LookML."""
 
+from __future__ import annotations
+
 from typing import Any
 
 from semantic_patterns.adapters.dialect import Dialect
+from semantic_patterns.adapters.lookml.labels import LabelResolver
 from semantic_patterns.adapters.lookml.renderers.filter import FilterRenderer
 from semantic_patterns.adapters.lookml.renderers.labels import apply_group_labels
 from semantic_patterns.adapters.lookml.sql_qualifier import LookMLSqlQualifier
@@ -39,23 +42,38 @@ FORMAT_TO_LOOKML: dict[str, str] = {
 class MeasureRenderer:
     """Render measures and metrics to LookML format."""
 
-    def __init__(self, dialect: Dialect | None = None, defined_fields: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        dialect: Dialect | None = None,
+        defined_fields: dict[str, str] | None = None,
+        label_resolver: LabelResolver | None = None,
+    ) -> None:
         self.sql_qualifier = LookMLSqlQualifier(dialect, defined_fields)
         self.defined_fields = defined_fields or {}
         self.filter_renderer = FilterRenderer(dialect, defined_fields)
+        if label_resolver is None:
+            from semantic_patterns.config import LabelConfig
+            label_resolver = LabelResolver(LabelConfig())
+        self.label_resolver = label_resolver
 
     def render_measure(self, measure: Measure, defined_fields: dict[str, str] | None = None) -> dict[str, Any]:
         """Render a raw measure to LookML."""
         fields = defined_fields if defined_fields is not None else self.defined_fields
 
+        # Determine LookML measure type
+        # Special case: COUNT with an expr should be count_distinct in LookML
+        # because LookML's "count" type just counts rows (no sql parameter)
+        lookml_type = AGG_TO_LOOKML.get(measure.agg, "sum")
+        if measure.agg == AggregationType.COUNT and measure.expr:
+            lookml_type = "count_distinct"
+
         result: dict[str, Any] = {
             "name": measure.name,
-            "type": AGG_TO_LOOKML.get(measure.agg, "sum"),
+            "type": lookml_type,
             "sql": self._qualify_expr(measure.expr, fields),
         }
 
-        if measure.label:
-            result["label"] = measure.label
+        result["label"] = self.label_resolver.effective_label(measure)
 
         if measure.description:
             result["description"] = measure.description
@@ -116,9 +134,15 @@ class MeasureRenderer:
             else:
                 sql_expr = qualified_expr
 
+            # Determine LookML measure type
+            # Special case: COUNT with an expr should be count_distinct in LookML
+            lookml_type = AGG_TO_LOOKML.get(measure.agg, "sum")
+            if measure.agg == AggregationType.COUNT and measure.expr:
+                lookml_type = "count_distinct"
+
             result: dict[str, Any] = {
                 "name": metric.name,
-                "type": AGG_TO_LOOKML.get(measure.agg, "sum"),
+                "type": lookml_type,
                 "sql": sql_expr,
             }
         else:
@@ -164,8 +188,7 @@ class MeasureRenderer:
 
     def _add_common_fields(self, result: dict[str, Any], metric: Metric) -> None:
         """Add common fields to metric result."""
-        if metric.label:
-            result["label"] = metric.label
+        result["label"] = self.label_resolver.effective_label(metric)
 
         if metric.description:
             result["description"] = metric.description
