@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import traceback
 
 import click
@@ -11,6 +12,37 @@ from semantic_patterns.cli import RichCommand
 from semantic_patterns.config import find_config, load_config
 
 console = Console()
+
+
+def _print_https_debug_info(base_url: str) -> None:
+    """Print HTTPS configuration debug info."""
+    console.print()
+    console.print("[bold]HTTPS Configuration:[/bold]")
+
+    # SSL verification
+    verify_env = os.environ.get("LOOKER_HTTPS_VERIFY", "true")
+    console.print(f"  LOOKER_HTTPS_VERIFY: {verify_env}")
+
+    # Timeout
+    timeout_env = os.environ.get("LOOKER_TIMEOUT", "30")
+    console.print(f"  LOOKER_TIMEOUT: {timeout_env}s")
+
+    # Proxy settings
+    https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    no_proxy = os.environ.get("NO_PROXY") or os.environ.get("no_proxy")
+
+    if https_proxy:
+        console.print(f"  HTTPS_PROXY: {https_proxy}")
+    if http_proxy:
+        console.print(f"  HTTP_PROXY: {http_proxy}")
+    if no_proxy:
+        console.print(f"  NO_PROXY: {no_proxy}")
+    if not https_proxy and not http_proxy:
+        console.print("  Proxy: [dim]not configured[/dim]")
+
+    console.print(f"  Target URL: {base_url}/api/4.0/login")
+    console.print()
 
 
 @click.command(cls=RichCommand, name="test")
@@ -88,6 +120,8 @@ def test(service: str, debug: bool) -> None:
 
     elif service == "looker":
         # Load config to get base_url
+        from semantic_patterns.destinations.looker.client import _get_http_client
+
         try:
             client_id = store.get("looker-client-id", prompt_if_missing=False)
             client_secret = store.get("looker-client-secret", prompt_if_missing=False)
@@ -118,9 +152,13 @@ def test(service: str, debug: bool) -> None:
                 console.print("[dim]Credential files exist in keychain only[/dim]")
                 return
 
+            # Show debug info if requested
+            if debug:
+                _print_https_debug_info(config.looker.base_url)
+
             console.print(f"Testing Looker credentials for {config.looker.base_url}...")
 
-            with httpx.Client(timeout=10.0) as client:
+            with _get_http_client() as client:
                 # Attempt login
                 response = client.post(
                     f"{config.looker.base_url}/api/4.0/login",
@@ -136,6 +174,17 @@ def test(service: str, debug: bool) -> None:
                     )
                     if debug:
                         console.print(f"[dim]{response.text}[/dim]")
+                    console.print()
+                    console.print("[bold]Troubleshooting:[/bold]")
+                    console.print(
+                        "  • Clear credentials: [bold]sp auth clear looker[/bold]"
+                    )
+                    console.print(
+                        "  • SSL issues: [bold]LOOKER_HTTPS_VERIFY=false sp auth test looker[/bold]"
+                    )
+                    console.print(
+                        "  • Proxy issues: [bold]HTTPS_PROXY=http://proxy:port sp auth test looker[/bold]"
+                    )
                     return
 
                 data = response.json()
@@ -170,6 +219,34 @@ def test(service: str, debug: bool) -> None:
                             f"[yellow]\u26a0[/yellow] Project '{config.looker.project_id}': Access denied"
                         )
 
+        except httpx.ConnectError as e:
+            console.print(f"[red]\u2717[/red] Connection failed: {e}")
+            console.print()
+            console.print("[bold]Troubleshooting:[/bold]")
+            error_str = str(e).lower()
+            if "ssl" in error_str or "certificate" in error_str:
+                console.print(
+                    "  • SSL issue detected - try: [bold]LOOKER_HTTPS_VERIFY=false sp auth test looker[/bold]"
+                )
+            else:
+                console.print(
+                    "  • Check network/firewall settings"
+                )
+                console.print(
+                    "  • Try with proxy: [bold]HTTPS_PROXY=http://proxy:port sp auth test looker[/bold]"
+                )
+            if debug:
+                console.print()
+                console.print(traceback.format_exc())
+        except httpx.TimeoutException as e:
+            console.print(f"[red]\u2717[/red] Request timed out: {e}")
+            console.print()
+            console.print(
+                "  • Increase timeout: [bold]LOOKER_TIMEOUT=60 sp auth test looker[/bold]"
+            )
+            if debug:
+                console.print()
+                console.print(traceback.format_exc())
         except Exception as e:
             console.print(f"[red]\u2717[/red] Test failed: {e}")
             if debug:

@@ -89,9 +89,9 @@ def github_device_flow(console: Console) -> str | None:
     """
     # GitHub OAuth App credentials for semantic-patterns
     # This is a public client ID and is safe to include in the code
-    # It's registered to the semantic-patterns GitHub App
-    # TODO: Replace with actual registered OAuth App client ID
-    client_id = "Ov23liVE6xhXqJsJzQdP"
+    # Device flow doesn't use client secrets - the Client ID is public by design
+    # Can be overridden via SP_GITHUB_OAUTH_CLIENT_ID env var
+    client_id = os.environ.get("SP_GITHUB_OAUTH_CLIENT_ID", "Ov23lijrzb5sAFuba6yr")
 
     console.print()
     console.print("[bold]GitHub Authentication[/bold]")
@@ -242,9 +242,11 @@ class CredentialStore:
         )
 
         # 1. Check environment variable
+        # Note: We explicitly check for non-empty strings to avoid empty env vars
+        # overriding keychain values (e.g., LOOKER_CLIENT_ID="" should fall through)
         env_var = ENV_VAR_MAPPING.get(key, f"SP_{key.upper().replace('-', '_')}")
         env_value = os.environ.get(env_var)
-        if env_value:
+        if env_value is not None and env_value.strip():
             return env_value
 
         # 2. Check keychain

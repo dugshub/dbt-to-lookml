@@ -33,9 +33,12 @@ class LookMLGenerator:
         dialect: Dialect | None = None,
         pop_strategy: PopStrategy | None = None,
         model_to_explore: dict[str, str] | None = None,
+        model_to_fact: dict[str, str] | None = None,
     ) -> None:
         self.dialect = dialect or get_default_dialect()
-        self.view_renderer = ViewRenderer(self.dialect, pop_strategy, model_to_explore)
+        self.view_renderer = ViewRenderer(
+            self.dialect, pop_strategy, model_to_explore, model_to_fact
+        )
 
     def generate(self, models: list[ProcessedModel]) -> dict[str, str]:
         """

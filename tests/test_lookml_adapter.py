@@ -285,9 +285,10 @@ class TestViewRenderer:
             metrics=[metric],
         )
 
-        # Provide model-to-explore mapping for PoP calendar reference
+        # Provide model-to-explore and model-to-fact mappings for PoP calendar reference
         model_to_explore = {"rentals": "rentals"}
-        renderer = ViewRenderer(model_to_explore=model_to_explore)
+        model_to_fact = {"rentals": "rentals"}
+        renderer = ViewRenderer(model_to_explore=model_to_explore, model_to_fact=model_to_fact)
         result = renderer.render_pop_refinement(model)
 
         assert result is not None
@@ -295,6 +296,8 @@ class TestViewRenderer:
         assert view["name"] == "+rentals"
         assert len(view["measures"]) == 1
         assert view["measures"][0]["type"] == "period_over_period"
+        # PoP measures should reference calendar on fact view
+        assert view["measures"][0]["based_on_time"] == "rentals.calendar_date"
         assert "rentals.view.lkml" in includes
         assert "rentals.metrics.view.lkml" in includes
 
@@ -348,9 +351,10 @@ class TestLookMLGenerator:
             metrics=[metric],
         )
 
-        # Provide model-to-explore mapping for PoP generation
+        # Provide model-to-explore and model-to-fact mappings for PoP generation
         model_to_explore = {"rentals": "rentals"}
-        generator = LookMLGenerator(model_to_explore=model_to_explore)
+        model_to_fact = {"rentals": "rentals"}
+        generator = LookMLGenerator(model_to_explore=model_to_explore, model_to_fact=model_to_fact)
         files = generator.generate_model(model)
 
         assert "rentals.view.lkml" in files
@@ -536,6 +540,7 @@ class TestCalendarRendererWithPoP:
                 dimension="created_at",
                 label="Rental Created",
                 raw_ref="${rentals.created_at_raw}",
+                expr="rental_created_at_utc",
             ),
         ]
 
@@ -573,6 +578,7 @@ class TestCalendarRendererWithPoP:
                 dimension="created_at",
                 label="Rental Created",
                 raw_ref="${rentals.created_at_raw}",
+                expr="rental_created_at_utc",
             ),
         ]
 

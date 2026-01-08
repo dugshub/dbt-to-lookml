@@ -189,12 +189,17 @@ def run_build(
 
     for model in models:
         if not model.data_model:
-            # Create data_model using model name as table name
+            # For dbt format, use the actual dbt model reference (table name)
+            # e.g., semantic model "reviews" -> dbt model "fct_review"
+            # Fall back to model.name if no dbt_table in meta (native format)
+            table_name = model.meta.get("dbt_table", model.name)
+
+            # Create data_model with correct table name
             # Schema will be applied below during generation
             model.data_model = DataModel(
                 name=model.name,
                 schema_name=config.schema_name,
-                table=model.name,  # model name = table name (1:1)
+                table=table_name,  # Use dbt model ref, not semantic model name
                 connection=ConnectionType.REDSHIFT,
             )
 
@@ -207,9 +212,11 @@ def run_build(
     # Create model lookup (with prefixed names)
     model_dict = {m.name: m for m in models}
 
-    # Build model-to-explore mapping for PoP calendar references
-    # Maps each model to its parent explore name
+    # Build model-to-explore and model-to-fact mappings for PoP calendar references
+    # model_to_explore: Maps each model to its parent explore name
+    # model_to_fact: Maps each model to the fact view of its explore (where calendar lives)
     model_to_explore: dict[str, str] = {}
+    model_to_fact: dict[str, str] = {}
     if config.explores:
         for explore in config.explores:
             # Apply prefixes to explore and fact names
@@ -222,20 +229,23 @@ def run_build(
                 f"{view_prefix}{explore.fact}" if view_prefix else explore.fact
             )
 
-            # Map fact model to its explore
+            # Map fact model to its explore and itself as fact
             model_to_explore[fact_model_name] = explore_name
+            model_to_fact[fact_model_name] = fact_model_name
 
-            # Map joined_facts to this parent explore
+            # Map joined_facts to this parent explore and fact
             for joined_fact in explore.joined_facts:
                 joined_fact_name = (
                     f"{view_prefix}{joined_fact}" if view_prefix else joined_fact
                 )
                 model_to_explore[joined_fact_name] = explore_name
+                model_to_fact[joined_fact_name] = fact_model_name
 
     # Generate views
     generator = LookMLGenerator(
         dialect=config.options.dialect,
         model_to_explore=model_to_explore,
+        model_to_fact=model_to_fact,
     )
     all_files: dict[Path, str] = {}
 

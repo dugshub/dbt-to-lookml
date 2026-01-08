@@ -436,6 +436,35 @@ def map_metric(dbt_metric: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _extract_dbt_model_ref(model_ref: str) -> str | None:
+    """
+    Extract the model name from a dbt ref() expression.
+
+    Examples:
+        ref('fct_review') -> 'fct_review'
+        ref("rentals") -> 'rentals'
+        fct_review -> 'fct_review'  # Already plain name
+
+    Returns:
+        The extracted model name, or None if parsing fails.
+    """
+    if not model_ref:
+        return None
+
+    # Pattern: ref('model_name') or ref("model_name")
+    ref_pattern = r"ref\(['\"](\w+)['\"]\)"
+    match = re.match(ref_pattern, model_ref.strip())
+    if match:
+        return match.group(1)
+
+    # If no ref() wrapper, treat as plain model name
+    # (for cases where it's already extracted or native format)
+    if re.match(r"^\w+$", model_ref.strip()):
+        return model_ref.strip()
+
+    return None
+
+
 def map_semantic_model(dbt_model: dict[str, Any]) -> dict[str, Any]:
     """
     Transform dbt semantic_model dict to our format.
@@ -449,6 +478,16 @@ def map_semantic_model(dbt_model: dict[str, Any]) -> dict[str, Any]:
     # Direct mappings
     if "description" in dbt_model:
         result["description"] = dbt_model["description"]
+
+    # Extract dbt model reference (the actual table name)
+    # dbt format: model: ref('fct_review') -> table is 'fct_review'
+    model_ref = dbt_model.get("model")
+    if model_ref:
+        table_name = _extract_dbt_model_ref(model_ref)
+        if table_name:
+            # Store in meta for builder.py to use when creating DataModel
+            result["meta"] = result.get("meta", {})
+            result["meta"]["dbt_table"] = table_name
 
     # Map entities
     entities = dbt_model.get("entities", [])

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import ssl
 from typing import Any
 
 import httpx
@@ -14,6 +16,60 @@ from semantic_patterns.destinations.looker.errors import LookerAPIError
 # Credential keys for Looker API
 LOOKER_CLIENT_ID_KEY = "looker-client-id"
 LOOKER_CLIENT_SECRET_KEY = "looker-client-secret"
+
+# Environment variables for HTTPS configuration
+LOOKER_HTTPS_VERIFY_ENV = "LOOKER_HTTPS_VERIFY"
+LOOKER_TIMEOUT_ENV = "LOOKER_TIMEOUT"
+
+
+def _get_ssl_verify() -> bool | ssl.SSLContext:
+    """Get SSL verification setting from environment.
+
+    Set LOOKER_HTTPS_VERIFY=false to disable SSL verification
+    (useful for self-signed certificates).
+
+    Returns:
+        True for default verification, False to disable
+    """
+    verify_env = os.environ.get(LOOKER_HTTPS_VERIFY_ENV, "").lower()
+    if verify_env in ("false", "0", "no", "off"):
+        return False
+    return True
+
+
+def _get_timeout() -> float:
+    """Get timeout setting from environment.
+
+    Set LOOKER_TIMEOUT to override default 30s timeout.
+
+    Returns:
+        Timeout in seconds
+    """
+    timeout_env = os.environ.get(LOOKER_TIMEOUT_ENV)
+    if timeout_env:
+        try:
+            return float(timeout_env)
+        except ValueError:
+            pass
+    return 30.0
+
+
+def _get_http_client(timeout: float | None = None) -> httpx.Client:
+    """Create HTTP client with proper SSL and proxy configuration.
+
+    Respects standard proxy environment variables (HTTP_PROXY, HTTPS_PROXY).
+
+    Args:
+        timeout: Request timeout in seconds (default from env or 30s)
+
+    Returns:
+        Configured httpx.Client
+    """
+    return httpx.Client(
+        timeout=timeout or _get_timeout(),
+        verify=_get_ssl_verify(),
+        # httpx automatically respects HTTP_PROXY, HTTPS_PROXY, NO_PROXY env vars
+    )
 
 
 class LookerClient:
@@ -41,34 +97,64 @@ class LookerClient:
         """
         store = get_credential_store(self.console)
 
+        # First check if both credentials already exist (env or keychain)
+        client_id = store.get(LOOKER_CLIENT_ID_KEY, prompt_if_missing=False)
+        client_secret = store.get(LOOKER_CLIENT_SECRET_KEY, prompt_if_missing=False)
+
+        if client_id and client_secret:
+            return client_id, client_secret
+
+        # Need to prompt - collect both credentials together
         # Build instructions with instance-specific URL
-        admin_url = f"{self.config.base_url}/admin/users"
+        # Note: Direct API key URL requires knowing user ID, so we link to account page
+        account_url = f"{self.config.base_url}/account"
         instructions = (
             "To sync your Looker dev environment, you need API credentials:\n\n"
-            f"1. Go to: [link]{admin_url}[/link]\n"
-            "2. Click your user → Edit → API Keys\n"
-            "3. Create new API credentials (or use existing)\n"
-            "4. Enter your Client ID and Client Secret below"
+            f"1. Go to: [link]{account_url}[/link]\n"
+            "2. Scroll to 'API Keys' section\n"
+            "3. Click 'Edit Keys' → 'New API Key'\n"
+            "4. Copy your Client ID and Client Secret below\n\n"
+            "[dim]Note: API keys can also be found at /admin/users/api3_key/<user_id>[/dim]"
         )
 
-        client_id = store.get(
-            LOOKER_CLIENT_ID_KEY,
-            prompt_if_missing=True,
-            prompt_instructions=instructions,
-            validator=lambda t: len(t) >= 10,
-        )
+        self.console.print()
+        self.console.print("[bold]Looker API Credentials Required[/bold]")
+        self.console.print()
+        self.console.print(instructions)
+        self.console.print()
 
-        if not client_id:
+        # Prompt for client ID
+        client_id = self.console.input("[bold]Client ID:[/bold] ", password=False)
+        if not client_id or len(client_id) < 10:
+            self.console.print("[yellow]Cancelled or invalid Client ID[/yellow]")
             return None
 
-        client_secret = store.get(
-            LOOKER_CLIENT_SECRET_KEY,
-            prompt_if_missing=True,
-            validator=lambda t: len(t) >= 10,
-        )
-
-        if not client_secret:
+        # Prompt for client secret
+        client_secret = self.console.input("[bold]Client Secret:[/bold] ", password=True)
+        if not client_secret or len(client_secret) < 10:
+            self.console.print("[yellow]Cancelled or invalid Client Secret[/yellow]")
             return None
+
+        # Single prompt to save both credentials
+        self.console.print()
+        save_prompt = self.console.input(
+            "Save both credentials to system keychain for future use? [Y/n]: "
+        )
+        if save_prompt.lower() != "n":
+            saved_id = store.set(LOOKER_CLIENT_ID_KEY, client_id)
+            saved_secret = store.set(LOOKER_CLIENT_SECRET_KEY, client_secret)
+            if saved_id and saved_secret:
+                self.console.print(
+                    "[green]✓ Saved credentials to keychain[/green]"
+                )
+            elif saved_id or saved_secret:
+                self.console.print(
+                    "[yellow]⚠ Partially saved to keychain[/yellow]"
+                )
+            else:
+                self.console.print(
+                    "[yellow]Could not save to keychain (keychain unavailable)[/yellow]"
+                )
 
         return client_id, client_secret
 
@@ -88,7 +174,7 @@ class LookerClient:
         url = f"{self.config.base_url}/api/4.0/login"
 
         try:
-            with httpx.Client(timeout=30.0) as client:
+            with _get_http_client() as client:
                 response = client.post(
                     url,
                     data={
@@ -128,18 +214,94 @@ class LookerClient:
                         "Authentication failed",
                         status_code=response.status_code,
                     )
+        except httpx.ConnectError as e:
+            self._print_connection_error(e)
+            raise LookerAPIError("Connection error")
+        except httpx.TimeoutException as e:
+            self._print_timeout_error(e)
+            raise LookerAPIError("Timeout error")
         except httpx.HTTPError as e:
-            # Print helpful error message for user
-            self.console.print()
-            self.console.print(f"[red]✗[/red] Network error: {e}")
-            self.console.print()
-            self.console.print(
-                f"Cannot reach Looker instance at {self.config.base_url}"
-            )
-            self.console.print()
-
-            # Raise exception with minimal message (detailed output already printed)
+            self._print_network_error(e)
             raise LookerAPIError("Network error")
+
+    def _print_connection_error(self, e: httpx.ConnectError) -> None:
+        """Print helpful diagnostics for connection errors."""
+        self.console.print()
+        self.console.print(f"[red]✗[/red] Connection failed: {e}")
+        self.console.print()
+        self.console.print(
+            f"Cannot connect to Looker instance at {self.config.base_url}"
+        )
+        self.console.print()
+
+        error_str = str(e).lower()
+
+        # SSL/TLS specific guidance
+        if "ssl" in error_str or "certificate" in error_str:
+            self.console.print("[bold]SSL/Certificate Issue Detected[/bold]")
+            self.console.print()
+            self.console.print("Try one of these solutions:")
+            self.console.print(
+                "  • For self-signed certs: [bold]LOOKER_HTTPS_VERIFY=false sp build --push[/bold]"
+            )
+            self.console.print(
+                "  • Check if your VPN/proxy intercepts HTTPS traffic"
+            )
+            self.console.print(
+                "  • Verify the Looker URL is correct in sp.yml"
+            )
+        # Proxy/network guidance
+        elif "proxy" in error_str or "connect" in error_str:
+            self.console.print("[bold]Network/Proxy Issue Detected[/bold]")
+            self.console.print()
+            self.console.print("Try one of these solutions:")
+            self.console.print(
+                "  • Set proxy: [bold]HTTPS_PROXY=http://proxy:port sp build --push[/bold]"
+            )
+            self.console.print(
+                "  • Check firewall/VPN settings"
+            )
+            self.console.print(
+                "  • Verify Looker instance is accessible from this network"
+            )
+        else:
+            self.console.print("Possible causes:")
+            self.console.print("  • Looker instance is down or unreachable")
+            self.console.print("  • Network/firewall blocking the connection")
+            self.console.print("  • Incorrect base_url in sp.yml")
+
+        self.console.print()
+
+    def _print_timeout_error(self, e: httpx.TimeoutException) -> None:
+        """Print helpful diagnostics for timeout errors."""
+        self.console.print()
+        self.console.print(f"[red]✗[/red] Request timed out: {e}")
+        self.console.print()
+        self.console.print(
+            f"Looker instance at {self.config.base_url} did not respond in time"
+        )
+        self.console.print()
+        self.console.print("Try one of these solutions:")
+        self.console.print(
+            f"  • Increase timeout: [bold]LOOKER_TIMEOUT=60 sp build --push[/bold]"
+        )
+        self.console.print(
+            "  • Check if the Looker instance is under heavy load"
+        )
+        self.console.print(
+            "  • Verify network connectivity"
+        )
+        self.console.print()
+
+    def _print_network_error(self, e: httpx.HTTPError) -> None:
+        """Print helpful diagnostics for general network errors."""
+        self.console.print()
+        self.console.print(f"[red]✗[/red] Network error: {e}")
+        self.console.print()
+        self.console.print(
+            f"Cannot reach Looker instance at {self.config.base_url}"
+        )
+        self.console.print()
 
     def build_explore_url(self, blobs: list[dict[str, str]]) -> str | None:
         """Build Looker IDE URL for the first explore file.

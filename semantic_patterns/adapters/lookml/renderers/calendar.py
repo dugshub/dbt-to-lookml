@@ -31,11 +31,17 @@ class DateOption:
     @property
     def parameter_value(self) -> str:
         """
-        Value for the parameter - returns the SQL column name for direct injection.
+        Value for the parameter - returns view_alias.sql_column for direct SQL injection.
 
-        This allows ${TABLE}.{% parameter date_field %} to work correctly.
+        Looker generates table aliases matching view names, so:
+        - view: sp_rentals, expr: rental_created_at_utc
+        - parameter_value: sp_rentals.rental_created_at_utc
+        - SQL: FROM "gold_production"."rentals" AS "sp_rentals"
+        - Result: sp_rentals.rental_created_at_utc is valid SQL!
+
+        This allows dates from any joined view to work correctly.
         """
-        return self.expr
+        return f"{self.view}.{self.expr}"
 
 
 @dataclass
@@ -134,9 +140,10 @@ class CalendarRenderer:
             "allowed_values": allowed_values,
         }
 
-        # Use direct parameter injection instead of CASE statement
-        # This allows Looker to inject the column name at runtime
-        calendar_sql = '${TABLE}.{% parameter date_field %}'
+        # Parameter value is view_alias.sql_column (e.g., "sp_rentals.rental_created_at_utc")
+        # Direct injection works because Looker aliases tables with the view name
+        # This allows dates from any joined view to work correctly
+        calendar_sql = '{% parameter date_field %}'
 
         dimension_group: dict[str, Any] = {
             "name": "calendar",

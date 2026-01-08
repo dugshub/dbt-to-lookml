@@ -36,12 +36,14 @@ class ViewRenderer:
         dialect: Dialect | None = None,
         pop_strategy: PopStrategy | None = None,
         model_to_explore: dict[str, str] | None = None,
+        model_to_fact: dict[str, str] | None = None,
     ) -> None:
         self.dialect = dialect
         self.dimension_renderer = DimensionRenderer(dialect)
         # MeasureRenderer will be created per-view with defined_fields
         self.pop_renderer = PopRenderer(pop_strategy)
         self.model_to_explore = model_to_explore or {}
+        self.model_to_fact = model_to_fact or {}
 
     @staticmethod
     def _build_defined_fields(model: ProcessedModel) -> dict[str, str]:
@@ -291,22 +293,19 @@ class ViewRenderer:
         if not has_pop:
             return None
 
-        # Create PoP renderer with calendar view context
-        # Use model-to-explore mapping to find the correct explore's calendar
-        from semantic_patterns.adapters.lookml.renderers.explore import (
-            get_calendar_view_name,
-        )
+        # Create PoP renderer with fact view context
+        # Calendar dimension is defined on the fact view via +{fact_view} extension
         from semantic_patterns.adapters.lookml.renderers.pop import LookerNativePopStrategy
 
-        # Find which explore this model belongs to
-        explore_name = self.model_to_explore.get(model.name)
-        if not explore_name:
+        # Find the fact view for this model's explore
+        # PoP measures need to reference {fact_view}.calendar_date
+        fact_view_name = self.model_to_fact.get(model.name)
+        if not fact_view_name:
             # Model not in any explore - skip PoP generation
             # (These are dimension-only models that get joined but don't have their own explore)
             return None
 
-        calendar_view_name = get_calendar_view_name(explore_name)
-        pop_strategy = LookerNativePopStrategy(calendar_view_name=calendar_view_name)
+        pop_strategy = LookerNativePopStrategy(fact_view_name=fact_view_name)
         pop_renderer = PopRenderer(pop_strategy)
 
         measures = []

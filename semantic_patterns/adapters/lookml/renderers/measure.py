@@ -48,9 +48,16 @@ class MeasureRenderer:
         """Render a raw measure to LookML."""
         fields = defined_fields if defined_fields is not None else self.defined_fields
 
+        # Determine LookML measure type
+        # Special case: COUNT with an expr should be count_distinct in LookML
+        # because LookML's "count" type just counts rows (no sql parameter)
+        lookml_type = AGG_TO_LOOKML.get(measure.agg, "sum")
+        if measure.agg == AggregationType.COUNT and measure.expr:
+            lookml_type = "count_distinct"
+
         result: dict[str, Any] = {
             "name": measure.name,
-            "type": AGG_TO_LOOKML.get(measure.agg, "sum"),
+            "type": lookml_type,
             "sql": self._qualify_expr(measure.expr, fields),
         }
 
@@ -116,9 +123,15 @@ class MeasureRenderer:
             else:
                 sql_expr = qualified_expr
 
+            # Determine LookML measure type
+            # Special case: COUNT with an expr should be count_distinct in LookML
+            lookml_type = AGG_TO_LOOKML.get(measure.agg, "sum")
+            if measure.agg == AggregationType.COUNT and measure.expr:
+                lookml_type = "count_distinct"
+
             result: dict[str, Any] = {
                 "name": metric.name,
-                "type": AGG_TO_LOOKML.get(measure.agg, "sum"),
+                "type": lookml_type,
                 "sql": sql_expr,
             }
         else:

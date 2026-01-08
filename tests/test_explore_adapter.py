@@ -28,23 +28,28 @@ from semantic_patterns.domain import (
 class TestDateOption:
     """Tests for DateOption dataclass."""
 
-    def test_parameter_value_uses_double_underscore(self):
+    def test_parameter_value_uses_view_and_column(self):
+        """Parameter value should be view_alias.sql_column for direct SQL injection."""
         option = DateOption(
             view="rentals",
             dimension="created_at",
             label="Rental Created",
             raw_ref="${rentals.created_at_raw}",
+            expr="rental_created_at_utc",
         )
-        assert option.parameter_value == "rentals__created_at"
+        # Parameter value is view.column for direct SQL injection
+        assert option.parameter_value == "rentals.rental_created_at_utc"
 
     def test_parameter_value_with_underscored_names(self):
+        """Parameter value combines view name and SQL column."""
         option = DateOption(
             view="rental_orders",
             dimension="created_at_utc",
             label="Order Created UTC",
             raw_ref="${rental_orders.created_at_utc_raw}",
+            expr="order_created_at_utc_timestamp",
         )
-        assert option.parameter_value == "rental_orders__created_at_utc"
+        assert option.parameter_value == "rental_orders.order_created_at_utc_timestamp"
 
 
 class TestCalendarRenderer:
@@ -57,12 +62,14 @@ class TestCalendarRenderer:
                 dimension="created_at",
                 label="Rental Created",
                 raw_ref="${rentals.created_at_raw}",
+                expr="rental_created_at_utc",
             ),
             DateOption(
                 view="rentals",
                 dimension="starts_at",
                 label="Rental Starts",
                 raw_ref="${rentals.starts_at_raw}",
+                expr="rental_starts_at_utc",
             ),
         ]
 
@@ -70,7 +77,7 @@ class TestCalendarRenderer:
         result = renderer.render("rentals", options)
 
         assert result is not None
-        assert result["name"] == "rentals_explore_calendar"
+        assert result["name"] == "+rentals"  # View extension format
         assert len(result["parameters"]) == 1
         assert len(result["dimension_groups"]) == 1
 
@@ -81,12 +88,14 @@ class TestCalendarRenderer:
                 dimension="created_at",
                 label="Rental Created",
                 raw_ref="${rentals.created_at_raw}",
+                expr="rental_created_at_utc",
             ),
             DateOption(
                 view="facilities",
                 dimension="opened_at",
                 label="Facility Opened",
                 raw_ref="${facilities.opened_at_raw}",
+                expr="facility_opened_at_utc",
             ),
         ]
 
@@ -95,27 +104,32 @@ class TestCalendarRenderer:
 
         param = result["parameters"][0]
         assert param["name"] == "date_field"
-        assert param["type"] == "string"
+        assert param["type"] == "unquoted"  # For direct SQL injection
         assert param["label"] == "Analysis Date"
         assert param["view_label"] == " Calendar"  # Space prefix
-        assert param["default_value"] == "rentals__created_at"
+        # Default value is view.column for SQL injection
+        assert param["default_value"] == "rentals.rental_created_at_utc"
         assert len(param["allowed_values"]) == 2
         assert param["allowed_values"][0]["label"] == "Rental Created"
-        assert param["allowed_values"][0]["value"] == "rentals__created_at"
+        # Allowed values are view.column for SQL injection
+        assert param["allowed_values"][0]["value"] == "rentals.rental_created_at_utc"
 
-    def test_render_dimension_group_with_case(self):
+    def test_render_dimension_group_with_direct_sql_injection(self):
+        """Calendar dimension uses direct parameter injection for SQL."""
         options = [
             DateOption(
                 view="rentals",
                 dimension="created_at",
                 label="Rental Created",
                 raw_ref="${rentals.created_at_raw}",
+                expr="rental_created_at_utc",
             ),
             DateOption(
                 view="facilities",
                 dimension="opened_at",
                 label="Facility Opened",
                 raw_ref="${facilities.opened_at_raw}",
+                expr="facility_opened_at_utc",
             ),
         ]
 
@@ -126,11 +140,9 @@ class TestCalendarRenderer:
         assert dim_group["name"] == "calendar"
         assert dim_group["type"] == "time"
         assert dim_group["view_label"] == " Calendar"
-        assert "convert_tz" not in dim_group  # Removed - not needed
         assert "date" in dim_group["timeframes"]
-        assert "{% parameter date_field %}" in dim_group["sql"]
-        assert "rentals__created_at" in dim_group["sql"]
-        assert "${rentals.created_at_raw}" in dim_group["sql"]
+        # Direct injection - parameter value is view.column which is valid SQL
+        assert dim_group["sql"] == "{% parameter date_field %}"
 
     def test_render_returns_none_for_empty_options(self):
         renderer = CalendarRenderer()
@@ -164,8 +176,9 @@ class TestCalendarRenderer:
         assert len(options) == 2
         assert options[0].view == "rentals"
         assert options[0].dimension == "created_at"
-        assert options[0].label == "Rentals Created At"  # Smart title
+        assert options[0].label == "Created At"  # Single model - no view prefix
         assert options[0].raw_ref == "${rentals.created_at_raw}"
+        assert options[0].expr == "created_at_utc"  # SQL column name
 
     def test_collect_date_options_from_multiple_models(self):
         fact_model = ProcessedModel(
@@ -501,9 +514,9 @@ class TestExploreGenerator:
         files = generator.generate([config], models)
 
         assert "rentals.explore.lkml" in files
-        # Calendar view is now embedded in the explore file
+        # Calendar is now a view extension (+rentals) embedded in the explore file
         explore_content = files["rentals.explore.lkml"]
-        assert "view: rentals_explore_calendar" in explore_content
+        assert "view: +rentals" in explore_content
         assert "parameter: date_field" in explore_content
         assert "explore: rentals" in explore_content
 
@@ -523,9 +536,9 @@ class TestExploreGenerator:
         files = generator.generate([config], models)
 
         assert "rentals.explore.lkml" in files
-        # When no dates, calendar view should not be embedded in explore file
+        # When no dates, calendar extension should not be in explore file
         explore_content = files["rentals.explore.lkml"]
-        assert "view: rentals_explore_calendar" not in explore_content
+        assert "parameter: date_field" not in explore_content
 
     def test_generated_explore_is_valid_lookml(self):
         fact_model = ProcessedModel(
@@ -577,12 +590,12 @@ class TestExploreGenerator:
         generator = ExploreGenerator()
         files = generator.generate([config], models)
 
-        # Should be parseable LookML with embedded calendar view
+        # Should be parseable LookML with embedded calendar view extension
         content = files["rentals.explore.lkml"]
         parsed = lkml.load(content)
         assert "views" in parsed
         assert "explores" in parsed
-        assert parsed["views"][0]["name"] == "rentals_explore_calendar"
+        assert parsed["views"][0]["name"] == "+rentals"  # View extension format
         assert parsed["explores"][0]["name"] == "rentals"
 
     def test_skip_explore_when_fact_model_not_found(self):

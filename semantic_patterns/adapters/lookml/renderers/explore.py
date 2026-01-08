@@ -59,8 +59,9 @@ class ExploreRenderer:
         # Track all views that need to be included
         includes: list[str] = []
 
-        # Include fact model view (using wildcard for all refinements)
-        includes.append(f"/**/{fact_model.name}.view.lkml")
+        # Include fact model view and all its refinements (metrics, pop, etc.)
+        # Relative path from explores/ to views/
+        includes.append(f"../views/{fact_model.name}/*.view.lkml")
 
         explore: dict[str, Any] = {
             "name": explore_config.name,
@@ -91,8 +92,8 @@ class ExploreRenderer:
             join_dict = self._render_join(join, fact_model.name)
             joins.append(join_dict)
 
-            # Include joined view (using wildcard for all refinements)
-            includes.append(f"/**/{join.model}.view.lkml")
+            # Include joined view and all its refinements (metrics, pop, etc.)
+            includes.append(f"../views/{join.model}/*.view.lkml")
 
             # Track joined model for calendar
             if join.model in all_models:

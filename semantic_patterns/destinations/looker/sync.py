@@ -330,3 +330,90 @@ class DevSync:
             self.console.print(
                 f"[green]✓[/green] Looker dev synced to branch '{self.config.branch}'"
             )
+
+    def validate_lookml(self, access_token: str) -> list[dict[str, Any]]:
+        """Validate LookML in the current Looker dev workspace.
+
+        Args:
+            access_token: Looker API access token
+
+        Returns:
+            List of validation errors (empty if valid)
+        """
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            with httpx.Client(
+                base_url=f"{self.config.base_url}/api/4.0",
+                headers=headers,
+                timeout=60.0,  # Validation can take a while
+            ) as client:
+                validation_response = client.get(
+                    f"/projects/{self.config.project_id}/validate"
+                )
+
+                if validation_response.status_code not in (200, 204):
+                    self.console.print(
+                        f"[yellow]⚠[/yellow] Could not validate LookML: "
+                        f"HTTP {validation_response.status_code}"
+                    )
+                    return []
+
+                # 204 means no errors (empty response)
+                if validation_response.status_code == 204:
+                    return []
+
+                validation_data = validation_response.json()
+                errors: list[dict[str, Any]] = validation_data.get("errors", [])
+                return errors
+
+        except httpx.HTTPError as e:
+            self.console.print(
+                f"[yellow]⚠[/yellow] Could not validate LookML: {e}"
+            )
+            return []
+
+    def display_validation_errors(self, errors: list[dict[str, Any]]) -> None:
+        """Display validation errors in a user-friendly format.
+
+        Args:
+            errors: List of validation error dictionaries from Looker API
+        """
+        # Group errors by message
+        error_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for error in errors:
+            message = error.get("message", "Unknown error")
+            error_groups[message].append(error)
+
+        unique_count = len(error_groups)
+        total_count = len(errors)
+
+        self.console.print()
+        self.console.print(f"[red]✗ LookML Validation Failed[/red] ({unique_count} error types)")
+        if total_count != unique_count:
+            self.console.print(f"[dim]{total_count} total occurrences[/dim]")
+        self.console.print()
+
+        # Show errors with locations
+        for i, (message, occurrences) in enumerate(list(error_groups.items())[:5], 1):
+            count = len(occurrences)
+            if count > 1:
+                self.console.print(f"  {i}. {message} [dim]({count}x)[/dim]")
+            else:
+                self.console.print(f"  {i}. {message}")
+
+            # Show first location
+            first_error = occurrences[0]
+            file_path = first_error.get("file_path", "")
+            line = first_error.get("line_number", "")
+            if file_path:
+                location = f"{file_path}:{line}" if line else file_path
+                self.console.print(f"     [dim]{location}[/dim]")
+
+        if unique_count > 5:
+            self.console.print(f"  ... and {unique_count - 5} more error type(s)")
+
+        self.console.print()

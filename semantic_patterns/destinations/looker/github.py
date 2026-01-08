@@ -78,15 +78,30 @@ class GitHubClient:
             # Device flow authentication
             token = github_device_flow(self.console)
             if token:
-                # Save to keychain
+                # Auto-save to keychain (no prompt for device flow)
                 if store.set(CredentialType.GITHUB, token):
+                    self.console.print()
                     self.console.print(
-                        "[green]Saved token to keychain[/green] "
+                        "[green]✓ Token saved to keychain[/green] "
                         "[dim](semantic-patterns/github)[/dim]"
+                    )
+                    self.console.print(
+                        "[dim]You won't need to authenticate again on this machine.[/dim]"
+                    )
+                else:
+                    self.console.print()
+                    self.console.print(
+                        "[yellow]⚠ Could not save token to keychain[/yellow]"
+                    )
+                    self.console.print(
+                        "[dim]You may need to re-authenticate next time.[/dim]"
                     )
                 self._token = token
                 return token
             else:
+                self.console.print(
+                    "[yellow]Authentication was not completed[/yellow]"
+                )
                 return None
 
         elif choice == "2":
@@ -277,6 +292,94 @@ class GitHubClient:
         self.console.print()
 
         return default_sha
+
+    def rollback_commit(self, token: str, commit_sha: str) -> str | None:
+        """Rollback a commit by reverting it.
+
+        Creates a revert commit that undoes the changes from the specified commit.
+
+        Args:
+            token: GitHub Personal Access Token
+            commit_sha: SHA of the commit to rollback
+
+        Returns:
+            The revert commit SHA if successful, None if failed
+        """
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": self.GITHUB_API_VERSION,
+        }
+        base_url = f"{self.GITHUB_API_BASE}/repos/{self.config.repo}"
+
+        try:
+            with httpx.Client(headers=headers, timeout=30.0) as client:
+                # Get the commit we want to revert
+                commit_response = client.get(f"{base_url}/git/commits/{commit_sha}")
+                if commit_response.status_code != 200:
+                    self.console.print(
+                        f"[red]✗[/red] Could not find commit {commit_sha[:7]}"
+                    )
+                    return None
+
+                commit_data = commit_response.json()
+                parents = commit_data.get("parents", [])
+
+                if not parents:
+                    self.console.print(
+                        "[red]✗[/red] Cannot revert: commit has no parent"
+                    )
+                    return None
+
+                parent_sha = parents[0]["sha"]
+
+                # Get the parent commit's tree
+                parent_response = client.get(f"{base_url}/git/commits/{parent_sha}")
+                if parent_response.status_code != 200:
+                    self.console.print(
+                        f"[red]✗[/red] Could not find parent commit"
+                    )
+                    return None
+
+                parent_tree_sha = parent_response.json()["tree"]["sha"]
+
+                # Create a revert commit using the parent's tree
+                revert_message = f"Revert: {commit_data.get('message', 'LookML update').split(chr(10))[0]}\n\nThis reverts commit {commit_sha[:7]} due to LookML validation errors."
+
+                revert_response = client.post(
+                    f"{base_url}/git/commits",
+                    json={
+                        "message": revert_message,
+                        "tree": parent_tree_sha,
+                        "parents": [commit_sha],
+                    },
+                )
+
+                if revert_response.status_code not in (200, 201):
+                    self.console.print(
+                        f"[red]✗[/red] Could not create revert commit"
+                    )
+                    return None
+
+                revert_sha: str = revert_response.json()["sha"]
+
+                # Update branch ref to point to revert commit
+                update_ref_response = client.patch(
+                    f"{base_url}/git/refs/heads/{self.config.branch}",
+                    json={"sha": revert_sha},
+                )
+
+                if update_ref_response.status_code != 200:
+                    self.console.print(
+                        f"[red]✗[/red] Could not update branch ref"
+                    )
+                    return None
+
+                return revert_sha
+
+        except httpx.HTTPError as e:
+            self.console.print(f"[red]✗[/red] Rollback failed: {e}")
+            return None
 
     def _check_response(self, response: httpx.Response, action: str) -> None:
         """Check GitHub API response and raise on error.

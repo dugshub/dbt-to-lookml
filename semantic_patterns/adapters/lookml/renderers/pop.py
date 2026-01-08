@@ -56,24 +56,25 @@ class LookerNativePopStrategy:
         measure: gmv_py {
             type: period_over_period
             based_on: gmv
-            based_on_time: {explore}_explore_calendar.calendar_date
+            based_on_time: {fact_view}.calendar_date
             period: year
             kind: previous
         }
 
     Requires:
-    - Calendar view with dimension_group: calendar (provides calendar_date)
-    - Calendar view joined to explore (cross join)
+    - Calendar dimension_group on fact view (provides calendar_date)
+    - Calendar is added via view extension (+fact_view) in explore file
     """
 
-    def __init__(self, calendar_view_name: str | None = None) -> None:
+    def __init__(self, fact_view_name: str | None = None) -> None:
         """
-        Initialize with calendar view name for scoped based_on_time references.
+        Initialize with fact view name for qualified based_on_time references.
 
         Args:
-            calendar_view_name: Name of the explore calendar view (e.g., "rentals_explore_calendar")
+            fact_view_name: Name of the fact view (e.g., "sp_rentals")
+                           Calendar dimension is defined on this view.
         """
-        self.calendar_view_name = calendar_view_name
+        self.fact_view_name = fact_view_name
 
     def render(
         self,
@@ -95,9 +96,10 @@ class LookerNativePopStrategy:
             "kind": OUTPUT_TO_LOOKML.get(params.output, "previous"),
         }
 
-        # Add based_on_time reference to calendar dimension (now in same view via refinement)
-        if self.calendar_view_name:
-            result["based_on_time"] = "calendar_date"
+        # Add qualified based_on_time reference to calendar dimension on fact view
+        # Calendar is defined via +{fact_view} extension, so we need full qualification
+        if self.fact_view_name:
+            result["based_on_time"] = f"{self.fact_view_name}.calendar_date"
 
         # Generate label
         comparison_labels = {

@@ -114,10 +114,16 @@ class LookerDestination:
 
         # Step 2: Sync Looker dev environment (if configured)
         looker_synced = False
+        validation_passed = True
         if self.config.looker_sync_enabled:
             try:
                 self.sync.sync_to_branch()
                 looker_synced = True
+
+                # Step 3: Validate LookML after sync
+                validation_passed = self._validate_and_maybe_rollback(
+                    github_token, commit_sha
+                )
             except LookerAPIError as e:
                 # Log but don't fail - Git push succeeded
                 self.console.print(f"[yellow]Looker sync failed: {e}[/yellow]")
@@ -125,10 +131,13 @@ class LookerDestination:
         repo_ref = f"{self.config.repo}@{self.config.branch}"
         message = f"Pushed {len(blobs)} files to {repo_ref}"
         if looker_synced:
-            message += " and synced Looker dev"
+            if validation_passed:
+                message += " and synced Looker dev"
+            else:
+                message += " (rolled back due to validation errors)"
 
         # Generate Looker IDE URL for first explore (if available)
-        looker_url = self.looker.build_explore_url(blobs)
+        looker_url = self.looker.build_explore_url(blobs) if validation_passed else None
 
         return WriteResult(
             files_written=[b["path"] for b in blobs],
@@ -141,8 +150,90 @@ class LookerDestination:
                 "branch": self.config.branch,
                 "file_count": str(len(blobs)),
                 "looker_synced": str(looker_synced),
+                "validation_passed": str(validation_passed),
             },
         )
+
+    def _validate_and_maybe_rollback(
+        self, github_token: str, commit_sha: str
+    ) -> bool:
+        """Validate LookML and offer rollback if errors found.
+
+        Args:
+            github_token: GitHub token for rollback
+            commit_sha: SHA of commit to potentially rollback
+
+        Returns:
+            True if validation passed or user declined rollback,
+            False if rollback was performed
+        """
+        # Get Looker access token for validation
+        creds = self.looker.get_credentials()
+        if not creds:
+            return True  # Can't validate without creds, assume OK
+
+        client_id, client_secret = creds
+        try:
+            access_token = self.looker.get_access_token(client_id, client_secret)
+        except LookerAPIError:
+            return True  # Can't validate, assume OK
+
+        # Run validation
+        self.console.print()
+        self.console.print("[dim]Validating LookML...[/dim]")
+        errors = self.sync.validate_lookml(access_token)
+
+        if not errors:
+            self.console.print("[green]✓[/green] LookML validation passed")
+            return True
+
+        # Validation failed - show errors and offer rollback
+        self.sync.display_validation_errors(errors)
+
+        import click
+
+        if not click.confirm(
+            "Rollback this commit to fix errors?", default=False
+        ):
+            self.console.print(
+                "[yellow]Keeping commit with validation errors[/yellow]"
+            )
+            self.console.print(
+                f"[dim]Fix errors and push again, or revert manually[/dim]"
+            )
+            return True  # User chose to keep the commit
+
+        # Perform rollback
+        self.console.print()
+        self.console.print(f"[dim]Rolling back commit {commit_sha[:7]}...[/dim]")
+
+        revert_sha = self.github.rollback_commit(github_token, commit_sha)
+        if not revert_sha:
+            self.console.print(
+                "[red]✗[/red] Rollback failed - please revert manually"
+            )
+            return False
+
+        self.console.print(
+            f"[green]✓[/green] Rolled back to previous state ({revert_sha[:7]})"
+        )
+
+        # Re-sync Looker to get the reverted state
+        self.console.print("[dim]Re-syncing Looker dev environment...[/dim]")
+        try:
+            self.sync.sync_to_branch()
+            self.console.print(
+                "[green]✓[/green] Looker dev synced to reverted state"
+            )
+        except LookerAPIError as e:
+            self.console.print(
+                f"[yellow]⚠[/yellow] Could not re-sync Looker: {e}"
+            )
+            self.console.print(
+                "[dim]Manually sync in Looker IDE: Development → Reset to Remote[/dim]"
+            )
+
+        return False
 
     def validate(self) -> list[str]:
         """Validate Looker configuration.

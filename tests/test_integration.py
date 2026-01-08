@@ -193,7 +193,7 @@ class TestIntegrationWithFixtures:
 
         assert "views" in parsed
         view = parsed["views"][0]
-        assert view["name"] == "rentals_explore_calendar"
+        assert view["name"] == "+rentals"  # View extension format
 
         # Should have parameter
         assert "parameters" in view
@@ -216,9 +216,11 @@ class TestIntegrationWithFixtures:
         assert gov_metric is not None
         assert gov_metric.has_pop
 
-        # Generate with model_to_explore mapping (required for PoP to know which calendar to reference)
+        # Generate with model_to_explore and model_to_fact mappings
+        # Required for PoP to know which view has the calendar dimension
         model_to_explore = {"rentals": "rentals"}
-        generator = LookMLGenerator(model_to_explore=model_to_explore)
+        model_to_fact = {"rentals": "rentals"}
+        generator = LookMLGenerator(model_to_explore=model_to_explore, model_to_fact=model_to_fact)
         files = generator.generate(models)
 
         assert "rentals.pop.view.lkml" in files
@@ -226,6 +228,8 @@ class TestIntegrationWithFixtures:
         content = files["rentals.pop.view.lkml"]
         # Should have prior year and prior month variants
         assert "gov_py" in content or "gmv_py" in content
+        # PoP measures should reference calendar on fact view
+        assert "rentals.calendar_date" in content
 
     def test_full_generation_output(self):
         """Test full generation and print summary."""
@@ -478,8 +482,8 @@ class TestGeneratedLookMLContent:
         # complete: true means no field restriction
         assert "fields" not in reviews_join
 
-    def test_calendar_has_case_statement(self, generated_files):
-        """Test calendar view has CASE statement for dynamic date selection."""
+    def test_calendar_has_direct_sql_injection(self, generated_files):
+        """Test calendar view uses direct SQL injection for date selection."""
         content = generated_files["rentals.explore.lkml"]
         parsed = lkml.load(content)
 
@@ -489,5 +493,7 @@ class TestGeneratedLookMLContent:
         calendar = next((d for d in dim_groups if d["name"] == "calendar"), None)
 
         assert calendar is not None
-        assert "CASE" in calendar["sql"]
+        # Direct SQL injection - parameter value is view.column
         assert "{% parameter date_field %}" in calendar["sql"]
+        # No ${} wrapper needed - parameter value is already valid SQL
+        assert "${" not in calendar["sql"]
