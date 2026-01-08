@@ -1,9 +1,9 @@
 import { useParams, Link } from 'react-router-dom'
 import { useState } from 'react'
-import { ArrowLeft, Key, Clock, Tag, EyeOff, Layers } from 'lucide-react'
+import { ArrowLeft, Key, Clock, EyeOff, Layers } from 'lucide-react'
 import { useModel } from '../api'
 import { GroupedList } from '../components/common'
-import type { Dimension, Measure, Metric, Entity } from '../types'
+import type { Dimension, Measure, Metric, MetricVariant, Entity } from '../types'
 
 type Tab = 'dimensions' | 'measures' | 'metrics' | 'entities'
 
@@ -16,11 +16,14 @@ function Badge({ children, color }: { children: React.ReactNode; color: string }
 }
 
 function DimensionRow({ dimension }: { dimension: Dimension }) {
+  const displayName = dimension.label || dimension.name
+  const showTechnicalName = dimension.label && dimension.label !== dimension.name
+
   return (
-    <div className="flex items-start justify-between py-2 border-b border-gray-800/50 last:border-0">
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-white">{dimension.name}</span>
+    <div className="flex items-start justify-between py-2.5 border-b border-gray-800/50 last:border-0">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-white">{displayName}</span>
           {dimension.hidden && (
             <Badge color="bg-gray-700 text-gray-400">
               <EyeOff size={10} /> hidden
@@ -31,17 +34,12 @@ function DimensionRow({ dimension }: { dimension: Dimension }) {
               <Clock size={10} /> {dimension.granularity || 'time'}
             </Badge>
           )}
-          {dimension.type === 'categorical' && (
-            <Badge color="bg-green-500/10 text-green-400">
-              <Tag size={10} /> categorical
-            </Badge>
-          )}
         </div>
-        {dimension.label && dimension.label !== dimension.name && (
-          <p className="text-sm text-gray-400 mt-0.5">{dimension.label}</p>
+        {showTechnicalName && (
+          <code className="text-xs text-gray-500 mt-0.5 block">{dimension.name}</code>
         )}
       </div>
-      <code className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded max-w-xs truncate">
+      <code className="text-xs text-gray-500 bg-gray-800/50 px-2 py-1 rounded max-w-[200px] truncate ml-4 flex-shrink-0">
         {dimension.expr || '—'}
       </code>
     </div>
@@ -49,11 +47,14 @@ function DimensionRow({ dimension }: { dimension: Dimension }) {
 }
 
 function MeasureRow({ measure }: { measure: Measure }) {
+  const displayName = measure.label || measure.name
+  const showTechnicalName = measure.label && measure.label !== measure.name
+
   return (
-    <div className="flex items-start justify-between py-2 border-b border-gray-800/50 last:border-0">
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-white">{measure.name}</span>
+    <div className="flex items-start justify-between py-2.5 border-b border-gray-800/50 last:border-0">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-white">{displayName}</span>
           <Badge color="bg-yellow-500/10 text-yellow-400">{measure.agg}</Badge>
           {measure.hidden && (
             <Badge color="bg-gray-700 text-gray-400">
@@ -64,56 +65,108 @@ function MeasureRow({ measure }: { measure: Measure }) {
             <Badge color="bg-blue-500/10 text-blue-400">{measure.format}</Badge>
           )}
         </div>
-        {measure.label && measure.label !== measure.name && (
-          <p className="text-sm text-gray-400 mt-0.5">{measure.label}</p>
+        {showTechnicalName && (
+          <code className="text-xs text-gray-500 mt-0.5 block">{measure.name}</code>
         )}
       </div>
-      <code className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded max-w-xs truncate">
+      <code className="text-xs text-gray-500 bg-gray-800/50 px-2 py-1 rounded max-w-[200px] truncate ml-4 flex-shrink-0">
         {measure.expr}
       </code>
     </div>
   )
 }
 
-function MetricRow({ metric }: { metric: Metric }) {
+function MetricCard({ metric }: { metric: Metric }) {
+  const displayName = metric.label || metric.name
+
+  // Format variant suffix for display (e.g., "_py" -> "Prior Year")
+  const formatVariantLabel = (v: MetricVariant): string => {
+    if (v.kind === 'base') return 'Base'
+    if (v.kind === 'pop' && v.params && 'comparison' in v.params) {
+      const comp = v.params.comparison
+      const output = v.params.output
+      const compLabels: Record<string, string> = {
+        py: 'Prior Year',
+        pm: 'Prior Month',
+        pq: 'Prior Quarter',
+        pw: 'Prior Week',
+        pp: 'Prior Period',
+      }
+      const outputLabels: Record<string, string> = {
+        previous: '',
+        change: 'Change',
+        pct_change: '% Change',
+      }
+      const compLabel = compLabels[comp] || comp.toUpperCase()
+      const outLabel = outputLabels[output] || output
+      return outLabel ? `${compLabel} ${outLabel}` : compLabel
+    }
+    if (v.kind === 'benchmark' && v.params && 'label' in v.params) {
+      return v.params.label || 'Benchmark'
+    }
+    return v.suffix ? v.suffix.replace(/_/g, ' ').trim() : v.kind
+  }
+
   return (
-    <div className="py-2 border-b border-gray-800/50 last:border-0">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-white">{metric.name}</span>
-            <Badge color="bg-purple-500/10 text-purple-400">{metric.type}</Badge>
-            {metric.format && (
-              <Badge color="bg-blue-500/10 text-blue-400">{metric.format}</Badge>
-            )}
+    <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-4 hover:border-gray-600 transition-colors">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <h3 className="font-semibold text-white text-lg">{displayName}</h3>
+          <code className="text-xs text-gray-500">{metric.name}</code>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge color="bg-purple-500/20 text-purple-300">{metric.type}</Badge>
+          {metric.format && (
+            <Badge color="bg-blue-500/20 text-blue-300">{metric.format}</Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Description */}
+      {metric.description && (
+        <p className="text-sm text-gray-400 mb-3">{metric.description}</p>
+      )}
+
+      {/* Measure reference */}
+      {metric.measure && (
+        <p className="text-xs text-gray-500 mb-3">
+          Measure: <code className="text-gray-400">{metric.measure}</code>
+        </p>
+      )}
+
+      {/* Variants */}
+      {metric.variants.length > 0 && (
+        <div className="border-t border-gray-700/50 pt-3 mt-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-gray-500 uppercase tracking-wide">
+              {metric.variant_count} Variant{metric.variant_count !== 1 ? 's' : ''}
+            </span>
             {metric.has_pop && (
-              <Badge color="bg-orange-500/10 text-orange-400">
-                <Layers size={10} /> PoP
+              <Badge color="bg-orange-500/20 text-orange-300">
+                <Layers size={10} /> Period over Period
               </Badge>
             )}
           </div>
-          {metric.label && metric.label !== metric.name && (
-            <p className="text-sm text-gray-400 mt-0.5">{metric.label}</p>
-          )}
-        </div>
-        <span className="text-sm text-gray-500">{metric.variant_count} variants</span>
-      </div>
-      {metric.variants.length > 1 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {metric.variants.map((v, i) => (
-            <span
-              key={i}
-              className={`text-xs px-2 py-0.5 rounded ${
-                v.kind === 'base'
-                  ? 'bg-gray-800 text-gray-300'
-                  : v.kind === 'pop'
-                  ? 'bg-orange-500/10 text-orange-400'
-                  : 'bg-cyan-500/10 text-cyan-400'
-              }`}
-            >
-              {metric.name}{v.suffix || ''}
-            </span>
-          ))}
+          <div className="flex flex-wrap gap-2">
+            {metric.variants.map((v, i) => (
+              <div
+                key={i}
+                className={`text-xs px-3 py-1.5 rounded-md border ${
+                  v.kind === 'base'
+                    ? 'bg-gray-700/50 border-gray-600 text-gray-200'
+                    : v.kind === 'pop'
+                    ? 'bg-orange-500/10 border-orange-500/30 text-orange-300'
+                    : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
+                }`}
+              >
+                <div className="font-medium">{formatVariantLabel(v)}</div>
+                <div className="text-[10px] opacity-70 mt-0.5">
+                  {metric.name}{v.suffix || ''}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -241,12 +294,11 @@ export function ModelDetailPage() {
           />
         )}
         {activeTab === 'metrics' && (
-          <GroupedList
-            items={model.metrics}
-            groupBy={(m) => m.group}
-            renderItem={(m) => <MetricRow key={m.name} metric={m} />}
-            emptyMessage="No metrics"
-          />
+          <div className="grid gap-4 md:grid-cols-2">
+            {model.metrics.map((metric) => (
+              <MetricCard key={metric.name} metric={metric} />
+            ))}
+          </div>
         )}
         {activeTab === 'entities' && (
           <div>

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
-import { Clock, Tag, EyeOff } from 'lucide-react'
+import { Clock, EyeOff } from 'lucide-react'
 import { useAllDimensions } from '../api'
+import { GroupedList } from '../components/common'
 
 export function DimensionsPage() {
   const { data: dimensions, isLoading } = useAllDimensions()
@@ -36,30 +37,41 @@ export function DimensionsPage() {
             </Link>
             <span className="text-gray-500 ml-2">({dims?.length})</span>
           </div>
-          <div className="divide-y divide-gray-800">
-            {dims?.map((dim) => (
-              <div key={`${model}-${dim.name}`} className="px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-white">{dim.name}</span>
-                  {dim.type === 'time' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-purple-500/10 text-purple-400 rounded">
-                      <Clock size={10} /> {dim.granularity || 'time'}
-                    </span>
-                  )}
-                  {dim.type === 'categorical' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-green-500/10 text-green-400 rounded">
-                      <Tag size={10} /> categorical
-                    </span>
-                  )}
-                  {dim.hidden && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-gray-700 text-gray-400 rounded">
-                      <EyeOff size={10} /> hidden
-                    </span>
-                  )}
-                </div>
-                {dim.group && <span className="text-xs text-gray-500">{dim.group}</span>}
-              </div>
-            ))}
+          <div className="p-4">
+            <GroupedList
+              items={dims || []}
+              groupBy={(dim) => dim.group}
+              renderItem={(dim) => {
+                const displayName = dim.label || dim.name
+                const showTechnicalName = dim.label && dim.label !== dim.name
+                return (
+                  <div
+                    key={`${model}-${dim.name}`}
+                    className="flex items-start justify-between py-2 border-b border-gray-800/50 last:border-0"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-white font-medium">{displayName}</span>
+                        {dim.type === 'time' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-purple-500/10 text-purple-400 rounded">
+                            <Clock size={10} /> {dim.granularity || 'time'}
+                          </span>
+                        )}
+                        {dim.hidden && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-gray-700 text-gray-400 rounded">
+                            <EyeOff size={10} /> hidden
+                          </span>
+                        )}
+                      </div>
+                      {showTechnicalName && (
+                        <code className="text-xs text-gray-500 mt-0.5 block">{dim.name}</code>
+                      )}
+                    </div>
+                  </div>
+                )
+              }}
+              emptyMessage="No dimensions"
+            />
           </div>
         </div>
       ))}
